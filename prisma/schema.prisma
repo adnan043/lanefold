@@ -37,18 +37,18 @@ datasource db {
 /// A person with an account on this site. `email` is stored trimmed and
 /// lower-cased. Only the user and holders of `site:user:read` ever see it.
 model User {
-  id              Int       @id @default(autoincrement())
-  email           String    @unique @db.VarChar(254)
+  id                Int       @id @default(autoincrement())
+  email             String    @unique @db.VarChar(254)
   /// `pbkdf2-sha256$v1$<iterations>$<salt>$<key>` (src/platform/auth/password.ts).
-  passwordHash    String    @map("password_hash") @db.VarChar(255)
-  name            String    @db.VarChar(80)
+  passwordHash      String    @map("password_hash") @db.VarChar(255)
+  name              String    @db.VarChar(80)
   /// `active` or `suspended`.
-  status          String    @default("active") @db.VarChar(16)
-  emailVerifiedAt DateTime? @map("email_verified_at")
+  status            String    @default("active") @db.VarChar(16)
+  emailVerifiedAt   DateTime? @map("email_verified_at")
   /// Bumped on password change, logout-all and suspension: every access token
   /// carrying an older value stops working at once.
-  sessionVersion  Int       @default(1) @map("session_version")
-  lastLoginAt     DateTime? @map("last_login_at")
+  sessionVersion    Int       @default(1) @map("session_version")
+  lastLoginAt       DateTime? @map("last_login_at")
   /// Two-step sign-in (src/platform/auth/two-factor.ts): the authenticator secret, SEALED
   /// (never in clear), set once the user confirmed a first code (`totpEnabledAt`).
   totpSecretSealed  String?   @map("totp_secret_sealed") @db.VarChar(255)
@@ -57,8 +57,8 @@ model User {
   totpEnabledAt     DateTime? @map("totp_enabled_at")
   /// The 30-second step of the last accepted code: that code (and older) never works again.
   totpLastStep      Int?      @map("totp_last_step")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   roles              UserRole[]
   refreshTokens      RefreshToken[]
@@ -393,4 +393,573 @@ model Job {
 
   @@index([status, id])
   @@map("jobs")
+}
+
+// ---------------------------------------------------------------- Lanefold (docs/product/SPEC.md §6)
+// No foreign keys to `users` (managed table): a user id is a plain Int, and a daily cleanup job removes rows
+// of deleted accounts. Every workspace-owned table carries `workspace_id` FIRST in its indexes.
+// `position` columns are COLLATE "C" (migration SQL) so fractional-index keys sort by bytes.
+
+/// Per-user preferences (theme, language). One row per user, created on first use.
+model UserProfile {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @unique @map("user_id")
+  locale         String   @default("en") @db.VarChar(8)
+  timezone       String   @default("UTC") @db.VarChar(64)
+  firstDayOfWeek Int      @default(1) @map("first_day_of_week")
+  /// `light`, `dark`, `system` or `contrast`.
+  themeMode      String   @default("system") @map("theme_mode") @db.VarChar(10)
+  accentHex      String   @default("#5B5BD6") @map("accent_hex") @db.VarChar(7)
+  /// `compact`, `comfortable` or `spacious`.
+  density        String   @default("comfortable") @db.VarChar(12)
+  /// Percent, 90 to 130.
+  fontScale      Int      @default(100) @map("font_scale")
+  /// `sharp`, `soft` or `round`.
+  radius         String   @default("soft") @db.VarChar(8)
+  reduceMotion   Boolean  @default(false) @map("reduce_motion")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("user_profiles")
+}
+
+model Workspace {
+  id               Int       @id @default(autoincrement())
+  name             String    @db.VarChar(80)
+  slug             String    @unique @db.VarChar(60)
+  /// `free`, `pro` or `team` (plan_limits.plan).
+  plan             String    @default("free") @db.VarChar(16)
+  memberLimit      Int       @default(10) @map("member_limit")
+  memberCount      Int       @default(0) @map("member_count")
+  storageUsedBytes BigInt    @default(0) @map("storage_used_bytes")
+  brandAccentHex   String?   @map("brand_accent_hex") @db.VarChar(7)
+  enforceTheme     Boolean   @default(false) @map("enforce_theme")
+  defaultLocale    String    @default("en") @map("default_locale") @db.VarChar(8)
+  graceUntil       DateTime? @map("grace_until") @db.Timestamptz(3)
+  createdBy        Int       @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  members   WorkspaceMember[]
+  invites   WorkspaceInvite[]
+  joinLinks WorkspaceJoinLink[]
+  boards    Board[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspaceId Int      @map("workspace_id")
+  userId      Int      @map("user_id")
+  /// `owner`, `admin`, `member` or `viewer`.
+  role        String   @db.VarChar(10)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId, workspaceId])
+  @@map("workspace_members")
+}
+
+/// Single-use link bound to an email (the email is only a hash; never copied).
+model WorkspaceInvite {
+  id          Int       @id @default(autoincrement())
+  workspaceId Int       @map("workspace_id")
+  tokenHash   String    @unique @map("token_hash") @db.VarChar(64)
+  /// SHA-256 of the lower-cased email the link is bound to; null = anyone who signs in.
+  emailHash   String?   @map("email_hash") @db.VarChar(64)
+  role        String    @db.VarChar(10)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt      DateTime? @map("used_at") @db.Timestamptz(3)
+  createdBy   Int       @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, id])
+  @@map("workspace_invites")
+}
+
+model WorkspaceJoinLink {
+  id          Int       @id @default(autoincrement())
+  workspaceId Int       @map("workspace_id")
+  tokenHash   String    @unique @map("token_hash") @db.VarChar(64)
+  role        String    @db.VarChar(10)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
+  maxUses     Int       @map("max_uses")
+  uses        Int       @default(0)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdBy   Int       @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, id])
+  @@map("workspace_join_links")
+}
+
+model Board {
+  id             Int       @id @default(autoincrement())
+  workspaceId    Int       @map("workspace_id")
+  name           String    @db.VarChar(80)
+  /// `private` (board members), `workspace` or `public` (read-only link).
+  visibility     String    @default("workspace") @db.VarChar(10)
+  /// `color`, `gradient`, `pattern` or `image`.
+  bgKind         String    @default("color") @map("bg_kind") @db.VarChar(10)
+  bgColor1       String    @default("#F4F4F5") @map("bg_color_1") @db.VarChar(7)
+  bgColor2       String    @default("#E7E5E4") @map("bg_color_2") @db.VarChar(7)
+  bgAngle        Int       @default(135) @map("bg_angle")
+  bgPattern      String    @default("none") @map("bg_pattern") @db.VarChar(16)
+  bgFileId       String?   @map("bg_file_id") @db.VarChar(32)
+  shareTokenHash String?   @unique @map("share_token_hash") @db.VarChar(64)
+  /// Bumped by every write transaction; clients poll it (SPEC §8).
+  rev            BigInt    @default(0)
+  /// Personal Inbox board of one user (`inbox_of`), else null.
+  inboxOf        Int?      @map("inbox_of")
+  archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy      Int       @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lanes        Lane[]
+  cards        Card[]
+  labels       Label[]
+  boardMembers BoardMember[]
+  boardStars   BoardStar[]
+
+  @@index([workspaceId, archivedAt, id])
+  @@index([inboxOf, workspaceId])
+  @@map("boards")
+}
+
+model BoardMember {
+  boardId     Int      @map("board_id")
+  userId      Int      @map("user_id")
+  workspaceId Int      @map("workspace_id")
+  /// `admin`, `member` or `viewer`: overrides the workspace role on this board.
+  role        String   @db.VarChar(10)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@id([boardId, userId])
+  @@index([userId, workspaceId])
+  @@map("board_members")
+}
+
+model BoardStar {
+  userId    Int      @map("user_id")
+  boardId   Int      @map("board_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@id([userId, boardId])
+  @@index([boardId])
+  @@map("board_stars")
+}
+
+model Lane {
+  id          Int       @id @default(autoincrement())
+  boardId     Int       @map("board_id")
+  workspaceId Int       @map("workspace_id")
+  name        String    @db.VarChar(80)
+  /// Fractional-index key; COLLATE "C" (migration SQL).
+  position    String    @db.VarChar(64)
+  colorHex    String?   @map("color_hex") @db.VarChar(7)
+  wipLimit    Int?      @map("wip_limit")
+  cardCount   Int       @default(0) @map("card_count")
+  collapsed   Boolean   @default(false)
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
+  updatedRev  BigInt    @default(0) @map("updated_rev")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards Card[]
+
+  @@index([workspaceId, boardId, position, id])
+  @@index([boardId, updatedRev])
+  @@map("lanes")
+}
+
+model Card {
+  id              Int       @id @default(autoincrement())
+  boardId         Int       @map("board_id")
+  laneId          Int       @map("lane_id")
+  workspaceId     Int       @map("workspace_id")
+  title           String    @db.VarChar(200)
+  descriptionMd   String    @default("") @map("description_md") @db.VarChar(20000)
+  position        String    @db.VarChar(64)
+  /// `none`, `low`, `medium`, `high` or `urgent`.
+  priority        String    @default("none") @db.VarChar(8)
+  estimateMinutes Int?      @map("estimate_minutes")
+  startDate       DateTime? @map("start_date") @db.Date
+  dueDate         DateTime? @map("due_date") @db.Date
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz(3)
+  coverFileId     String?   @map("cover_file_id") @db.VarChar(32)
+  checklistTotal  Int       @default(0) @map("checklist_total")
+  checklistDone   Int       @default(0) @map("checklist_done")
+  commentCount    Int       @default(0) @map("comment_count")
+  attachmentCount Int       @default(0) @map("attachment_count")
+  archivedAt      DateTime? @map("archived_at") @db.Timestamptz(3)
+  updatedRev      BigInt    @default(0) @map("updated_rev")
+  /// Import key: a re-run of an import skips cards it already made.
+  importId        String?   @map("import_id") @db.VarChar(40)
+  externalId      String?   @map("external_id") @db.VarChar(64)
+  createdBy       Int       @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  board       Board         @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  lane        Lane          @relation(fields: [laneId], references: [id], onDelete: Cascade)
+  members     CardMember[]
+  watchers    CardWatcher[]
+  labels      CardLabel[]
+  checklists  Checklist[]
+  comments    Comment[]
+  attachments Attachment[]
+
+  @@unique([boardId, importId, externalId])
+  @@index([workspaceId, laneId, position, id])
+  @@index([boardId, updatedRev])
+  @@index([workspaceId, dueDate, id])
+  @@map("cards")
+}
+
+model CardMember {
+  cardId      Int      @map("card_id")
+  userId      Int      @map("user_id")
+  workspaceId Int      @map("workspace_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, userId])
+  @@index([userId, workspaceId, cardId])
+  @@map("card_members")
+}
+
+model CardWatcher {
+  cardId    Int      @map("card_id")
+  userId    Int      @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, userId])
+  @@index([userId, cardId])
+  @@map("card_watchers")
+}
+
+model Label {
+  id          Int      @id @default(autoincrement())
+  boardId     Int      @map("board_id")
+  workspaceId Int      @map("workspace_id")
+  name        String   @db.VarChar(40)
+  colorHex    String   @map("color_hex") @db.VarChar(7)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  board Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards CardLabel[]
+
+  @@index([workspaceId, boardId, id])
+  @@map("labels")
+}
+
+model CardLabel {
+  cardId  Int @map("card_id")
+  labelId Int @map("label_id")
+
+  card  Card  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, labelId])
+  @@index([labelId, cardId])
+  @@map("card_labels")
+}
+
+model Checklist {
+  id          Int      @id @default(autoincrement())
+  cardId      Int      @map("card_id")
+  workspaceId Int      @map("workspace_id")
+  title       String   @db.VarChar(100)
+  position    String   @db.VarChar(64)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  card  Card            @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  items ChecklistItem[]
+
+  @@index([workspaceId, cardId, position, id])
+  @@map("checklists")
+}
+
+model ChecklistItem {
+  id          Int       @id @default(autoincrement())
+  checklistId Int       @map("checklist_id")
+  workspaceId Int       @map("workspace_id")
+  text        String    @db.VarChar(300)
+  position    String    @db.VarChar(64)
+  doneAt      DateTime? @map("done_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  checklist Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, checklistId, position, id])
+  @@map("checklist_items")
+}
+
+model Comment {
+  id          Int       @id @default(autoincrement())
+  cardId      Int       @map("card_id")
+  workspaceId Int       @map("workspace_id")
+  /// No foreign key: shows as "Deleted user" when the account is gone.
+  authorId    Int       @map("author_id")
+  bodyMd      String    @map("body_md") @db.VarChar(5000)
+  editedAt    DateTime? @map("edited_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  card     Card             @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  mentions CommentMention[]
+
+  @@index([workspaceId, cardId, id])
+  @@index([authorId, createdAt])
+  @@map("comments")
+}
+
+model CommentMention {
+  commentId Int @map("comment_id")
+  userId    Int @map("user_id")
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([commentId, userId])
+  @@index([userId, commentId])
+  @@map("comment_mentions")
+}
+
+/// A file on a card or in a chat message. The bytes live in the platform's file storage (`fileId`).
+model Attachment {
+  id          Int      @id @default(autoincrement())
+  workspaceId Int      @map("workspace_id")
+  cardId      Int?     @map("card_id")
+  messageId   BigInt?  @map("message_id")
+  /// Platform file id for uploads; null for a plain link attachment (`url`).
+  fileId      String?  @unique @map("file_id") @db.VarChar(32)
+  url         String?  @db.VarChar(500)
+  name        String   @db.VarChar(200)
+  contentType String   @default("") @map("content_type") @db.VarChar(127)
+  size        Int      @default(0)
+  ready       Boolean  @default(false)
+  uploadedBy  Int      @map("uploaded_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  card Card? @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, cardId, id])
+  @@index([workspaceId, messageId, id])
+  @@index([uploadedBy, createdAt])
+  @@map("attachments")
+}
+
+model CardLink {
+  id           Int      @id @default(autoincrement())
+  workspaceId  Int      @map("workspace_id")
+  cardId       Int      @map("card_id")
+  linkedCardId Int      @map("linked_card_id")
+  /// `relates`, `blocks` or `duplicates`.
+  kind         String   @default("relates") @db.VarChar(10)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([cardId, linkedCardId, kind])
+  @@index([workspaceId, linkedCardId])
+  @@map("card_links")
+}
+
+/// Append-only board history.
+model Activity {
+  id          BigInt   @id @default(autoincrement())
+  workspaceId Int      @map("workspace_id")
+  boardId     Int?     @map("board_id")
+  cardId      Int?     @map("card_id")
+  actorId     Int      @map("actor_id")
+  /// Stable code like `card.created`, `card.moved`; the UI localizes it.
+  kind        String   @db.VarChar(40)
+  meta        Json?    @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([workspaceId, boardId, id(sort: Desc)])
+  @@index([workspaceId, cardId, id(sort: Desc)])
+  @@map("activity")
+}
+
+model Notification {
+  id             BigInt    @id @default(autoincrement())
+  userId         Int       @map("user_id")
+  workspaceId    Int       @map("workspace_id")
+  /// `assigned`, `mentioned`, `due_soon`, `comment`, `message_mention`.
+  kind           String    @db.VarChar(20)
+  actorId        Int?      @map("actor_id")
+  boardId        Int?      @map("board_id")
+  cardId         Int?      @map("card_id")
+  conversationId Int?      @map("conversation_id")
+  readAt         DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId, id(sort: Desc)])
+  @@index([userId, readAt, id])
+  @@map("notifications")
+}
+
+model SavedFilter {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  workspaceId Int      @map("workspace_id")
+  boardId     Int      @map("board_id")
+  name        String   @db.VarChar(60)
+  /// Opaque snapshot of the filter bar.
+  filter      Json     @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([userId, boardId, id])
+  @@index([boardId, id])
+  @@map("saved_filters")
+}
+
+model Conversation {
+  id          Int      @id @default(autoincrement())
+  workspaceId Int      @map("workspace_id")
+  boardId     Int?     @unique @map("board_id")
+  /// `dm`, `group`, `channel` or `board`.
+  kind        String   @db.VarChar(8)
+  name        String?  @db.VarChar(80)
+  /// `<smaller user id>:<larger user id>` for a DM, so a pair has one conversation.
+  dmKey       String?  @map("dm_key") @db.VarChar(24)
+  lastSeq     BigInt   @default(0) @map("last_seq")
+  createdBy   Int      @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  members  ConversationMember[]
+  messages Message[]
+
+  @@unique([workspaceId, dmKey])
+  @@index([workspaceId, kind, id])
+  @@map("conversations")
+}
+
+model ConversationMember {
+  conversationId Int       @map("conversation_id")
+  userId         Int       @map("user_id")
+  workspaceId    Int       @map("workspace_id")
+  lastReadSeq    BigInt    @default(0) @map("last_read_seq")
+  mutedAt        DateTime? @map("muted_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId, workspaceId, conversationId])
+  @@map("conversation_members")
+}
+
+model Message {
+  id             BigInt    @id @default(autoincrement())
+  conversationId Int       @map("conversation_id")
+  workspaceId    Int       @map("workspace_id")
+  seq            BigInt
+  senderId       Int       @map("sender_id")
+  bodyMd         String    @map("body_md") @db.VarChar(4000)
+  parentId       BigInt?   @map("parent_id")
+  /// Client-made key: a retried send returns the same message.
+  clientId       String    @map("client_id") @db.VarChar(40)
+  /// `user` or `system`.
+  kind           String    @default("user") @db.VarChar(8)
+  editedAt       DateTime? @map("edited_at") @db.Timestamptz(3)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(3)
+  pinnedAt       DateTime? @map("pinned_at") @db.Timestamptz(3)
+  replyCount     Int       @default(0) @map("reply_count")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  conversation Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  reactions    MessageReaction[]
+  mentions     MessageMention[]
+  cardRefs     MessageCardRef[]
+
+  @@unique([conversationId, clientId])
+  @@unique([conversationId, seq])
+  @@index([conversationId, parentId, id])
+  @@index([senderId, createdAt])
+  @@map("messages")
+}
+
+model MessageReaction {
+  messageId BigInt   @map("message_id")
+  userId    Int      @map("user_id")
+  emoji     String   @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId, emoji])
+  @@map("message_reactions")
+}
+
+model MessageMention {
+  messageId BigInt @map("message_id")
+  userId    Int    @map("user_id")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
+  @@index([userId, messageId])
+  @@map("message_mentions")
+}
+
+model MessageCardRef {
+  messageId BigInt @map("message_id")
+  cardId    Int    @map("card_id")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, cardId])
+  @@index([cardId, messageId])
+  @@map("message_card_refs")
+}
+
+/// One row, `id = 1`.
+model AppSettings {
+  id                 Int      @id
+  /// `PAID` or `FREE_FOR_ALL` (CHECK in the migration).
+  billingMode        String   @default("PAID") @map("billing_mode") @db.VarChar(12)
+  graceDays          Int      @default(14) @map("grace_days")
+  maintenanceMessage String   @default("") @map("maintenance_message") @db.VarChar(300)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("app_settings")
+}
+
+model PlanLimit {
+  plan              String   @id @db.VarChar(16)
+  maxMembers        Int      @map("max_members")
+  maxFileBytes      BigInt   @map("max_file_bytes")
+  storageQuotaBytes BigInt   @map("storage_quota_bytes")
+  maxFlows          Int      @default(0) @map("max_flows")
+  /// Price key (payments catalogue) a monthly checkout uses; empty for free.
+  priceKeyMonthly   String   @default("") @map("price_key_monthly") @db.VarChar(63)
+  auditLog          Boolean  @default(false) @map("audit_log")
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("plan_limits")
 }

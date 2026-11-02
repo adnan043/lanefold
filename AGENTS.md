@@ -334,3 +334,10 @@ whole-table loops, nothing big in module memory (`performance.md`).
 ## How changes go live
 You edit a working copy; the OWNER publishes from the editor: Prepare → Build (`npm ci`,
 `npm run build`) → Migrate → Deploy (`publishing.md`). Keep `npm run dev` working at `/`.
+
+## Product
+This repo builds **Lanefold**, a kanban app with built-in chat. WHAT to build: `docs/product/SPEC.md`;
+later decisions that win over it: `docs/product/HANDOFF.md`; look and feel: `docs/product/visual-identity.md`
+(after Phase 1). The product lives at `/app/*` (`src/app/`, host page `src/pages/app/[...path].astro`), its
+routes in `src/server/routes/`, workspace access in `src/server/workspaces.ts`, limits only in
+`src/server/entitlements.ts`. Where these files conflict with this one, this one wins.
