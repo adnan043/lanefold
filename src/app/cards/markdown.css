@@ -1,0 +1,85 @@
+/* Rendered Markdown (src/lib/markdown.tsx) in the card panel: tokens only, no hex, no style="". */
+.md {
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+  display: grid;
+  gap: 0.5rem;
+}
+.md > * {
+  margin: 0;
+}
+.md a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.md pre {
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+.md pre code {
+  padding: 0;
+  background: none;
+  border: 0;
+  white-space: pre;
+}
+.md blockquote {
+  padding: 0.25rem 0.75rem;
+  color: var(--muted);
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+.md ul,
+.md ol {
+  padding-inline-start: 1.4rem;
+}
+.md li + li {
+  margin-block-start: 0.2rem;
+}
+.md li.md-task {
+  list-style: none;
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-inline-start: -1.4rem;
+}
+.md li.md-task input {
+  margin: 0;
+  flex: none;
+  cursor: default;
+}
+.md-heading {
+  font-weight: 700;
+}
+.md-h3 {
+  font-size: 1.1em;
+}
+.md-h4 {
+  font-size: 1em;
+}
+.md-h5 {
+  font-size: 0.9em;
+  color: var(--muted);
+}
+.cd-preview {
+  min-block-size: 4.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}

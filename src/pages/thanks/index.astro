@@ -19,11 +19,13 @@ type Answer = {
     id: string;
     mode: 'test' | 'live';
     status: 'open' | 'paid' | 'failed' | 'expired';
+    paidAt?: string | null;
     quantity: number;
     amountCents: number;
     currency: string;
     subscription: {status: string; currentPeriodEnd: string | null} | null;
   };
+  recorded?: boolean;
 };
 
 const id = Astro.url.searchParams.get('checkout') ?? '';
@@ -32,9 +34,11 @@ const [{site, viewer}, found] = await Promise.all([
   id ? read<Answer>(backend(Astro.request).checkout[':id'].$get({param: {id}})) : Promise.resolve(null),
 ]);
 const checkout = found?.checkout ?? null;
-const paid = checkout?.status === 'paid';
+// Paid at the gateway but not recorded on our side yet (the confirm failed): say to check again, never "all set".
+const unrecorded = checkout?.status === 'paid' && found?.recorded === false;
+const paid = checkout?.status === 'paid' && !unrecorded;
 // Still `open`: the gateway has not told the platform yet (a few seconds). The page refreshes.
-const waiting = checkout?.status === 'open';
+const waiting = checkout?.status === 'open' || unrecorded;
 if (!checkout) Astro.response.status = 404;
 ---
 
@@ -44,19 +48,23 @@ if (!checkout) Astro.response.status = 404;
     {
       paid && checkout ? (
         <>
-          <h1>Thank you</h1>
+          <h1>Thank you, you’re all set</h1>
           <p class="lede">
-            Your payment of {formatMoney(checkout.amountCents, checkout.currency)} went through.
+            Your payment of {formatMoney(checkout.amountCents, checkout.currency)} went through, and a receipt is on its way to your email.
             {checkout.subscription?.currentPeriodEnd && ` Your membership renews on ${formatDate(checkout.subscription.currentPeriodEnd)}.`}
           </p>
-          <p>
-            <a class="button" href="/">Back to home</a>
+          <p class="actions">
+            <a class="button" href="/app/">Open your boards</a>
+            {viewer.state === 'user' && checkout.subscription && (
+              <a class="button ghost" href="/app/settings/billing">Manage billing</a>
+            )}
+            <a class="button ghost" href="/">Home</a>
           </p>
         </>
       ) : waiting ? (
         <>
           <h1>Confirming your payment</h1>
-          <p class="lede">This takes a few seconds. This page checks again by itself.</p>
+          <p class="lede">Hang tight, this usually takes a few seconds. This page checks again by itself.</p>
           <p>
             <a class="button button-secondary" href={Astro.url.pathname + Astro.url.search} data-thanks-retry>
               Check again
@@ -67,10 +75,11 @@ if (!checkout) Astro.response.status = 404;
         <>
           <h1>{checkout ? 'The payment did not go through' : 'We could not find this payment'}</h1>
           <p class="lede">
-            {checkout ? 'Nothing was charged. Go back and try again, or use another card.' : 'If you paid, your receipt is in your email.'}
+            {checkout ? 'Nothing was charged. Go back and try again, or use another card.' : 'If you did pay, your receipt is in your email. Otherwise, you can safely start again.'}
           </p>
-          <p>
-            <a class="button" href="/">Back to home</a>
+          <p class="actions">
+            <a class="button" href="/pricing/">See plans</a>
+            <a class="button ghost" href="/">Home</a>
           </p>
         </>
       )

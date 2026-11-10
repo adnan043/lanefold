@@ -1,82 +1,72 @@
 ---
 /**
- * The home hero's picture: a small browser-framed dashboard, drawn in HTML and
- * CSS (home.css, `.hv-*`) so it follows the theme. Decorative: the whole thing
- * is `aria-hidden`; its labels come from `HOME.visual` in `src/content/site.ts`.
+ * The home hero's picture: an app window (title bar, sidebar, a board with
+ * three lanes and the board's chat beside it), drawn in HTML and CSS
+ * (home.css, `.hv-*`) so it follows the theme. Decorative: the whole thing is
+ * `aria-hidden`; its words come from `HOME.visual` in `src/content/site.ts`.
+ * No images, no scripts; the only motion is a hover lift, off with reduced motion.
  */
 import {HOME} from '../../content/site';
-import Icon from './Icon.astro';
 
-interface Props {
-  /** The site name, shown in the mock sidebar. */
-  name: string;
-}
-
-const {name} = Astro.props;
 const v = HOME.visual;
-// A gentle upward line for the mini chart (x 0–300, y 0–100, lower is higher).
-const points = [
-  [0, 78], [25, 72], [50, 74], [75, 62], [100, 65], [125, 54], [150, 57],
-  [175, 44], [200, 47], [225, 36], [250, 30], [275, 33], [300, 20],
-];
-const line = points.map(([x, y]) => `${x},${y}`).join(' ');
-const area = `0,100 ${line} 300,100`;
+const {name = 'Lanefold'} = Astro.props as {name?: string};
 ---
 
 <div class="hv" aria-hidden="true">
   <div class="hv-bar">
-    <span class="hv-dots"><i></i><i></i><i></i></span>
-    <span class="hv-url"><Icon name="lock" size={12} />/dashboard</span>
+    <span class="hv-lights"><i></i><i></i><i></i></span>
+    <span class="hv-url">{name} / {v.title}</span>
   </div>
   <div class="hv-body">
-    <aside class="hv-side">
-      <div class="hv-brand">
-        <span class="hv-logo"></span>
-        <span class="hv-brand-name" data-brand-text="{name}">{name}</span>
-      </div>
-      <ul>
-        {v.nav.map((item, i) => <li class:list={{active: i === 0}}><span class="hv-nav-dot"></span>{item}</li>)}
-      </ul>
-    </aside>
+    <div class="hv-side">
+      <span class="hv-ws"><b>{name.slice(0, 1).toUpperCase()}</b>{name}</span>
+      {v.nav.map((item, i) => <span class:list={['hv-nav', {'hv-nav-on': i === 0}]}><i></i>{item}</span>)}
+      <span class="hv-side-label">Boards</span>
+      <span class="hv-nav hv-nav-board hv-nav-on-soft"><i></i>{v.title}</span>
+      <span class="hv-nav hv-nav-board"><i></i>Roadmap</span>
+    </div>
     <div class="hv-main">
       <div class="hv-head">
         <span class="hv-title">{v.title}</span>
-        <span class="hv-avatar"></span>
+        <span class="hv-avatars"><i></i><i></i><i></i></span>
       </div>
-      <div class="hv-stats">
+      <div class="hv-lanes">
         {
-          v.stats.map(stat => (
-            <div class="hv-stat">
-              <span class="hv-stat-label">{stat.label}</span>
-              <span class="hv-stat-value">{stat.value}</span>
-              <span class="hv-stat-trend">{stat.trend}</span>
+          v.lanes.map(lane => (
+            <div class:list={['hv-lane', `hv-lane-${lane.tone}`]}>
+              <div class="hv-lane-head">
+                <span class="hv-dot"></span>
+                <span class="hv-lane-name">{lane.name}</span>
+                <span class="hv-count">{lane.cards.length}</span>
+              </div>
+              {lane.cards.map(card => (
+                <div class="hv-card">
+                  <span class="hv-label"></span>
+                  <span class="hv-card-title">{card.title}</span>
+                  <span class="hv-card-meta">
+                    {card.flag && <span class="hv-flag"><svg viewBox="0 0 12 12" focusable="false"><path d="M2 1v10M2 2h7l-1.5 2L9 6H2" /></svg>High</span>}
+                    {card.talk && <span class="hv-talk"><svg viewBox="0 0 12 12" focusable="false"><path d="M1.5 2h9v6h-5L3 10.5V8H1.5z" /></svg>2</span>}
+                    <span class="hv-card-avatar"></span>
+                  </span>
+                </div>
+              ))}
+              <span class="hv-add">+ Add a card</span>
             </div>
           ))
         }
       </div>
-      <div class="hv-chart">
-        <span class="hv-chart-label">{v.chart}</span>
-        <svg viewBox="0 0 300 100" preserveAspectRatio="none" focusable="false">
-          <line class="hv-grid" x1="0" y1="25" x2="300" y2="25" />
-          <line class="hv-grid" x1="0" y1="50" x2="300" y2="50" />
-          <line class="hv-grid" x1="0" y1="75" x2="300" y2="75" />
-          <polygon class="hv-area" points={area} />
-          <polyline class="hv-line" points={line} vector-effect="non-scaling-stroke" />
-        </svg>
-      </div>
-      <div class="hv-table">
-        {
-          v.rows.map(row => (
-            <div class="hv-row">
-              <span class="hv-row-name">
-                <span class="hv-row-icon" />
-                {row.name}
-              </span>
-              <span class:list={['hv-chip', `hv-chip-${row.tone}`]}>{row.status}</span>
-            </div>
-          ))
-        }
-      </div>
+    </div>
+    <div class="hv-chat">
+      <span class="hv-chat-title"><i></i>{v.chatTitle}</span>
+      {
+        v.chat.map(msg => (
+          <div class:list={['hv-msg', {'hv-msg-mine': msg.mine}]}>
+            <span class="hv-msg-who">{msg.who}</span>
+            <span class="hv-bubble">{msg.text}</span>
+          </div>
+        ))
+      }
+      <span class="hv-compose">Message the board…</span>
     </div>
   </div>
 </div>

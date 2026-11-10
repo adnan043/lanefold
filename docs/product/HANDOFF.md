@@ -44,10 +44,10 @@ Read with `docs/product/SPEC.md` and the template's `AGENTS.md`. Where this file
 - Template rules win: no Tailwind, shadcn, Zod, lucide-react, sonner, date-fns, nanoid, cmdk, no second UI kit. Build missing UI in `src/portal/ui/`.
 - Approved packages (owner to confirm before install, exact versions, lazy import): `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`, `fractional-indexing`, `@tanstack/react-virtual`, `marked`.
 - Never edit `src/platform/**` or `docs/agent/**`. Never write auth code. Never create an admin. Do not start a dev server.
-- Real-time is polling (no WebSockets). No invite or notification emails in the MVP (invite emails are Phase 11, notification emails Phase 12 after real use; email-to-board is not planned). Files need the Storage add-on turned on by the owner.
+- Real-time is polling (no WebSockets). No invite or notification emails in the MVP (invite emails, Phase 11, and opt-in notification emails, Phase 12, were built later: see CHANGELOG 2026-11-03 and 2026-11-04; email-to-board is not planned). Files need the Storage add-on turned on by the owner.
 - UI language: vocabulary Workspace, Boards, Lanes, Cards, Flows, Add-ons, My Day, Inbox, Chat. Code says `lane`.
 
-## 5. Spec edits to apply (not yet done)
+## 5. Spec edits (items 1 and 2 DONE in SPEC.md, marked "Changed per HANDOFF"; item 3 is a prompt line, not a file edit)
 1. SPEC §10: billing default `PAID`, sandbox only, flat plans, Phase 0.7.
 2. SPEC §15: add Phase 0.7; trim Phase 9; replace the stop rule as in section 3.
 3. Start prompt: add this line: "Billing is PAID from day one using sandbox payments only. Build plans, limits, checkout and upgrade UI in Phase 0.7. Show TestModeBadge where checkout appears." Also read this handoff file.
@@ -63,3 +63,20 @@ Read with `docs/product/SPEC.md` and the template's `AGENTS.md`. Where this file
 - Time estimates (30 to 50 h sequential, 12 to 16 h parallel) are rough guesses.
 - Machine-translated catalogs must be marked `needsReview`.
 - Phases 5 to 12 not scheduled yet. Run the team on the MVP for about two weeks before choosing what comes next.
+
+## 8. Not built / known limitations (as of 2026-11-04, checked in code)
+Built since this file was written (so no longer open): Phase 11 invite emails, Phase 12 notification emails (opt-in), table, calendar and timeline views, Trello import and JSON/CSV export, the public read-only board page `/b/<token>/` (read side).
+Still not built:
+- Public board share links: create, rotate and revoke exist (`src/server/routes/board-share.ts`, board settings drawer). Not built: plan limits; a private board cannot have a public link. (Board members, guests, email invites and invite links: built 2026-11-09, see CHANGELOG.) The five design decisions are open (`owner-actions.md` item 19).
+- Flows (Phase 7), custom fields, recurring cards, dashboard view, swimlanes, PWA, list virtualization, workspace hard delete, real-time sockets.
+Known limitations:
+- No browser QA of `/app`, `/b/<token>/` or the dashboard has been done.
+- Admin masked emails: the Lanefold `maskEmail` masks the domain, but the platform's own mask in `src/platform/auth/admin.ts` (managed) is older.
+- Notification rows of lost access are deleted only when a workspace member is removed; the unread count scans at most 500 rows.
+- 19 catalogs are machine-written; native-speaker review pending.
+- Migrations are not live (14 for Lanefold); the owner must publish them.
+
+## 9. Removed by the owner (2026-11-05): do not rebuild
+- **Time tracking** (card "Time" section, timer, Log time, board time report `/app/b/<id>/time`) and **card dependencies** (Blocked by / Blocking, the board's "blocked" badge) were removed from the app and the Site API. They win over SPEC.md Phase 6.
+- Their data is still in the database, unused: tables `time_entries` and `card_dependencies`, and the columns `cards.blocked_by_count` / `cards.blocking_count`. Dropping them deletes data, so it is a separate migration that waits for the owner's approval.
+- Card **Estimate** stays (the Workload view uses it); the Custom Fields grid shows it only on cards that already have one.

@@ -6,8 +6,8 @@
 const ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export function toISODate(year: number, month: number, day: number): string {
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCFullYear(year); // years 0-99 are not mapped to 19xx
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day); // overflow rolls over; years 0-99 stay as given
   return date.toISOString().slice(0, 10);
 }
 

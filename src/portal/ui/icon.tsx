@@ -89,6 +89,13 @@ const ICONS = {
       <path d="m6 6 12 12" />
     </>
   ),
+  filter: (
+    <>
+      <path d="M3 6h18" />
+      <path d="M7 12h10" />
+      <path d="M10 18h4" />
+    </>
+  ),
   search: (
     <>
       <circle cx="11" cy="11" r="8" />
@@ -328,6 +335,20 @@ const ICONS = {
   star: (
     <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
   ),
+  eye: (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  'arrow-up-down': (
+    <>
+      <path d="m21 16-4 4-4-4" />
+      <path d="M17 20V4" />
+      <path d="m3 8 4-4 4 4" />
+      <path d="M7 4v16" />
+    </>
+  ),
   archive: (
     <>
       <rect width="20" height="5" x="2" y="3" rx="1" />
@@ -428,10 +449,71 @@ const ICONS = {
       <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
     </>
   ),
+  bold: <path d="M6 4h8a4 4 0 0 1 0 8H6zM6 12h9a4 4 0 0 1 0 8H6z" />,
+  italic: (
+    <>
+      <path d="M19 4h-9" />
+      <path d="M14 20H5" />
+      <path d="M15 4 9 20" />
+    </>
+  ),
+  type: (
+    <>
+      <path d="M4 7V5h16v2" />
+      <path d="M9 19h6" />
+      <path d="M12 5v14" />
+    </>
+  ),
+  list: (
+    <>
+      <path d="M9 6h12" />
+      <path d="M9 12h12" />
+      <path d="M9 18h12" />
+      <path d="M3.5 6h.01" />
+      <path d="M3.5 12h.01" />
+      <path d="M3.5 18h.01" />
+    </>
+  ),
+  'list-ordered': (
+    <>
+      <path d="M10 6h11" />
+      <path d="M10 12h11" />
+      <path d="M10 18h11" />
+      <path d="M4 6h1v4" />
+      <path d="M4 10h2" />
+      <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
+    </>
+  ),
+  'help-circle': (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <path d="M12 17h.01" />
+    </>
+  ),
   'credit-card': (
     <>
       <rect width="20" height="14" x="2" y="5" rx="2" />
       <path d="M2 10h20" />
+    </>
+  ),
+  circle: <circle cx="12" cy="12" r="9" />,
+  tag: (
+    <>
+      <path d="M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.42l8.7 8.7a2.43 2.43 0 0 0 3.42 0l6.58-6.58a2.43 2.43 0 0 0 0-3.42z" />
+      <circle cx="7.5" cy="7.5" r=".5" fill="currentColor" />
+    </>
+  ),
+  'check-square': (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="m9 12 2 2 4-4" />
+    </>
+  ),
+  'select-box': (
+    <>
+      <rect width="18" height="12" x="3" y="6" rx="2" />
+      <path d="m13 11 2 2 2-2" />
     </>
   ),
 } satisfies Record<string, ReactNode>;
@@ -444,10 +526,15 @@ export const ICON_NAMES = Object.keys(ICONS) as IconName[];
  * next to it says what it means. An icon that is the ONLY content of a
  * control goes in `IconButton`, which takes the `label`.
  */
-export function Icon({name, size = 18, className}: {name: IconName; size?: 14 | 16 | 18 | 20 | 24 | 32; className?: string}) {
+/** Icons whose meaning points left or right: mirrored in RTL by `.icon-flip:dir(rtl)`. */
+const DIRECTIONAL = new Set<string>(['arrow-left', 'arrow-right', 'chevron-left', 'chevron-right', 'log-out']);
+
+export function Icon({name, size = 18, className}: {name: IconName; size?: 12 | 14 | 16 | 18 | 20 | 22 | 24 | 28 | 32; className?: string}) {
+  const flip = DIRECTIONAL.has(name) && !className?.includes('icon-flip') ? 'icon-flip' : '';
+  const classes = ['icon', className, flip].filter(Boolean).join(' ');
   return (
     <svg
-      className={className ? `icon ${className}` : 'icon'}
+      className={classes}
       width={size}
       height={size}
       viewBox="0 0 24 24"

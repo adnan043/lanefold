@@ -40,10 +40,16 @@ export function contrastRatio(a: string, b: string): number {
 export const BLACK = '#000000';
 export const WHITE = '#ffffff';
 
-/** The text colour (`#000000` or `#ffffff`) with the better contrast on `bg`. Invalid input gets black. */
+/** White text is used once it reaches this contrast (WCAG AA for bold label text); below it, black. */
+const WHITE_MIN_CONTRAST = 3;
+
+/**
+ * The text colour (`#000000` or `#ffffff`) for a label on `bg`: white on dark and saturated mid-tones
+ * (red, blue, purple, pink), black on light ones (yellow, orange, green). Invalid input gets black.
+ */
 export function readableOn(bg: string): '#000000' | '#ffffff' {
   if (!isValidHex(bg)) return BLACK;
-  return contrastRatio(bg, WHITE) > contrastRatio(bg, BLACK) ? WHITE : BLACK;
+  return contrastRatio(bg, WHITE) >= WHITE_MIN_CONTRAST ? WHITE : BLACK;
 }
 
 /** Default swatches of the `ColorPicker` (label colours). */

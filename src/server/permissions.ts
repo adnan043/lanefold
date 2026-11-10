@@ -16,18 +16,68 @@ import {abilitiesOf, type AbilitiesOf, codenamesOf, CORE_PERMISSIONS, definePerm
  */
 export const CATALOGUE = definePermissions({
   ...CORE_PERMISSIONS,
-  /** Post, edit, close and delete jobs (`/dashboard/jobs`). */
-  JOB_MANAGE: {
-    codename: 'site:job:manage',
-    title: 'Manage jobs',
-    description: 'Post, edit, close and delete jobs on the job board.',
-    group: 'Jobs',
-    ability: 'manageJobs',
+  /** Switch the billing mode and read billing settings (`/dashboard` Billing). Owners only. */
+  BILLING_MANAGE: {
+    codename: 'site:billing:manage',
+    title: 'Manage billing',
+    description: 'Switch the billing mode (paid or free for all) and the grace period.',
+    group: 'Billing',
+    ability: 'manageBilling',
+  },
+  /** Edit what each plan includes (`/dashboard` Plan limits). Owners only. */
+  PLANS_MANAGE: {
+    codename: 'site:plans:manage',
+    title: 'Manage plan limits',
+    description: 'Edit members, file size, storage and feature limits of each plan.',
+    group: 'Billing',
+    ability: 'managePlans',
+  },
+  /** See every workspace (`/dashboard` Workspaces); each access is audited. */
+  WORKSPACE_READ: {
+    codename: 'site:workspace:read',
+    title: 'See workspaces',
+    description: 'Open the list of all workspaces and their summaries. Every access is audited.',
+    group: 'Workspaces',
+    ability: 'readWorkspaces',
     roles: ['admin'],
+  },
+  /** Create, rotate or revoke the public read-only link of a board (also needs board admin). A site-wide switch. */
+  BOARD_SHARE: {
+    codename: 'site:board:share',
+    title: 'Share boards publicly',
+    description: 'Create, replace or remove the public read-only link of a board. Board admins only.',
+    group: 'Boards',
+    ability: 'shareBoards',
+    roles: ['member', 'admin'],
+  },
+  /** Create, edit, switch and delete a board's Flows (automations); also needs board admin. A site-wide switch. */
+  BOARD_FLOWS: {
+    codename: 'site:board:flows',
+    title: 'Manage board Flows',
+    description: 'Create, edit, switch on or off and delete the automations (Flows) of a board. Board admins only.',
+    group: 'Boards',
+    ability: 'manageFlows',
+    roles: ['member', 'admin'],
+  },
+  /** The site-wide maintenance message. Owners only. */
+  MAINTENANCE_MANAGE: {
+    codename: 'site:maintenance:manage',
+    title: 'Manage the maintenance message',
+    description: 'Show or clear the site-wide maintenance message.',
+    group: 'Billing',
+    ability: 'manageMaintenance',
+  },
+  /** The site's brand colour (`/dashboard` Branding): website, dashboard and app. Owners only. */
+  BRANDING_MANAGE: {
+    codename: 'site:branding:manage',
+    title: 'Manage branding',
+    description: 'Change the brand colour of the website, the dashboard and the app.',
+    group: 'Site',
+    ability: 'manageBranding',
   },
 });
 
-/** Codenames by key: `PERMISSIONS.JOB_MANAGE` is `'site:job:manage'`. */
+/** Codenames by key: `PERMISSIONS.BILLING_MANAGE` is `'site:billing:manage'`. */
 export const PERMISSIONS = codenamesOf(CATALOGUE);
 
 export type Codename = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

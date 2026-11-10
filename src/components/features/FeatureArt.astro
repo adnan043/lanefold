@@ -1,0 +1,419 @@
+---
+/**
+ * The drawings on the features page, one per group (`FEATURES.groups[].id`). Plain inline SVG
+ * coloured only through classes in `features.css` (theme tokens), so a rebrand of `--accent`
+ * and dark mode follow; no `style=""` (CSP). Decorative: always `aria-hidden`.
+ */
+interface Props {
+  art: string;
+}
+
+const {art} = Astro.props;
+---
+
+<svg class="fa" viewBox="0 0 520 360" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet">
+  {
+    art === 'boards' && (
+      <>
+        <rect class="fa-card fa-shade" x="24" y="24" width="472" height="304" rx="18" />
+        <circle class="fa-line" cx="48" cy="48" r="5" />
+        <circle class="fa-line" cx="64" cy="48" r="5" />
+        <circle class="fa-line" cx="80" cy="48" r="5" />
+        <rect class="fa-line" x="104" y="42" width="120" height="12" rx="6" />
+        <circle class="fa-c2" cx="420" cy="48" r="9" />
+        <circle class="fa-c3" cx="436" cy="48" r="9" />
+        <circle class="fa-c1" cx="452" cy="48" r="9" />
+        <path class="fa-rule" d="M24 70h472" />
+        {[40, 192, 344].map((x, i) => (
+          <g>
+            <rect class="fa-lane" x={x} y="86" width="136" height="226" rx="12" />
+            <circle class={['fa-c2', 'fa-c3', 'fa-c4'][i]} cx={x + 16} cy="104" r="5" />
+            <rect class="fa-line-strong" x={x + 28} y="99" width={[52, 64, 40][i]} height="10" rx="5" />
+          </g>
+        ))}
+        <g>
+          <rect class="fa-card" x="52" y="122" width="112" height="56" rx="9" />
+          <rect class="fa-c1" x="62" y="132" width="30" height="7" rx="3.5" />
+          <rect class="fa-line" x="62" y="146" width="88" height="8" rx="4" />
+          <rect class="fa-line" x="62" y="160" width="56" height="8" rx="4" />
+          <circle class="fa-c2" cx="150" cy="164" r="7" />
+        </g>
+        <g>
+          <rect class="fa-card" x="52" y="188" width="112" height="48" rx="9" />
+          <rect class="fa-c3" x="62" y="198" width="26" height="7" rx="3.5" />
+          <rect class="fa-line" x="62" y="212" width="80" height="8" rx="4" />
+        </g>
+        <g>
+          <rect class="fa-card" x="204" y="122" width="112" height="56" rx="9" />
+          <rect class="fa-c2" x="214" y="132" width="34" height="7" rx="3.5" />
+          <rect class="fa-line" x="214" y="146" width="88" height="8" rx="4" />
+          <rect class="fa-line" x="214" y="160" width="40" height="8" rx="4" />
+          <circle class="fa-c3" cx="302" cy="164" r="7" />
+        </g>
+        <rect class="fa-drop" x="204" y="188" width="112" height="56" rx="9" />
+        <g>
+          <rect class="fa-card" x="356" y="122" width="112" height="48" rx="9" />
+          <rect class="fa-c4" x="366" y="132" width="30" height="7" rx="3.5" />
+          <rect class="fa-line" x="366" y="146" width="70" height="8" rx="4" />
+          <circle class="fa-c4-solid" cx="452" cy="150" r="8" />
+          <path class="fa-tick" d="m448 150 3 3 5-6" />
+        </g>
+        <g transform="translate(150 196) rotate(-6)">
+          <g class="fa-float">
+            <rect class="fa-card fa-lift" x="0" y="0" width="124" height="62" rx="10" />
+            <rect class="fa-c3" x="12" y="12" width="34" height="8" rx="4" />
+            <rect class="fa-c1" x="50" y="12" width="22" height="8" rx="4" />
+            <rect class="fa-line-strong" x="12" y="28" width="96" height="9" rx="4.5" />
+            <rect class="fa-line" x="12" y="43" width="52" height="8" rx="4" />
+            <circle class="fa-c1" cx="108" cy="47" r="8" />
+            <path class="fa-cursor" d="M100 54l0 26 7-6 5 11 6-3-5-10 9-1z" />
+          </g>
+        </g>
+      </>
+    )
+  }
+  {
+    art === 'chat' && (
+      <>
+        <rect class="fa-card fa-shade" x="24" y="24" width="360" height="304" rx="18" />
+        <text class="fa-text fa-strong" x="48" y="56"># launch</text>
+        <circle class="fa-c2" cx="324" cy="50" r="10" />
+        <circle class="fa-c3" cx="340" cy="50" r="10" />
+        <circle class="fa-c1" cx="356" cy="50" r="10" />
+        <path class="fa-rule" d="M24 74h360" />
+        <circle class="fa-c2" cx="58" cy="106" r="14" />
+        <text class="fa-initials" x="58" y="110" text-anchor="middle">SM</text>
+        <rect class="fa-bubble" x="80" y="92" width="196" height="40" rx="14" />
+        <rect class="fa-line-strong" x="94" y="104" width="150" height="8" rx="4" />
+        <rect class="fa-line" x="94" y="117" width="96" height="7" rx="3.5" />
+        <rect class="fa-mine" x="150" y="146" width="210" height="40" rx="14" />
+        <text class="fa-text fa-on-accent" x="166" y="171">On it, moving the card now.</text>
+        <circle class="fa-c3" cx="58" cy="216" r="14" />
+        <text class="fa-initials" x="58" y="220" text-anchor="middle">AK</text>
+        <rect class="fa-bubble" x="80" y="200" width="216" height="72" rx="14" />
+        <text class="fa-text" x="94" y="222"><tspan class="fa-mention">@Sam</tspan> linked a card</text>
+        <rect class="fa-card" x="94" y="232" width="188" height="30" rx="8" />
+        <path class="fa-link" d="M106 247h6m-3-4a4 4 0 0 0-4 4 4 4 0 0 0 4 4m6-8a4 4 0 0 1 4 4 4 4 0 0 1-4 4" />
+        <text class="fa-text fa-small" x="126" y="251">Fix login on mobile</text>
+        <rect class="fa-input" x="44" y="288" width="320" height="24" rx="12" />
+        <rect class="fa-line" x="60" y="296" width="110" height="8" rx="4" />
+        <circle class="fa-c1" cx="350" cy="300" r="8" />
+        <path class="fa-dash" d="M284 247c50 0 70-40 110-60" />
+        <g transform="translate(372 132) rotate(5)">
+          <g class="fa-float">
+            <rect class="fa-card fa-lift" x="0" y="0" width="128" height="78" rx="12" />
+            <rect class="fa-c3" x="12" y="12" width="40" height="8" rx="4" />
+            <text class="fa-text fa-small fa-strong" x="12" y="40">Fix login on</text>
+            <text class="fa-text fa-small fa-strong" x="12" y="55">mobile</text>
+            <path class="fa-bubble-icon" d="M88 58a10 10 0 1 1 4 7l-6 2 2-5z" />
+            <text class="fa-text fa-tiny" x="104" y="68">3</text>
+          </g>
+        </g>
+      </>
+    )
+  }
+  {
+    art === 'focus' && (
+      <>
+        <g class="fa-spin-slow">
+          <circle class="fa-sun-glow" cx="420" cy="84" r="54" />
+          {[0, 45, 90, 135, 180, 225, 270, 315].map(a => (
+            <rect class="fa-c3-solid" x="417" y="20" width="6" height="16" rx="3" transform={`rotate(${a} 420 84)`} />
+          ))}
+          <circle class="fa-c3-solid" cx="420" cy="84" r="30" />
+        </g>
+        <rect class="fa-card fa-shade" x="40" y="40" width="320" height="276" rx="18" />
+        <text class="fa-text fa-title" x="64" y="78">My Day</text>
+        <text class="fa-text fa-small fa-muted" x="64" y="98">4 cards from 3 boards</text>
+        {[
+          {y: 120, done: true, w: 140, due: 'Done', tone: 'fa-c4'},
+          {y: 168, done: false, w: 160, due: 'Today', tone: 'fa-c3'},
+          {y: 216, done: false, w: 120, due: 'Today', tone: 'fa-c3'},
+          {y: 264, done: false, w: 150, due: 'Tue', tone: 'fa-c2'},
+        ].map(row => (
+          <g>
+            <rect class="fa-row" x="56" y={row.y} width="288" height="40" rx="10" />
+            {row.done ? (
+              <>
+                <rect class="fa-c1-solid" x="70" y={row.y + 12} width="16" height="16" rx="5" />
+                <path class="fa-tick" d={`m74 ${row.y + 20} 3 3 5-6`} />
+              </>
+            ) : (
+              <rect class="fa-box" x="70" y={row.y + 12} width="16" height="16" rx="5" />
+            )}
+            <rect class={row.done ? 'fa-line' : 'fa-line-strong'} x="98" y={row.y + 16} width={row.w} height="8" rx="4" />
+            <rect class={row.tone} x="282" y={row.y + 11} width="48" height="18" rx="9" />
+            <text class="fa-text fa-tiny fa-tone-text" x="306" y={row.y + 24} text-anchor="middle">{row.due}</text>
+          </g>
+        ))}
+        <g transform="translate(330 214)">
+          <g class="fa-float">
+            <rect class="fa-card fa-lift" x="0" y="0" width="160" height="96" rx="14" />
+            <path class="fa-bell" d="M22 30a10 10 0 0 1 20 0c0 10 4 13 4 13H18s4-3 4-13M29 48a3 3 0 0 0 6 0" />
+            <circle class="fa-badge" cx="44" cy="22" r="8" />
+            <text class="fa-text fa-tiny fa-on-accent" x="44" y="25" text-anchor="middle">3</text>
+            <text class="fa-text fa-strong" x="60" y="36">Inbox</text>
+            <rect class="fa-line-strong" x="18" y="62" width="124" height="8" rx="4" />
+            <rect class="fa-line" x="18" y="76" width="84" height="7" rx="3.5" />
+          </g>
+        </g>
+      </>
+    )
+  }
+  {
+    art === 'views' && (
+      <>
+        {[
+          {x: 28, y: 28, label: 'Board'},
+          {x: 268, y: 28, label: 'Dashboard'},
+          {x: 28, y: 192, label: 'Calendar'},
+          {x: 268, y: 192, label: 'Workload'},
+        ].map(t => (
+          <g>
+            <rect class="fa-card fa-shade" x={t.x} y={t.y} width="224" height="140" rx="16" />
+            <text class="fa-text fa-small fa-strong" x={t.x + 18} y={t.y + 28}>{t.label}</text>
+          </g>
+        ))}
+        {[0, 1, 2].map(i => (
+          <g>
+            <rect class="fa-lane" x={46 + i * 64} y="68" width="56" height="84" rx="8" />
+            {Array.from({length: 3 - i}, (_, j) => (
+              <rect class="fa-card" x={52 + i * 64} y={76 + j * 24} width="44" height="18" rx="5" />
+            ))}
+            <rect class={['fa-c2', 'fa-c3', 'fa-c4'][i]} x={58 + i * 64} y="82" width="18" height="5" rx="2.5" />
+          </g>
+        ))}
+        {[0, 1, 2, 3, 4].map(r => (
+          <g>
+            <rect class={r === 0 ? 'fa-row' : 'fa-none'} x="282" y={64 + r * 18} width="196" height="16" rx="4" />
+            <rect class={r === 0 ? 'fa-line-strong' : 'fa-line'} x="290" y={68 + r * 18} width="70" height="7" rx="3.5" />
+            <rect class={['fa-c1', 'fa-c2', 'fa-c3', 'fa-c4', 'fa-c2'][r]} x="378" y={68 + r * 18} width="34" height="7" rx="3.5" />
+            <rect class="fa-line" x="426" y={68 + r * 18} width="40" height="7" rx="3.5" />
+          </g>
+        ))}
+        {Array.from({length: 21}, (_, d) => (
+          <rect
+            class={[3, 8, 12, 17].includes(d) ? 'fa-c1-solid' : [5, 15].includes(d) ? 'fa-c3-solid' : 'fa-cell'}
+            x={46 + (d % 7) * 28}
+            y={232 + Math.floor(d / 7) * 28}
+            width="22"
+            height="22"
+            rx="5"
+          />
+        ))}
+        {[
+          {x: 300, w: 80, y: 232, c: 'fa-c1-solid'},
+          {x: 340, w: 100, y: 254, c: 'fa-c2-solid'},
+          {x: 286, w: 64, y: 276, c: 'fa-c3-solid'},
+          {x: 370, w: 90, y: 298, c: 'fa-c4-solid'},
+        ].map(b => (
+          <rect class={b.c} x={b.x} y={b.y} width={b.w} height="14" rx="7" />
+        ))}
+        <path class="fa-grid" d="M330 226v92M370 226v92M410 226v92M450 226v92" />
+      </>
+    )
+  }
+  {
+    art === 'keyboard' && (
+      <>
+        <rect class="fa-card fa-shade" x="60" y="34" width="400" height="236" rx="18" />
+        <circle class="fa-search" cx="90" cy="68" r="8" />
+        <path class="fa-search" d="m96 74 6 6" />
+        <text class="fa-text fa-muted" x="114" y="74">Go to a board or card…</text>
+        <rect class="fa-kbd" x="400" y="56" width="40" height="24" rx="6" />
+        <text class="fa-text fa-small fa-strong" x="420" y="73" text-anchor="middle">⌘K</text>
+        <path class="fa-rule" d="M60 98h400" />
+        {[
+          {y: 110, text: 'Marketing launch', tag: 'Board', on: false},
+          {y: 148, text: 'Fix login on mobile', tag: 'Card', on: true},
+          {y: 186, text: 'Sam Rahman', tag: 'Person', on: false},
+          {y: 224, text: 'Create board “Launch”', tag: 'Action', on: false},
+        ].map(r => (
+          <g>
+            {r.on && <rect class="fa-row-on" x="72" y={r.y} width="376" height="34" rx="9" />}
+            <rect class={r.on ? 'fa-c1-solid' : 'fa-lane'} x="84" y={r.y + 8} width="18" height="18" rx="5" />
+            <text class="fa-text" x="114" y={r.y + 22}>{r.text}</text>
+            <text class="fa-text fa-small fa-muted" x="436" y={r.y + 22} text-anchor="end">{r.tag}</text>
+          </g>
+        ))}
+        <g transform="translate(150 282)">
+          <g class="fa-float">
+            <rect class="fa-key-base" x="0" y="6" width="64" height="58" rx="12" />
+            <rect class="fa-key" x="0" y="0" width="64" height="56" rx="12" />
+            <text class="fa-text fa-key-text" x="32" y="37" text-anchor="middle">⌘</text>
+          </g>
+        </g>
+        <g transform="translate(228 282)">
+          <g class="fa-float fa-float-late">
+            <rect class="fa-key-base" x="0" y="6" width="64" height="58" rx="12" />
+            <rect class="fa-key fa-key-on" x="0" y="0" width="64" height="56" rx="12" />
+            <text class="fa-text fa-key-text fa-on-accent" x="32" y="37" text-anchor="middle">K</text>
+          </g>
+        </g>
+        <g transform="translate(306 282)">
+          <g class="fa-float">
+            <rect class="fa-key-base" x="0" y="6" width="64" height="58" rx="12" />
+            <rect class="fa-key" x="0" y="0" width="64" height="56" rx="12" />
+            <text class="fa-text fa-key-text" x="32" y="37" text-anchor="middle">N</text>
+          </g>
+        </g>
+      </>
+    )
+  }
+  {
+    art === 'flows' && (
+      <>
+        {[
+          {x: 24, tag: 'When', tone: 'fa-c1-solid', lines: ['Card moved', 'into Review']},
+          {x: 190, tag: 'If', tone: 'fa-c3-solid', lines: ['Label is', 'Bug']},
+          {x: 356, tag: 'Then', tone: 'fa-c2-solid', lines: ['Assign Sam', 'Post a comment']},
+        ].map((step, i) => (
+          <g>
+            <g class:list={['fa-float', {'fa-float-late': i === 1}]}>
+              <rect class="fa-card fa-shade" x={step.x} y="104" width="140" height="152" rx="16" />
+              <rect class={step.tone} x={step.x + 16} y="120" width="56" height="24" rx="12" />
+              <text class="fa-text fa-tiny fa-on-accent fa-strong" x={step.x + 44} y="136" text-anchor="middle">{step.tag}</text>
+              <text class="fa-text fa-small fa-strong" x={step.x + 16} y="176">{step.lines[0]}</text>
+              <text class="fa-text fa-small fa-muted" x={step.x + 16} y="198">{step.lines[1]}</text>
+              <rect class="fa-line" x={step.x + 16} y="220" width="92" height="8" rx="4" />
+            </g>
+            {i < 2 && (
+              <>
+                <path class="fa-flow" d={`M${step.x + 144} 180h20`} />
+                <path class="fa-arrow" d={`m${step.x + 158} 172 8 8-8 8`} />
+              </>
+            )}
+          </g>
+        ))}
+        <rect class="fa-lane" x="150" y="284" width="220" height="34" rx="17" />
+        <text class="fa-text fa-small fa-muted" x="260" y="306" text-anchor="middle">Runs on its own, every time</text>
+      </>
+    )
+  }
+  {
+    art === 'team' && (
+      <>
+        <circle class="fa-orbit" cx="260" cy="176" r="128" />
+        <circle class="fa-orbit fa-orbit-in" cx="260" cy="176" r="78" />
+        <g class="fa-float">
+          <path class="fa-shield" d="M260 112l52 20v38c0 34-24 56-52 66-28-10-52-32-52-66v-38z" />
+          <path class="fa-shield-tick" d="m238 172 15 15 30-31" />
+        </g>
+        {[
+          {x: 96, y: 92, i: 'AK', role: 'Owner', c: 'fa-c1-solid'},
+          {x: 424, y: 92, i: 'SM', role: 'Admin', c: 'fa-c2-solid'},
+          {x: 96, y: 262, i: 'JL', role: 'Member', c: 'fa-c3-solid'},
+          {x: 424, y: 262, i: 'RN', role: 'Viewer', c: 'fa-c4-solid'},
+        ].map(p => (
+          <g>
+            <rect class="fa-card fa-lift" x={p.x - 62} y={p.y - 26} width="124" height="52" rx="26" />
+            <circle class={p.c} cx={p.x - 36} cy={p.y} r="18" />
+            <text class="fa-initials fa-on-accent" x={p.x - 36} y={p.y + 4} text-anchor="middle">{p.i}</text>
+            <text class="fa-text fa-small fa-strong" x={p.x - 10} y={p.y + 5}>{p.role}</text>
+          </g>
+        ))}
+        <rect class="fa-card fa-lift" x="170" y="306" width="180" height="36" rx="18" />
+        <path class="fa-link" d="M190 324h8m-4-5a5 5 0 0 0-5 5 5 5 0 0 0 5 5m8-10a5 5 0 0 1 5 5 5 5 0 0 1-5 5" />
+        <text class="fa-text fa-small" x="216" y="329">Read-only link</text>
+      </>
+    )
+  }
+  {
+    art === 'everywhere' && (
+      <>
+        <rect class="fa-card fa-shade" x="40" y="44" width="320" height="210" rx="14" />
+        <rect class="fa-screen" x="54" y="58" width="292" height="182" rx="6" />
+        <path class="fa-base" d="M16 262h368l-14 18H30z" />
+        {[0, 1, 2].map(i => (
+          <g>
+            <rect class="fa-lane" x={68 + i * 92} y="76" width="80" height="148" rx="8" />
+            <circle class={['fa-c2', 'fa-c3', 'fa-c4'][i]} cx={80 + i * 92} cy="90" r="4" />
+            <rect class="fa-line-strong" x={90 + i * 92} y="86" width="40" height="8" rx="4" />
+            {Array.from({length: 3 - i}, (_, j) => (
+              <g>
+                <rect class="fa-card" x={76 + i * 92} y={104 + j * 40} width="64" height="32" rx="6" />
+                <rect class={['fa-c1', 'fa-c3', 'fa-c2'][j]} x={84 + i * 92} y={111 + j * 40} width="22" height="5" rx="2.5" />
+                <rect class="fa-line" x={84 + i * 92} y={121 + j * 40} width="44" height="6" rx="3" />
+              </g>
+            ))}
+          </g>
+        ))}
+        <g transform="translate(372 96)">
+          <g class="fa-float">
+            <rect class="fa-card fa-lift" x="0" y="0" width="112" height="208" rx="20" />
+            <rect class="fa-screen" x="8" y="10" width="96" height="188" rx="14" />
+            <rect class="fa-line-strong" x="40" y="16" width="32" height="5" rx="2.5" />
+            <rect class="fa-line-strong" x="18" y="32" width="50" height="8" rx="4" />
+            {[0, 1, 2].map(j => (
+              <g>
+                <rect class="fa-card" x="16" y={48 + j * 40} width="80" height="32" rx="6" />
+                <rect class={['fa-c1', 'fa-c2', 'fa-c4'][j]} x="24" y={55 + j * 40} width="22" height="5" rx="2.5" />
+                <rect class="fa-line" x="24" y={65 + j * 40} width="54" height="6" rx="3" />
+              </g>
+            ))}
+            <rect class="fa-card" x="8" y="172" width="96" height="26" rx="0" />
+            {[0, 1, 2, 3].map(k => (
+              <circle class={k === 0 ? 'fa-c1-solid' : 'fa-line-strong'} cx={26 + k * 20} cy="185" r="4" />
+            ))}
+          </g>
+        </g>
+        {[
+          {x: 60, label: 'English'},
+          {x: 150, label: 'Español'},
+          {x: 240, label: 'العربية'},
+        ].map((p, i) => (
+          <g>
+            <rect class={i === 2 ? 'fa-row-on' : 'fa-card'} x={p.x} y="300" width="80" height="30" rx="15" />
+            <text class="fa-text fa-small fa-strong" x={p.x + 40} y="319" text-anchor="middle">{p.label}</text>
+          </g>
+        ))}
+      </>
+    )
+  }
+  {
+    art === 'data' && (
+      <>
+        <g transform="translate(36 92)">
+          <g class="fa-float">
+            <path class="fa-card fa-lift" d="M0 12a12 12 0 0 1 12-12h70l34 34v130a12 12 0 0 1-12 12H12a12 12 0 0 1-12-12z" />
+            <path class="fa-fold" d="M82 0v24a10 10 0 0 0 10 10h24" />
+            <rect class="fa-c2-solid" x="18" y="56" width="56" height="22" rx="6" />
+            <text class="fa-text fa-tiny fa-on-accent fa-strong" x="46" y="71" text-anchor="middle">JSON</text>
+            <rect class="fa-line" x="18" y="94" width="80" height="8" rx="4" />
+            <rect class="fa-line" x="18" y="110" width="64" height="8" rx="4" />
+            <rect class="fa-line" x="18" y="126" width="72" height="8" rx="4" />
+          </g>
+        </g>
+        <path class="fa-flow" d="M162 180h34" />
+        <path class="fa-arrow" d="m190 172 10 8-10 8" />
+        <text class="fa-text fa-tiny fa-muted" x="180" y="160" text-anchor="middle">Import</text>
+        <rect class="fa-card fa-shade" x="212" y="70" width="140" height="220" rx="16" />
+        <rect class="fa-line-strong" x="228" y="88" width="64" height="9" rx="4.5" />
+        {[0, 1].map(i => (
+          <g>
+            <rect class="fa-lane" x={226 + i * 58} y="110" width="52" height="164" rx="9" />
+            {Array.from({length: 3 - i}, (_, j) => (
+              <g>
+                <rect class="fa-card" x={231 + i * 58} y={118 + j * 46} width="42" height="38" rx="6" />
+                <rect class={['fa-c1', 'fa-c3', 'fa-c2'][j]} x={236 + i * 58} y={124 + j * 46} width="18" height="5" rx="2.5" />
+                <rect class="fa-line" x={236 + i * 58} y={134 + j * 46} width="30" height="6" rx="3" />
+              </g>
+            ))}
+          </g>
+        ))}
+        <path class="fa-flow" d="M362 180h34" />
+        <path class="fa-arrow" d="m390 172 10 8-10 8" />
+        <text class="fa-text fa-tiny fa-muted" x="380" y="160" text-anchor="middle">Export</text>
+        <g transform="translate(406 110)">
+          <g class="fa-float fa-float-late">
+            <path class="fa-card fa-lift" d="M0 10a10 10 0 0 1 10-10h56l28 28v102a10 10 0 0 1-10 10H10a10 10 0 0 1-10-10z" />
+            <path class="fa-fold" d="M66 0v18a10 10 0 0 0 10 10h18" />
+            <rect class="fa-c4-solid" x="14" y="44" width="46" height="20" rx="6" />
+            <text class="fa-text fa-tiny fa-on-accent fa-strong" x="37" y="58" text-anchor="middle">CSV</text>
+            <path class="fa-grid" d="M14 80h66M14 96h66M14 112h66M36 74v46M58 74v46" />
+          </g>
+        </g>
+      </>
+    )
+  }
+</svg>

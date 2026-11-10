@@ -4,7 +4,10 @@
  * which always answers the same (it never says whether the email has an
  * account). The email itself is relayed by the platform.
  */
+import AuthShell from '../../components/auth/AuthShell.astro';
+import Icon from '../../components/home/Icon.astro';
 import Base from '../../layouts/Base.astro';
+import '../../styles/account.css';
 import {staticContext} from '../../server/page';
 
 export const prerender = true;
@@ -12,22 +15,28 @@ export const prerender = true;
 const {site, viewer} = await staticContext(Astro.request);
 ---
 
-<Base site={site} viewer={viewer} isStatic noindex title="Reset your password">
-  <main id="main" tabindex="-1" class="wrap auth-wrap section">
-    <div class="card auth-card">
-      <h1>Reset your password</h1>
-      <p class="muted">Enter your email and we will send you a link to choose a new password.</p>
-      <form id="forgot-form" class="auth-form" novalidate>
-        <div class="field">
-          <label for="forgot-email">Email</label>
-          <input id="forgot-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="name@example.com" />
-        </div>
-        <p class="notice" data-form-status hidden></p>
-        <button class="button" type="submit">Send the link</button>
-      </form>
-      <p class="auth-links"><a href="/account/login/">Back to sign in</a></p>
+<Base site={site} viewer={viewer} isStatic noindex bare title="Reset your password">
+  <AuthShell>
+    <div class="auth-heading">
+      <span class="auth-badge"><Icon name="key" size={22} /></span>
+      <h1>Forgot your password?</h1>
+      <p class="auth-lead">No problem. Enter the email you signed up with and we'll send you a link to choose a new one.</p>
     </div>
-  </main>
+    <form id="forgot-form" class="auth-form" novalidate>
+      <div class="field">
+        <label for="forgot-email">Email</label>
+        <input id="forgot-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="name@example.com" />
+      </div>
+      <p class="notice" data-form-status hidden></p>
+      <button class="button auth-submit" type="submit"><Icon name="mail" size={18} />Send the reset link</button>
+    </form>
+    <p class="auth-tip">
+      You can also sign in without a password: choose <strong>Email me a code</strong> on the sign-in page.
+    </p>
+    <p class="auth-foot">
+      <a class="auth-back" href="/account/login/" data-astro-prefetch><Icon name="arrow-left" size={16} />Back to sign in</a>
+    </p>
+  </AuthShell>
 </Base>
 
 <script>

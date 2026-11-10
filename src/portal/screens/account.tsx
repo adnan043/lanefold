@@ -101,7 +101,10 @@ function ProfileSection({viewer}: {viewer: Viewer}) {
       toast.success('Saved your name.');
       return queryClient.invalidateQueries({queryKey: ['me']});
     },
-    onError: err => err instanceof ApiError && profile.setServerErrors(err.fields),
+    onError: err => {
+      profile.noteError(err);
+      if (err instanceof ApiError) profile.setServerErrors(err.fields);
+    },
   });
   const shownName = viewer.name || viewer.email || 'You';
   return (
@@ -124,13 +127,13 @@ function ProfileSection({viewer}: {viewer: Viewer}) {
       </div>
       <form className="form-stack" noValidate onSubmit={profile.submit(values => saveProfile.mutate({name: values.name}))}>
         <Field id="f-name" label="Your name" error={profile.error('name')}>
-          <input {...profile.field('name')} autoComplete="name" />
+          <input {...profile.field('name')} autoComplete="name" placeholder="e.g. Maya Rahman" />
         </Field>
         {saveProfile.error && !(saveProfile.error instanceof ApiError && saveProfile.error.fields.name) && (
           <ErrorNote error={saveProfile.error} />
         )}
         <div className="form-actions">
-          <Button type="submit" pending={saveProfile.isPending} pendingLabel="Saving…">
+          <Button type="submit" pending={saveProfile.isPending} pendingLabel="Saving…" disabled={profile.blocked}>
             Save
           </Button>
         </div>
@@ -158,7 +161,10 @@ function EmailSection({viewer}: {viewer: Viewer}) {
       form.reset();
       setSent(data.message);
     },
-    onError: err => err instanceof ApiError && form.setServerErrors(err.fields),
+    onError: err => {
+      form.noteError(err);
+      if (err instanceof ApiError) form.setServerErrors(err.fields);
+    },
   });
   return (
     <Card
@@ -172,17 +178,17 @@ function EmailSection({viewer}: {viewer: Viewer}) {
           change.mutate({email: values.email, password: values.password});
         })}>
         <Field id="f-newEmail" label="New email address" error={form.error('email')}>
-          <input {...form.field('email')} type="email" autoComplete="email" inputMode="email" />
+          <input {...form.field('email')} type="email" autoComplete="email" inputMode="email" placeholder="name@example.com" />
         </Field>
         {needsPassword && (
           <Field id="f-emailPassword" label="Current password" error={form.error('password')}>
-            <PasswordInput {...form.field('password')} autoComplete="current-password" />
+            <PasswordInput {...form.field('password')} autoComplete="current-password" placeholder="Your current password" />
           </Field>
         )}
         {formError(change.error)}
         {sent && <Notice tone="success">{sent}</Notice>}
         <div className="form-actions">
-          <Button type="submit" variant="secondary" icon="mail" pending={change.isPending} pendingLabel="Sending…">
+          <Button type="submit" variant="secondary" icon="mail" pending={change.isPending} pendingLabel="Sending…" disabled={form.blocked}>
             Send the link
           </Button>
         </div>
@@ -210,7 +216,10 @@ function PasswordSection({viewer}: {viewer: Viewer}) {
       setPasswordTried(false);
       setPasswordDone(data.message);
     },
-    onError: err => err instanceof ApiError && password.setServerErrors(err.fields),
+    onError: err => {
+      password.noteError(err);
+      if (err instanceof ApiError) password.setServerErrors(err.fields);
+    },
   });
   return (
     <Card title="Password" description="Use one you don't use anywhere else.">
@@ -229,7 +238,7 @@ function PasswordSection({viewer}: {viewer: Viewer}) {
           })(event);
         }}>
         <Field id="f-currentPassword" label="Current password" error={password.error('currentPassword')}>
-          <PasswordInput {...password.field('currentPassword')} autoComplete="current-password" />
+          <PasswordInput {...password.field('currentPassword')} autoComplete="current-password" placeholder="Your current password" />
         </Field>
         <div className="form-grid">
           <div className="pw-field">
@@ -238,6 +247,7 @@ function PasswordSection({viewer}: {viewer: Viewer}) {
                 {...password.field('newPassword')}
                 aria-describedby={`${password.field('newPassword')['aria-describedby']} f-newPassword-checks`}
                 autoComplete="new-password"
+                placeholder="Choose a new password"
               />
             </Field>
             <PasswordChecks
@@ -252,6 +262,7 @@ function PasswordSection({viewer}: {viewer: Viewer}) {
                 {...password.field('confirm')}
                 aria-describedby={`${password.field('confirm')['aria-describedby']} f-confirm-checks`}
                 autoComplete="new-password"
+                placeholder="Repeat the new password"
               />
             </Field>
             {(password.values.confirm || passwordTried) && (
@@ -266,7 +277,7 @@ function PasswordSection({viewer}: {viewer: Viewer}) {
         {formError(changePassword.error)}
         {passwordDone && <Notice tone="success">{passwordDone}</Notice>}
         <div className="form-actions">
-          <Button type="submit" pending={changePassword.isPending} pendingLabel="Changing…">
+          <Button type="submit" pending={changePassword.isPending} pendingLabel="Changing…" disabled={password.blocked}>
             Change password
           </Button>
         </div>
@@ -292,7 +303,10 @@ function TwoFactorSection({codes, setCodes}: {codes: string[] | null; setCodes: 
       passwordForm.reset();
       setSetup(data);
     },
-    onError: err => err instanceof ApiError && passwordForm.setServerErrors(err.fields),
+    onError: err => {
+      passwordForm.noteError(err);
+      if (err instanceof ApiError) passwordForm.setServerErrors(err.fields);
+    },
   });
   const enable = useMutation({
     mutationFn: (values: {code: string}) => read<{recoveryCodes: string[]}>(api.auth['two-factor'].enable.$post({json: values})),
@@ -303,7 +317,10 @@ function TwoFactorSection({codes, setCodes}: {codes: string[] | null; setCodes: 
       toast.success('Two-step sign-in is on.');
       return refresh();
     },
-    onError: err => err instanceof ApiError && codeForm.setServerErrors(err.fields),
+    onError: err => {
+      codeForm.noteError(err);
+      if (err instanceof ApiError) codeForm.setServerErrors(err.fields);
+    },
   });
   const disable = useMutation({
     mutationFn: (values: {password: string}) => read(api.auth['two-factor'].disable.$post({json: values})),
@@ -313,7 +330,10 @@ function TwoFactorSection({codes, setCodes}: {codes: string[] | null; setCodes: 
       toast.success('Two-step sign-in is off.');
       return refresh();
     },
-    onError: err => err instanceof ApiError && passwordForm.setServerErrors(err.fields),
+    onError: err => {
+      passwordForm.noteError(err);
+      if (err instanceof ApiError) passwordForm.setServerErrors(err.fields);
+    },
   });
   const renew = useMutation({
     mutationFn: (values: {password: string}) =>
@@ -323,7 +343,10 @@ function TwoFactorSection({codes, setCodes}: {codes: string[] | null; setCodes: 
       setCodes(data.recoveryCodes);
       return refresh();
     },
-    onError: err => err instanceof ApiError && passwordForm.setServerErrors(err.fields),
+    onError: err => {
+      passwordForm.noteError(err);
+      if (err instanceof ApiError) passwordForm.setServerErrors(err.fields);
+    },
   });
   const copyCodes = async () => {
     try {
@@ -342,7 +365,7 @@ function TwoFactorSection({codes, setCodes}: {codes: string[] | null; setCodes: 
 
   const passwordField = needsPassword && (
     <Field id="f-2faPassword" label="Current password" error={passwordForm.error('password')}>
-      <PasswordInput {...passwordForm.field('password')} autoComplete="current-password" />
+      <PasswordInput {...passwordForm.field('password')} autoComplete="current-password" placeholder="Your current password" />
     </Field>
   );
   const failed = start.error ?? enable.error ?? disable.error ?? renew.error;
@@ -397,7 +420,7 @@ function TwoFactorSection({codes, setCodes}: {codes: string[] | null; setCodes: 
                 variant="secondary"
                 icon="refresh"
                 pending={renew.isPending}
-                disabled={disable.isPending}
+                disabled={disable.isPending || passwordForm.blocked}
                 pendingLabel="Making codes…">
                 New recovery codes
               </Button>
@@ -406,7 +429,7 @@ function TwoFactorSection({codes, setCodes}: {codes: string[] | null; setCodes: 
                 value="disable"
                 variant="danger"
                 pending={disable.isPending}
-                disabled={renew.isPending}
+                disabled={renew.isPending || passwordForm.blocked}
                 pendingLabel="Turning off…">
                 Turn off
               </Button>
@@ -420,11 +443,11 @@ function TwoFactorSection({codes, setCodes}: {codes: string[] | null; setCodes: 
               Can't scan? Enter this key in the app: <code>{setup.secret}</code>
             </p>
             <Field id="f-2faCode" label="6-digit code" error={codeForm.error('code')}>
-              <input {...codeForm.field('code')} autoComplete="one-time-code" inputMode="numeric" maxLength={8} />
+              <input {...codeForm.field('code')} autoComplete="one-time-code" inputMode="numeric" maxLength={8} placeholder="123456" />
             </Field>
             {formError(enable.error)}
             <div className="form-actions">
-              <Button type="submit" pending={enable.isPending} pendingLabel="Checking…">
+              <Button type="submit" pending={enable.isPending} pendingLabel="Checking…" disabled={codeForm.blocked}>
                 Turn on
               </Button>
               <Button variant="secondary" onClick={() => setSetup(null)} disabled={enable.isPending}>
@@ -438,7 +461,7 @@ function TwoFactorSection({codes, setCodes}: {codes: string[] | null; setCodes: 
             {passwordField}
             {formError(start.error)}
             <div className="form-actions">
-              <Button type="submit" variant="secondary" icon="shield" pending={start.isPending} pendingLabel="Starting…">
+              <Button type="submit" variant="secondary" icon="shield" pending={start.isPending} pendingLabel="Starting…" disabled={passwordForm.blocked}>
                 Set up two-step sign-in
               </Button>
             </div>
@@ -556,7 +579,10 @@ function DeleteSection() {
   const remove = useMutation({
     mutationFn: (values: {password: string; confirm: string}) => read(api.auth['delete-account'].$post({json: values})),
     onSuccess: () => window.location.assign('/'),
-    onError: err => err instanceof ApiError && form.setServerErrors(err.fields),
+    onError: err => {
+      form.noteError(err);
+      if (err instanceof ApiError) form.setServerErrors(err.fields);
+    },
   });
   return (
     <Card tone="danger" title="Delete your account" description="This removes your account and signs you out everywhere. It can't be undone.">
@@ -566,15 +592,15 @@ function DeleteSection() {
         onSubmit={form.submit(values => remove.mutate({password: values.password, confirm: values.confirm.trim()}))}>
         {needsPassword && (
           <Field id="f-deletePassword" label="Current password" error={form.error('password')}>
-            <PasswordInput {...form.field('password')} autoComplete="current-password" />
+            <PasswordInput {...form.field('password')} autoComplete="current-password" placeholder="Your current password" />
           </Field>
         )}
         <Field id="f-deleteConfirm" label="Type DELETE to confirm" error={form.error('confirm')}>
-          <input {...form.field('confirm')} autoComplete="off" spellCheck={false} />
+          <input {...form.field('confirm')} autoComplete="off" spellCheck={false} placeholder="DELETE" />
         </Field>
         {formError(remove.error)}
         <div className="form-actions">
-          <Button type="submit" variant="danger" icon="trash" pending={remove.isPending} pendingLabel="Deleting…">
+          <Button type="submit" variant="danger" icon="trash" pending={remove.isPending} pendingLabel="Deleting…" disabled={form.blocked}>
             Delete my account
           </Button>
         </div>

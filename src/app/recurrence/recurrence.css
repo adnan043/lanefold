@@ -1,0 +1,49 @@
+.rec-summary {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+}
+.rec-summary p {
+  margin: 0;
+}
+.rec-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.rec-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.rec-form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 28rem;
+}
+.rec-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem;
+}
+@media (max-width: 480px) {
+  .rec-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Label, control, error stack from the top: a long error under one field never pushes its neighbour's control down. */
+.rec-row > .field {
+  align-content: start;
+}
+/* The interval box looks like the Select and date pickers beside it (the card dialog fills plain inputs grey,
+   which read as disabled), and turns red when invalid. Outranks `.cd-dialog .cd-panel input:not(…):not(…):not(…)`. */
+:root .cd-panel .rec-form input.rec-interval[inputmode],
+:root .cd-dialog .cd-panel .rec-form input.rec-interval[inputmode] {
+  background: var(--card);
+}
+:root .cd-dialog .cd-panel .rec-form input.rec-interval[aria-invalid='true'],
+:root .cd-dialog .cd-panel .rec-form input.rec-interval[aria-invalid='true']:focus-visible {
+  border-color: var(--danger);
+}
+:root .cd-panel .rec-form input.rec-interval[aria-invalid='true']:focus-visible {
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}

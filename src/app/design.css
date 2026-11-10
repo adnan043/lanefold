@@ -1,0 +1,535 @@
+/*
+ * Lanefold design layer (loaded LAST by the app page): a clean, light, Linear/Height-like workspace.
+ * Only restyles what the other app sheets define; tokens only (no hex), no one-sided colour stripes.
+ */
+
+/* ---------- type and canvas ---------- */
+.app-shell {
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  font-size: 0.875rem;
+  letter-spacing: -0.006em;
+}
+
+/* ---------- sidebar ---------- */
+.app-shell .app-sidebar {
+  background: var(--surface);
+  border-inline-end: 1px solid var(--line);
+  padding: 0.75rem 0.625rem;
+  gap: 0.5rem;
+}
+.app-shell .app-brand {
+  gap: 0.625rem;
+  padding: 0.25rem 0.375rem 0.5rem;
+}
+.app-shell .app-brand-mark {
+  inline-size: 28px;
+  block-size: 28px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  box-shadow: inset 0 -1px 0 rgb(0 0 0 / 0.12), var(--shadow-sm);
+}
+.app-shell .app-brand-name {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.app-shell .app-nav-label {
+  padding-inline: 0.5rem;
+  margin-block: 0.75rem 0.25rem;
+  color: var(--subtle);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.app-shell .app-nav-link {
+  min-block-size: 32px;
+  padding: 0.3125rem 0.5rem;
+  gap: 0.625rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+button.app-nav-link {
+  inline-size: 100%;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.app-shell .app-nav-link:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.app-shell .app-nav-link.active,
+.app-shell .app-nav-link[aria-pressed='true'] {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+}
+.app-shell .app-nav-link.active svg,
+.app-shell .app-nav-link[aria-pressed='true'] svg {
+  color: var(--accent);
+}
+
+/* ---------- top bar ---------- */
+.app-shell .app-topbar {
+  /* Its popovers (bell, user menu) live in this stacking context: stay above the board's filter bar (20), under the nav scrim (30). */
+  z-index: 25;
+  min-block-size: 52px;
+  background: var(--card);
+  border-block-end: 1px solid var(--line);
+  padding-inline: 1.25rem;
+}
+.app-shell .app-title {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+.app-shell .lf-kbd-hint kbd {
+  min-inline-size: 22px;
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--subtle);
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  box-shadow: 0 1px 0 var(--line-strong);
+}
+
+/* ---------- page content (boards list, members, my day) ---------- */
+.app-shell .app-content:not(.lf-content-full) {
+  background: var(--card);
+}
+.app-shell .lf-board-tile,
+.app-shell .lf-board-link {
+  border-radius: var(--radius);
+  border-color: var(--line);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, translate 0.15s ease;
+}
+.app-shell .lf-board-link:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-md);
+  translate: 0 -1px;
+}
+.app-shell .lf-board-swatch {
+  border-radius: 8px;
+}
+.app-shell .lf-board-name {
+  font-weight: 600;
+}
+
+/* ---------- the board ---------- */
+/* Full-bleed: the board's own background fills the whole work area. */
+:root .app-shell .app-content.lf-content {
+  padding: 0;
+}
+
+.app-shell .lf-board {
+  padding: 0.75rem 1.25rem 4rem;
+  gap: 0.875rem;
+}
+/* An open board fills the window and never grows past it (like chat), so the floating toolbar at its bottom is
+   always on screen; a tall view (calendar, dashboard, workload) scrolls inside the board instead of the page. */
+.app-shell:has(.lf-board) {
+  height: 100dvh;
+  overflow: hidden;
+}
+.app-shell:has(.lf-board) .app-main {
+  height: 100dvh;
+  min-height: 0;
+}
+.app-shell .lf-board > .lf-vw,
+.app-shell .lf-board > .lf-wl {
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+/* Text a view puts straight on the board would sit on the owner's colour or photo (unreadable on a light
+   background in dark mode, and the reverse): give it the card surface, like the filter bar. */
+.app-shell .lf-board > .lf-vw-note,
+.app-shell .lf-board > .lf-vw > .lf-vw-note,
+.app-shell .lf-board > .lf-wl > .lf-vw-note {
+  align-self: flex-start;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  color: var(--muted);
+}
+.app-shell .lf-board .lf-cal-bar {
+  align-self: flex-start;
+  padding: 0.25rem 0.75rem 0.25rem 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+.app-shell .lf-board .lf-cal-weekdays {
+  border: 1px solid var(--line);
+  border-block-end: 0;
+  border-start-start-radius: var(--radius-card);
+  border-start-end-radius: var(--radius-card);
+  background: var(--card);
+  color: var(--ink);
+}
+.app-shell .lf-board .lf-cal-grid {
+  color: var(--ink);
+}
+.app-shell .lf-board-head {
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  backdrop-filter: blur(8px);
+  /* Floats at the bottom centre of the board, like Trello. */
+  position: absolute;
+  inset-inline: 0.75rem;
+  inset-block-end: 0.875rem;
+  margin-inline: auto;
+  z-index: 15;
+  box-shadow: var(--shadow-md, var(--shadow-sm));
+}
+/* The filter bar's row is ONE card: filters on the left, the board's members at its right end. */
+.app-shell .lf-board-top {
+  position: relative;
+  z-index: 20; /* above the lanes, so the filter panel that drops from it is never covered */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline-end: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  /* Solid, no backdrop-filter: a filter would become the containing block of the members' fixed popover and clip it. */
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+.app-shell .lf-board-top > .lf-fb {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+.app-shell .lf-board-top > .lf-board-members {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  color: var(--ink);
+}
+.app-shell .lf-board-top > .lf-board-members:empty {
+  display: none;
+}
+.app-shell .lf-board-head .btn,
+.app-shell .lf-board-head button {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  font-weight: 500;
+}
+.app-shell .lf-board-head .btn:hover,
+.app-shell .lf-board-head button:hover {
+  background: var(--hover);
+}
+/* Chat open / settings drawer open: the same active fill as the selected view (the star keeps its own look). */
+.app-shell .lf-board-head .button:is([aria-pressed='true'], [aria-expanded='true']),
+.app-shell .lf-board-head .button:is([aria-pressed='true'], [aria-expanded='true']):hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.app-shell .lf-lanes {
+  gap: 0.75rem;
+  padding-block-end: 1rem;
+}
+.app-shell .lf-lane {
+  flex-basis: 296px;
+  width: 296px;
+  border: 1px solid color-mix(in oklab, var(--line) 70%, transparent);
+  border-radius: var(--radius-lane);
+  background: color-mix(in oklab, var(--lane) 7%, color-mix(in srgb, var(--surface) 94%, transparent));
+  backdrop-filter: blur(10px);
+}
+.app-shell .lf-lane-head {
+  padding-block: 0.625rem 0.375rem;
+  padding-inline: 0.75rem 0.5rem;
+  gap: 0.375rem;
+}
+.app-shell .lf-lane-name {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.app-shell .lf-lane-dot {
+  inline-size: 8px;
+  block-size: 8px;
+}
+.app-shell .lf-lane-head .badge,
+.app-shell .lf-lane-head [class*='count'] {
+  border: 0;
+  background: transparent;
+  color: var(--subtle);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.app-shell .lf-lane-body {
+  padding-inline: 0.5rem;
+  gap: 0.5rem;
+}
+/* The lane body already pads the sides: the cards span its full width, edge-aligned with the composer. */
+.app-shell .lf-cards {
+  gap: 0.5rem;
+}
+.app-shell .lf-lane-body > .btn,
+.app-shell .lf-lane-body > button,
+.app-shell .lf-lane-foot > .btn,
+.app-shell .lf-lane-foot > button {
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+  color: var(--subtle);
+  font-weight: 500;
+}
+.app-shell .lf-lane-body > .btn:hover,
+.app-shell .lf-lane-body > button:hover,
+.app-shell .lf-lane-foot > .btn:hover,
+.app-shell .lf-lane-foot > button:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+}
+
+/* ---------- cards ---------- */
+.app-shell .lf-card {
+  padding: 0.625rem 0.75rem 0.625rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  box-shadow: 0 1px 1px rgb(16 24 40 / 0.04);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, translate 0.15s ease;
+}
+.app-shell .lf-card:hover {
+  border-color: var(--line-strong);
+}
+.app-shell .lf-card-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.008em;
+  color: var(--ink);
+}
+.app-shell .lf-card-labels {
+  gap: 0.25rem;
+  margin-block-end: 0.375rem;
+}
+.app-shell .lf-card-labels > *,
+.app-shell .lf-card-labels .badge,
+.app-shell .lf-label {
+  padding: 0.0625rem 0.4375rem;
+  border-radius: 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+.app-shell .lf-card-meta {
+  gap: 0.625rem;
+  margin-block-start: 0.5rem;
+  color: var(--subtle);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Quiet controls until the card is hovered or focused (touch keeps them visible). */
+@media (hover: hover) {
+  .app-shell .lf-card .menu-trigger,
+  .app-shell .lf-card .lf-grip {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .app-shell .lf-card:hover .menu-trigger,
+  .app-shell .lf-card:hover .lf-grip,
+  .app-shell .lf-card:focus-within .menu-trigger,
+  .app-shell .lf-card:focus-within .lf-grip {
+    opacity: 1;
+  }
+}
+.app-shell .lf-card[data-dragging],
+.app-shell .lf-card-overlay {
+  box-shadow: var(--shadow-lg);
+}
+
+/* ---------- card details: a centred modal (frame and box in cards.css) ---------- */
+.cd-dialog::backdrop {
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+  backdrop-filter: blur(1.5px);
+}
+:root .cd-dialog .cd-panel {
+  inline-size: min(62.5rem, calc(100vw - 2rem));
+  max-block-size: 90dvh;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+@media (max-width: 560px) {
+  :root .cd-dialog .cd-panel {
+    inline-size: 100%;
+    block-size: 100%;
+    max-block-size: none;
+    border-radius: 0;
+  }
+}
+.cd-dialog .cd-panel input:not([type='checkbox']):not([type='file']),
+.cd-dialog .cd-panel textarea,
+.cd-dialog .cd-panel select {
+  border-radius: 8px;
+}
+:root .cd-dialog .cd-title textarea {
+  border-color: transparent;
+  background: transparent;
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.cd-dialog .cd-title textarea:hover,
+.cd-dialog .cd-title textarea:focus-visible {
+  border-color: var(--control-border);
+  background: var(--card);
+}
+
+/* ---------- buttons and fields in the app ---------- */
+.app-shell .btn {
+  border-radius: 8px;
+  font-weight: 550;
+  letter-spacing: -0.006em;
+}
+.app-shell .btn-primary {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16), var(--shadow-sm);
+}
+
+/* ---------- phones ---------- */
+@media (max-width: 899px) {
+  :root .app-shell .lf-kbd-hint {
+    display: none;
+  }
+}
+@media (max-width: 640px) {
+  :root .app-shell .lf-board {
+    padding-inline: 0.75rem;
+  }
+  :root .app-shell .lf-board-head {
+    inset-block-end: calc(4.75rem + env(safe-area-inset-bottom));
+    max-inline-size: calc(100% - 1.5rem);
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  :root .app-shell .lf-board-head > * {
+    flex-shrink: 0;
+  }
+}
+
+/* ---------- desktop icon rail: icons only, opens on hover / focus or when pinned by the arrow ---------- */
+.app-rail-toggle {
+  display: none;
+}
+@media (min-width: 961px) {
+  :root .app-shell[data-rail] {
+    grid-template-columns: 68px minmax(0, 1fr);
+    transition: grid-template-columns 0.18s ease;
+  }
+  :root .app-shell[data-rail='pinned'] {
+    grid-template-columns: 256px minmax(0, 1fr);
+  }
+  .app-shell[data-rail] .app-sidebar {
+    position: sticky;
+    z-index: 40;
+    inline-size: 68px;
+    overflow: hidden auto;
+    transition: inline-size 0.18s ease, box-shadow 0.18s ease;
+  }
+  .app-shell[data-rail='pinned'] .app-sidebar,
+  .app-shell[data-rail='collapsed']:not([data-rail-lock]) .app-sidebar:hover,
+  .app-shell[data-rail='collapsed']:not([data-rail-lock]) .app-sidebar:focus-within {
+    inline-size: 256px;
+  }
+  .app-shell[data-rail='collapsed']:not([data-rail-lock]) .app-sidebar:hover,
+  .app-shell[data-rail='collapsed']:not([data-rail-lock]) .app-sidebar:focus-within {
+    box-shadow: var(--shadow-lg);
+  }
+  .app-shell[data-rail] .app-brand {
+    position: relative;
+  }
+  .app-shell[data-rail] .app-rail-toggle {
+    position: absolute;
+    inset-block-start: 1rem;
+    inset-inline-end: 0.5rem;
+    display: none;
+    place-items: center;
+    inline-size: 26px;
+    block-size: 26px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .app-shell[data-rail] .app-rail-toggle:hover {
+    background: var(--hover);
+    color: var(--ink);
+  }
+  .app-shell[data-rail] .app-rail-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .app-shell[data-rail='pinned'] .app-rail-toggle,
+  .app-shell[data-rail] .app-sidebar:hover .app-rail-toggle,
+  .app-shell[data-rail]:not([data-rail-lock]) .app-sidebar:focus-within .app-rail-toggle {
+    display: grid;
+  }
+  /* collapsed and not hovered: only the icons */
+  .app-shell[data-rail='collapsed'] .app-sidebar:is(:not(:hover):not(:focus-within), [data-locked]) :is(.app-brand-name, .app-nav-text, .app-nav-label, .lf-switcher-name, .lf-switcher .menu-trigger > svg:last-child, .lf-nav-unread) {
+    display: none;
+  }
+  .app-shell[data-rail='collapsed'] .app-sidebar:is(:not(:hover):not(:focus-within), [data-locked]) .lf-switcher .menu-trigger {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .app-shell[data-rail='collapsed'] .app-sidebar:is(:not(:hover):not(:focus-within), [data-locked]) .app-nav-link {
+    justify-content: center;
+  }
+  .app-shell[data-rail] .app-nav-text {
+    min-inline-size: 0;
+    white-space: nowrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-rail],
+  .app-shell[data-rail] .app-sidebar {
+    transition: none;
+  }
+}
+
+/* A coloured lane stays clearly coloured in dark mode (like Trello): a stronger, opaque tint. */
+:root[data-theme='dark'] .app-shell .lf-lane[data-colored] {
+  background: color-mix(in oklab, var(--lane) 38%, var(--surface));
+  border-color: color-mix(in oklab, var(--lane) 55%, var(--line));
+  backdrop-filter: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .app-shell .lf-lane[data-colored] {
+    background: color-mix(in oklab, var(--lane) 38%, var(--surface));
+    border-color: color-mix(in oklab, var(--lane) 55%, var(--line));
+    backdrop-filter: none;
+  }
+}

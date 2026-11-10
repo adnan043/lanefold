@@ -5,27 +5,22 @@
  * styles in `src/styles/home.css` (every rule under `.home`).
  *
  * What changes often is filled in by the browser after load, from the Site API:
- *   - the visitor (`<Base isStatic>`): signed-in users see "Open your dashboard"
- *     (`data-user-only`), guests "Create an account" (`data-guest-only`)
- *   - open roles (a `data-live` section, below)
- * The latest posts come from `src/content/blog/` at build time.
+ *   - the visitor (`<Base isStatic>`): signed-in users see "Open your boards"
+ *     (`data-user-only`), guests "Start free" (`data-guest-only`)
  * A section with no data stays hidden.
  */
 import '../styles/home.css';
 
-import Cover from '../components/Cover.astro';
 import HeroVisual from '../components/home/HeroVisual.astro';
 import Icon, {type IconName} from '../components/home/Icon.astro';
-import {HOME, withName} from '../content/site';
+import {HOME, PLAN_DEFAULTS, PRICING, withName} from '../content/site';
 import Base from '../layouts/Base.astro';
 import {staticContext} from '../server/page';
-import {formatDate, postHref, publishedPosts} from '../lib/posts';
 
 export const prerender = true;
 
 const {site, viewer} = await staticContext(Astro.request);
-const name = site?.name ?? 'My site';
-const latest = (await publishedPosts()).slice(0, 3);
+const name = site?.name ?? 'Lanefold';
 
 // The headline, split around the highlighted words (`HOME.hero.highlight`).
 const {title, highlight} = HOME.hero;
@@ -34,51 +29,106 @@ const headline =
   at < 0
     ? {before: title, mark: '', after: ''}
     : {before: title.slice(0, at), mark: highlight, after: title.slice(at + highlight.length)};
+const [wide, tall, ...small] = HOME.features.items;
 ---
 
-<Base site={site} viewer={viewer} isStatic>
+<Base site={site} viewer={viewer} isStatic description={HOME.description}>
   <main id="main" tabindex="-1" class="home">
     <section class="home-hero">
-      <div class="wrap home-hero-grid">
-        <div class="home-hero-copy">
-          <p class="home-eyebrow" data-brand-text={HOME.hero.eyebrow}>{withName(HOME.hero.eyebrow, name)}</p>
-          <h1>
-            {headline.before}{headline.mark && <mark>{headline.mark}</mark>}{headline.after}
-          </h1>
-          <p class="home-lede">{HOME.hero.body}</p>
-          <div class="home-actions" data-guest-only>
-            <a class="button home-button-lg" href="/account/register/" data-astro-prefetch>
-              {HOME.hero.guest.primary}
-              <Icon name="arrow-right" size={18} />
-            </a>
-            <a class="button ghost home-button-lg" href="#how">{HOME.hero.guest.secondary}</a>
-          </div>
-          <div class="home-actions" data-user-only hidden>
-            <a class="button home-button-lg" href="/dashboard">
-              {HOME.hero.user.primary}
-              <Icon name="arrow-right" size={18} />
-            </a>
-            <a class="button ghost home-button-lg" href="/blog/" data-astro-prefetch>{HOME.hero.user.secondary}</a>
-          </div>
-          <p class="home-note" data-guest-only>{HOME.hero.note}</p>
+      <div class="home-hero-glow" aria-hidden="true"></div>
+      <div class="wrap home-hero-copy">
+        <p class="home-eyebrow">
+          <Icon name="sparkles" size={14} />
+          <span data-brand-text={HOME.hero.eyebrow}>{withName(HOME.hero.eyebrow, name)}</span>
+        </p>
+        <h1>
+          {headline.before}{headline.mark && <mark>{headline.mark}</mark>}{headline.after}
+        </h1>
+        <p class="home-lede">{HOME.hero.body}</p>
+        <div class="home-actions" data-guest-only>
+          <a class="button home-button-lg" href="/account/register/" data-astro-prefetch>
+            {HOME.hero.guest.primary}
+            <Icon name="arrow-right" size={18} />
+          </a>
+          <a class="button ghost home-button-lg" href="/pricing/">{HOME.hero.guest.secondary}</a>
         </div>
-        <div class="home-hero-visual">
-          <HeroVisual name={name} />
+        <div class="home-actions" data-user-only hidden>
+          <a class="button home-button-lg" href={HOME.hero.userHref}>
+            {HOME.hero.user.primary}
+            <Icon name="arrow-right" size={18} />
+          </a>
+          <a class="button ghost home-button-lg" href="/blog/" data-astro-prefetch>{HOME.hero.user.secondary}</a>
         </div>
+        <ul class="home-points" data-guest-only>
+          {
+            HOME.hero.points.map(point => (
+              <li>
+                <Icon name="check" size={16} />
+                {point}
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+      <div class="wrap home-hero-visual">
+        <HeroVisual name={name} />
       </div>
     </section>
 
-    <section class="home-section" aria-labelledby="features-title">
+    <section class="home-chips" aria-label="What is included">
+      <ul class="wrap">
+        {HOME.chips.map(chip => <li>{chip}</li>)}
+      </ul>
+    </section>
+
+    <section class="home-section" id="features" aria-labelledby="features-title">
       <div class="wrap">
-        <div class="home-head">
+        <div class="home-head home-head-center">
           <p class="home-eyebrow">{HOME.features.eyebrow}</p>
           <h2 id="features-title">{HOME.features.title}</h2>
           <p class="home-sub">{HOME.features.body}</p>
         </div>
-        <ul class="home-features">
+        <ul class="home-bento">
           {
-            HOME.features.items.map(feature => (
-              <li class="home-feature">
+            wide && (
+              <li class="home-tile home-tile-wide">
+                <div class="home-tile-text">
+                  <span class="home-icon-tile">
+                    <Icon name={wide.icon as IconName} />
+                  </span>
+                  <h3>{wide.title}</h3>
+                  <p>{wide.body}</p>
+                </div>
+                <div class="home-art home-art-board" aria-hidden="true">
+                  <span class="art-lane"><i class="art-dot"></i><b></b><b></b><b class="art-short"></b></span>
+                  <span class="art-lane art-lane-2"><i class="art-dot"></i><b class="art-lift"></b><b></b></span>
+                  <span class="art-lane art-lane-3"><i class="art-dot"></i><b></b></span>
+                </div>
+              </li>
+            )
+          }
+          {
+            tall && (
+              <li class="home-tile home-tile-tall">
+                <div class="home-tile-text">
+                  <span class="home-icon-tile">
+                    <Icon name={tall.icon as IconName} />
+                  </span>
+                  <h3>{tall.title}</h3>
+                  <p>{tall.body}</p>
+                </div>
+                <div class="home-art home-art-chat" aria-hidden="true">
+                  <span class="art-msg"><i></i><b></b></span>
+                  <span class="art-msg art-msg-mine"><b></b></span>
+                  <span class="art-msg"><i></i><b class="art-short"></b></span>
+                  <span class="art-link"><i></i>Linked card</span>
+                </div>
+              </li>
+            )
+          }
+          {
+            small.map(feature => (
+              <li class="home-tile">
                 <span class="home-icon-tile">
                   <Icon name={feature.icon as IconName} />
                 </span>
@@ -91,9 +141,101 @@ const headline =
       </div>
     </section>
 
-    <section class="home-section home-band" id="how" aria-labelledby="how-title">
+
+    <section class="home-section home-spot" aria-labelledby="spot-title">
       <div class="wrap">
-        <div class="home-head">
+        <div class="home-head home-head-center">
+          <p class="home-eyebrow">{HOME.spotlight.eyebrow}</p>
+          <h2 id="spot-title">{HOME.spotlight.title}</h2>
+        </div>
+        <div class="home-rows">
+          {
+            HOME.spotlight.rows.map((row, i) => (
+              <article class:list={['home-row', {'home-row-flip': i % 2 === 1}]}>
+                <div class="home-row-text">
+                  <span class="home-tag">{row.tag}</span>
+                  <h3>{row.title}</h3>
+                  <p>{row.body}</p>
+                  <ul class="home-ticks">
+                    {row.bullets.map(b => (
+                      <li>
+                        <span class="home-tick"><Icon name="check" size={12} /></span>
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div class:list={['home-row-art', `home-row-art-${row.art}`]} aria-hidden="true">
+                  {row.art === 'chat' && (
+                    <div class="sp-chat">
+                      <div class="sp-channels">
+                        <b># general</b>
+                        <b class="on"># launch</b>
+                        <b># design</b>
+                      </div>
+                      <div class="sp-thread">
+                        <span class="sp-msg"><i></i><em>Can we ship the login fix today?</em></span>
+                        <span class="sp-msg"><i class="sky"></i><em><strong>@Sam</strong> yes, it is in review</em></span>
+                        <span class="sp-msg sp-mine"><em>Linked it to the card</em></span>
+                        <span class="sp-card"><i></i>Fix login on mobile</span>
+                      </div>
+                    </div>
+                  )}
+                  {row.art === 'myday' && (
+                    <div class="sp-day">
+                      <span class="sp-day-head"><Icon name="sun" size={16} />My Day</span>
+                      <span class="sp-task"><i class="done"></i>Review pricing copy<em class="mint">Done</em></span>
+                      <span class="sp-task"><i></i>Fix login on mobile<em class="peach">Today</em></span>
+                      <span class="sp-task"><i></i>Draft release notes<em class="sky">Tomorrow</em></span>
+                      <span class="sp-task"><i></i>Plan the launch call<em class="sky">Fri</em></span>
+                    </div>
+                  )}
+                  {row.art === 'palette' && (
+                    <div class="sp-pal">
+                      <span class="sp-search"><Icon name="command" size={16} />Search boards, cards, actions…<kbd>⌘K</kbd></span>
+                      <span class="sp-res on"><Icon name="plus" size={14} />Add a card<kbd>N</kbd></span>
+                      <span class="sp-res"><Icon name="dashboard" size={14} />Open Launch board</span>
+                      <span class="sp-res"><Icon name="sun" size={14} />Go to My Day</span>
+                      <span class="sp-res"><Icon name="chat" size={14} />Open chat</span>
+                    </div>
+                  )}
+                </div>
+              </article>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <section class="home-section home-band" aria-labelledby="views-title">
+      <div class="wrap">
+        <div class="home-head home-head-center">
+          <p class="home-eyebrow">{HOME.views.eyebrow}</p>
+          <h2 id="views-title">{HOME.views.title}</h2>
+          <p class="home-sub">{HOME.views.body}</p>
+        </div>
+        <ul class="home-views">
+          {
+            HOME.views.items.map(view => (
+              <li class="home-view">
+                <div class:list={['vw', `vw-${view.art}`]} aria-hidden="true">
+                  {view.art === 'board' && <><span><b></b><b></b><b></b></span><span><b></b><b></b></span><span><b></b></span></>}
+                  {view.art === 'table' && <>{[0, 1, 2, 3, 4].map(() => <span><b></b><i></i><em></em></span>)}</>}
+                  {view.art === 'calendar' && <>{Array.from({length: 21}, (_, d) => <span class:list={{dot: [2, 6, 9, 15, 17].includes(d)}}></span>)}</>}
+                  {view.art === 'timeline' && <><span class="t1"></span><span class="t2"></span><span class="t3"></span><span class="t4"></span></>}
+                </div>
+                <h3>{view.title}</h3>
+                <p>{view.body}</p>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </section>
+
+    <section class="home-section" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <div class="home-head home-head-center">
           <p class="home-eyebrow">{HOME.how.eyebrow}</p>
           <h2 id="how-title">{HOME.how.title}</h2>
         </div>
@@ -111,56 +253,91 @@ const headline =
       </div>
     </section>
 
-    {
-      latest.length > 0 && (
-        <section class="home-section" aria-labelledby="blog-title">
-          <div class="wrap">
-            <div class="home-head home-head-row">
-              <h2 id="blog-title">{HOME.blog.title}</h2>
-              <a class="home-more" href="/blog/" data-astro-prefetch>
-                {HOME.blog.link}
-                <Icon name="arrow-right" size={16} />
-              </a>
-            </div>
-            <div class="grid grid-3">
-              {latest.map(post => (
-                <a class="post-card" href={postHref(post)} data-astro-prefetch>
-                  {post.data.cover ? (
-                    <Cover class="cover" src={post.data.cover} alt={post.data.coverAlt} width={640} height={360} sizes="(min-width: 1100px) 350px, (min-width: 640px) 50vw, 100vw" />
-                  ) : (
-                    <span class="cover cover-empty" aria-hidden="true" />
-                  )}
-                  <div class="post-card-body">
-                    <p class="meta">{formatDate(post.data.publishedAt)}</p>
-                    <h3>{post.data.title}</h3>
-                    <p class="muted small">{post.data.description}</p>
-                  </div>
-                </a>
-              ))}
-            </div>
-          </div>
-        </section>
-      )
-    }
 
-    <section class="home-section" data-live="jobs" aria-labelledby="jobs-title" hidden>
+    <section class="home-section" aria-labelledby="teams-title">
       <div class="wrap">
-        <div class="home-head home-head-row">
-          <h2 id="jobs-title">{HOME.jobs.title}</h2>
-          <a class="home-more" href="/jobs/">
-            {HOME.jobs.link}
+        <div class="home-head home-head-center">
+          <p class="home-eyebrow">{HOME.teams.eyebrow}</p>
+          <h2 id="teams-title">{HOME.teams.title}</h2>
+        </div>
+        <ul class="home-teams">
+          {
+            HOME.teams.items.map(team => (
+              <li class:list={['home-team', `tone-${team.tone}`]}>
+                <span class="home-team-icon"><Icon name={team.icon as IconName} /></span>
+                <h3>{team.title}</h3>
+                <p>{team.body}</p>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </section>
+
+    <section class="home-section home-band home-trust" aria-labelledby="trust-title">
+      <div class="wrap home-trust-grid">
+        <div class="home-head">
+          <p class="home-eyebrow">{HOME.trust.eyebrow}</p>
+          <h2 id="trust-title">{HOME.trust.title}</h2>
+          <p class="home-sub">{HOME.trust.body}</p>
+        </div>
+        <ul class="home-trust-list">
+          {
+            HOME.trust.items.map(item => (
+              <li>
+                <span class="home-icon-tile"><Icon name={item.icon as IconName} size={22} /></span>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p>{item.body}</p>
+                </div>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </section>
+
+    <section class="home-section" aria-labelledby="plans-title">
+      <div class="wrap">
+        <div class="home-head home-head-center">
+          <p class="home-eyebrow">{HOME.plansTeaser.eyebrow}</p>
+          <h2 id="plans-title">{HOME.plansTeaser.title}</h2>
+          <p class="home-sub">{HOME.plansTeaser.body}</p>
+        </div>
+        <ul class="home-plans">
+          {
+            PRICING.plans.map(plan => (
+              <li class:list={['home-plan', {featured: plan.featured}]}>
+                <div class="home-plan-top">
+                  <h3>{plan.name}</h3>
+                  {plan.featured && <span class="home-plan-badge">{PRICING.popularLabel}</span>}
+                </div>
+                <p>{plan.blurb}</p>
+                <p class="home-plan-limit">
+                  <strong>{PLAN_DEFAULTS[plan.key as keyof typeof PLAN_DEFAULTS].members}</strong> members ·{' '}
+                  <strong>{PLAN_DEFAULTS[plan.key as keyof typeof PLAN_DEFAULTS].storageGb} GB</strong> storage
+                </p>
+              </li>
+            ))
+          }
+        </ul>
+        <p class="home-plans-more">
+          <a class="home-more" href="/pricing/">
+            {HOME.plansTeaser.link}
             <Icon name="arrow-right" size={16} />
           </a>
-        </div>
-        <ul class="job-list" data-list data-remote-label={HOME.jobs.remote}></ul>
+        </p>
       </div>
     </section>
 
     <section class="home-section" aria-labelledby="faq-title">
       <div class="wrap home-faq-grid">
-        <div class="home-head">
+        <div class="home-head home-head-center">
           <p class="home-eyebrow">{HOME.faq.eyebrow}</p>
           <h2 id="faq-title">{HOME.faq.title}</h2>
+          <p class="home-sub">
+            More about plans on the <a href="/pricing/">pricing page</a>.
+          </p>
         </div>
         <div class="home-faq">
           {
@@ -181,61 +358,55 @@ const headline =
     <section class="home-section home-section-last" data-guest-only aria-labelledby="cta-title">
       <div class="wrap">
         <div class="home-cta">
-          <div>
+          <div class="home-cta-glow" aria-hidden="true"></div>
+          <div class="home-cta-copy">
+            <span class="home-cta-eyebrow"><Icon name="sparkles" size={14} />{HOME.cta.eyebrow}</span>
             <h2 id="cta-title" data-brand-text={HOME.cta.title}>{withName(HOME.cta.title, name)}</h2>
             <p>{HOME.cta.body}</p>
+            <ul class="home-cta-points">
+              {
+                HOME.cta.points.map((point) => (
+                  <li>
+                    <span class="home-cta-tick"><Icon name="check" size={14} /></span>
+                    {point.replace('{members}', String(PLAN_DEFAULTS.free.members))}
+                  </li>
+                ))
+              }
+            </ul>
+            <div class="home-cta-actions">
+              <a class="button home-button-lg home-cta-primary" href="/account/register/" data-astro-prefetch>
+                {HOME.cta.primary}
+                <Icon name="arrow-right" size={18} />
+              </a>
+              <a class="button home-button-lg home-cta-ghost" href="/account/login/" data-astro-prefetch>{HOME.cta.secondary}</a>
+            </div>
           </div>
-          <div class="home-cta-actions">
-            <a class="button home-button-lg home-cta-primary" href="/account/register/" data-astro-prefetch>{HOME.cta.primary}</a>
-            <a class="button home-button-lg home-cta-ghost" href="/account/login/" data-astro-prefetch>{HOME.cta.secondary}</a>
+          <div class="home-cta-art" aria-hidden="true">
+            <div class="cta-board">
+              <div class="cta-lane">
+                <span class="cta-lane-head">To do <i>3</i></span>
+                <span class="cta-card"><b class="cta-tag cta-tag-a"></b><s></s><s class="short"></s></span>
+                <span class="cta-card"><s></s><s class="short"></s></span>
+              </div>
+              <div class="cta-lane">
+                <span class="cta-lane-head">Doing <i>2</i></span>
+                <span class="cta-card cta-card-lift"><b class="cta-tag cta-tag-b"></b><s></s><s class="short"></s><em></em></span>
+                <span class="cta-card"><s></s><s class="short"></s></span>
+              </div>
+              <div class="cta-lane">
+                <span class="cta-lane-head">Done <i>5</i></span>
+                <span class="cta-card cta-card-done"><s></s><s class="short"></s></span>
+                <span class="cta-card cta-card-done"><s class="short"></s></span>
+              </div>
+            </div>
+            <div class="cta-chat">
+              <span class="cta-avatar"></span>
+              <span class="cta-bubble"><s></s><s class="short"></s></span>
+              <span class="cta-typing"><i></i><i></i><i></i></span>
+            </div>
           </div>
         </div>
       </div>
     </section>
   </main>
 </Base>
-
-<script>
-  import type {JobsPage} from '../lib/types';
-
-  // Client navigation (ClientRouter): a bundled script runs once, so this page's code runs on
-  // every `astro:page-load` (the first load, each navigation, back/forward) while it is this page.
-  document.addEventListener('astro:page-load', () => {
-    if (!document.querySelector('[data-live="jobs"]')) return;
-    /** One element with text: never HTML from an answer. */
-    const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = '') => {
-      const node = document.createElement(tag);
-      if (className) node.className = className;
-      if (text) node.textContent = text;
-      return node;
-    };
-
-    async function live<T>(name: string, path: string, render: (data: T, list: HTMLElement) => number) {
-      const section = document.querySelector<HTMLElement>(`[data-live="${name}"]`);
-      const list = section?.querySelector<HTMLElement>('[data-list]');
-      if (!section || !list) return;
-      try {
-        const res = await fetch(path, {headers: {accept: 'application/json'}});
-        if (!res.ok) return;
-        if (render((await res.json()) as T, list) > 0) section.hidden = false;
-      } catch {
-        // The section stays hidden: the page is complete without it.
-      }
-    }
-
-    void live<JobsPage>('jobs', '/site-api/jobs', (data, list) => {
-      for (const job of data.jobs.slice(0, 3)) {
-        const row = el('a', 'job-row');
-        row.href = `/jobs/${encodeURIComponent(job.slug)}/`;
-        const text = el('div');
-        text.append(el('h3', 'job-title', job.title), el('p', 'muted', `${job.company} · ${job.location}`));
-        row.append(text);
-        if (job.remote) row.append(el('span', 'chip chip-tag', list.dataset.remoteLabel || 'Remote'));
-        const item = el('li');
-        item.append(row);
-        list.append(item);
-      }
-      return Math.min(3, data.jobs.length);
-    });
-  });
-</script>

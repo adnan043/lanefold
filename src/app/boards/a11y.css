@@ -1,0 +1,38 @@
+/* Accessibility additions for the board (WCAG 2.4.7, 2.5.8, 1.4.1). Loaded after polish.css. */
+.lf-card-title {
+  min-block-size: 24px;
+}
+.lf-grip {
+  min-inline-size: 24px;
+  min-block-size: 24px;
+}
+.lf-lane-dot {
+  inline-size: 12px;
+  block-size: 12px;
+  /* A ring keeps the marker visible on any lane tint. */
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.lf-over-text {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--danger);
+}
+/* The card's focus ring lives on the card (polish.css); keep a ring on the title itself too when :has is unsupported. */
+@supports not selector(:has(*)) {
+  .lf-card-title:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+.lf-move-form {
+  display: grid;
+  gap: 1rem;
+}
+
+/* "Move to…" to another board: what the person must know before they send the card away */
+.lf-move-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}

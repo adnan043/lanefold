@@ -1,0 +1,622 @@
+/* Trello-style board: dark translucent lanes tinted by the lane colour, compact dark cards, "Add a card" footer.
+   Loaded last in board-screen.tsx, so it wins over app.css and polish.css. Tokens and colour-mix only, no hex. */
+
+.app-shell .lf-board {
+  --tl-ink: color-mix(in oklab, white 88%, black);
+  --tl-muted: color-mix(in oklab, white 66%, black);
+  /* Overdue text on a dark card: a light red that reads on it in either theme. */
+  --tl-danger: oklch(0.72 0.19 25); /* a clear red (about #ff6b6b), 6:1+ on the dark card */
+  --tl-card: oklch(0.31 0.012 255); /* clearly lighter than the dark lane (about #2a2f36), like a raised sheet */
+  --tl-card-hover: oklch(0.36 0.012 255);
+  --tl-hover: color-mix(in srgb, white 14%, transparent);
+  padding-inline: 0.75rem;
+}
+/* A board with no chosen background gets a calm gradient so the dark lanes read as glass, as in Trello. */
+.app-shell .lf-board:not([style*='background']) {
+  background: linear-gradient(135deg, color-mix(in oklab, var(--info) 55%, black), color-mix(in oklab, var(--accent) 45%, black));
+}
+.app-shell .lf-board-head {
+  /* A solid theme surface: dark text stays readable over any board background. */
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  color: var(--ink);
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  backdrop-filter: blur(8px);
+}
+.app-shell .lf-board-head a.btn,
+.app-shell .lf-board-head .btn {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font-weight: 500;
+}
+.app-shell .lf-board-head a.btn:hover,
+.app-shell .lf-board-head .btn:hover {
+  background: var(--hover);
+}
+.app-shell .lf-board-head .btn[aria-pressed='true'] {
+  background: var(--hover);
+}
+.app-shell .lf-board-head .lf-board-head-spacer {
+  display: none;
+}
+/* The toolbar floats on a light/dark card (design.css), so it uses the theme ink, not the lanes' white. */
+.app-shell .lf-board-head,
+.app-shell .lf-board-head .lf-view-btn {
+  color: var(--ink);
+}
+
+.app-shell .lf-lanes {
+  gap: 8px;
+  align-items: flex-start;
+  /* Light pills on the dark board; the shape comes from global.css. */
+  --sb-thumb: color-mix(in srgb, white 40%, transparent);
+  --sb-thumb-hover: color-mix(in srgb, white 62%, transparent);
+}
+.app-shell .lf-lane {
+  flex: 0 0 272px;
+  width: 272px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--tl-ink);
+  background: color-mix(in srgb, black 72%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+.app-shell .lf-lane[data-colored] {
+  background: color-mix(in oklab, var(--lane) 38%, black);
+}
+.app-shell .lf-lane[data-drop-target] {
+  outline: 2px solid color-mix(in srgb, white 70%, transparent);
+  outline-offset: -2px;
+  background: color-mix(in oklab, var(--lane) 38%, black);
+}
+.app-shell .lf-lane[data-drop-target]:not([data-colored]) {
+  background: color-mix(in srgb, black 60%, transparent);
+}
+
+.app-shell .lf-lane-head {
+  padding: 0.625rem 0.5rem 0.25rem 0.75rem;
+  gap: 0.25rem;
+}
+.app-shell .lf-lane-name {
+  font-size: 0.875rem;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--tl-ink);
+}
+.app-shell .lf-lane-dot {
+  display: none; /* the whole lane carries the colour */
+}
+/* Click the name to rename the lane in place. */
+.lf-lane-name-btn {
+  display: block;
+  inline-size: 100%;
+  margin: 0;
+  padding: 0.125rem 0.375rem;
+  margin-inline-start: -0.375rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.lf-lane-name-btn:hover {
+  background: color-mix(in oklab, currentColor 10%, transparent);
+}
+.lf-lane-name-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.lf-lane-name-input {
+  flex: 1;
+  min-inline-size: 0;
+  margin: 0;
+  margin-inline-start: -0.375rem;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.875rem;
+  line-height: 20px;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 35%, transparent);
+  outline: none;
+}
+.app-shell .lf-lane-head button.lf-lane-name-btn:not(.popover *) {
+  color: inherit;
+  inline-size: 100%;
+}
+.app-shell .lf-count {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--tl-muted);
+}
+.app-shell .lf-lane-head .menu-trigger:not(.popover *),
+.app-shell .lf-lane-head .icon-btn:not(.popover *),
+.app-shell .lf-lane-head button:not(.popover *) {
+  color: var(--tl-muted);
+}
+.app-shell .lf-lane-head button:not(.popover *):hover {
+  background: var(--tl-hover);
+  color: var(--tl-ink);
+}
+.app-shell .lf-lane-flag {
+  color: var(--tl-muted);
+}
+
+.app-shell .lf-lane-body {
+  padding: 0.25rem 0.5rem 0.5rem;
+  gap: 0.5rem;
+  --sb-thumb: color-mix(in srgb, white 28%, transparent);
+  --sb-thumb-hover: color-mix(in srgb, white 50%, transparent);
+}
+.app-shell .lf-cards {
+  gap: 8px;
+}
+.app-shell .lf-empty,
+.app-shell .lf-drop-hint {
+  color: var(--tl-muted);
+  border-color: color-mix(in srgb, white 35%, transparent);
+}
+
+/* ---- cards ---- */
+.app-shell .lf-card {
+  padding: 0.5rem 0.75rem 0.625rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--tl-card);
+  color: var(--tl-ink);
+  box-shadow: 0 1px 1px color-mix(in srgb, black 40%, transparent);
+  gap: 0.375rem;
+}
+.app-shell .lf-card,
+.app-shell .lf-card-top {
+  position: relative; /* the tools are anchored to the card's corner; the tick to the title row, whatever sits above it (cover, labels) */
+}
+/* Hover or keyboard focus inside a card: a full 2px ring drawn INSIDE the card (no layout shift, never clipped by
+   the lane's scroll area). Light ring on the dark Trello-style cards. A selected card keeps its own accent outline
+   (bulk.css) and a held card its large shadow, so hover, selected and dragging stay three different looks. */
+.app-shell .lf-board {
+  --tl-ring: var(--accent);
+}
+/* The ring is an overlay ABOVE the card's content: an inset box-shadow is painted under the cover image, which hid
+   the ring's top half on cards with a cover. */
+.app-shell .lf-card {
+  cursor: pointer;
+}
+.app-shell .lf-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px var(--tl-ring);
+  opacity: 0;
+  pointer-events: none;
+}
+.app-shell .lf-card:hover::after,
+.app-shell .lf-card:focus-within::after {
+  opacity: 1;
+}
+/* While any card is held, no other card shows the hover ring; the held card keeps its shadow. */
+.app-shell .lf-lane[data-card-drag] .lf-card:not([data-dragging]):hover::after,
+.app-shell .lf-card[data-dragging]::after,
+.app-shell .lf-card[data-pending]::after {
+  opacity: 0;
+}
+.app-shell .lf-card[data-pending] {
+  cursor: progress;
+}
+.app-shell .lf-card[data-dragging] {
+  box-shadow: var(--shadow-lg);
+}
+/* The tools (quick edit, grip, menu) float over the card's top-right corner: nothing in the card reserves space for
+   them, so the title never jumps on hover. A soft card-coloured backdrop keeps the text under them readable. */
+.app-shell .lf-card-tools {
+  position: absolute;
+  inset-block-start: -2px;
+  inset-inline-end: -4px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--tl-card-hover) 92%, transparent);
+  opacity: 0;
+}
+.app-shell .lf-card:hover .lf-card-tools,
+.app-shell .lf-card:focus-within .lf-card-tools {
+  opacity: 1;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .app-shell .lf-card-tools {
+    transition: opacity 0.12s ease;
+  }
+}
+/* A touch screen has no hover: the tools are always there. */
+@media (hover: none) {
+  .app-shell .lf-card-tools {
+    opacity: 1;
+  }
+}
+/* The children's own fade (app.css / design.css) must not hide them inside the visible cluster. */
+.app-shell .lf-card-tools .lf-grip,
+.app-shell .lf-card-tools .menu-trigger,
+.app-shell .lf-card-tools .lf-card-edit {
+  opacity: 1;
+  color: var(--tl-ink);
+}
+.app-shell .lf-card-title {
+  font-size: 0.875rem;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--tl-ink);
+}
+.app-shell .lf-card-num,
+.app-shell .lf-card-meta,
+.app-shell .lf-meta {
+  color: var(--tl-muted);
+}
+.app-shell .lf-card-meta {
+  gap: 0.5rem 0.75rem;
+}
+/* Overdue date: red text only, from the card's own token (light red on dark cards, dark red on light ones).
+   `--danger-soft` is a background tint, never text. */
+.app-shell .lf-meta[data-overdue] {
+  color: var(--tl-danger);
+  font-weight: 500;
+}
+.app-shell .lf-card .lf-grip,
+.app-shell .lf-card .menu-trigger {
+  color: var(--tl-muted);
+}
+/* The cover is the card's first image, shown whole across the top edge at its own proportions (Trello). */
+.app-shell .lf-card-cover {
+  width: calc(100% + 1.5rem);
+  max-width: none;
+  margin: -0.5rem -0.75rem 0.25rem;
+  height: auto;
+  min-height: 3rem;
+  max-height: 16rem;
+  object-fit: cover;
+  border-radius: 8px 8px 0 0;
+}
+/* Labels on a card are thin colour bars above the title; the name stays for screen readers and in the tooltip. */
+.app-shell .lf-card-labels {
+  gap: 4px;
+  margin: 0;
+}
+.app-shell .lf-card-labels > li {
+  display: flex;
+  padding: 0;
+  line-height: 0;
+}
+.app-shell .lf-card-labels .chip {
+  min-inline-size: 40px;
+  block-size: 8px;
+  padding: 0;
+  border-radius: 4px;
+}
+.app-shell .lf-card-labels .chip-label {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.app-shell .lf-card-labels .chip {
+  position: relative;
+}
+.app-shell .lf-card[data-selected] {
+  outline: 2px solid color-mix(in srgb, white 80%, transparent);
+}
+
+/* ---- add a card / add another list ---- */
+.app-shell .lf-lane .lf-add,
+.app-shell .lf-add-lane {
+  inline-size: 100%;
+  justify-content: flex-start;
+  /* The lane's light ink, not the muted grey: it must read on every lane tint and board photo (Trello). */
+  color: var(--tl-ink);
+  font-weight: 500;
+  border-radius: 8px;
+  padding-inline: 0.5rem;
+}
+.app-shell .lf-lane .lf-add:hover,
+.app-shell .lf-add-lane:hover {
+  background: var(--tl-hover);
+  color: var(--tl-ink);
+}
+/* Dark glass like the lanes, so the light ink reads on ANY board background (pale colours, white photos, dark ones).
+   64% black keeps white text above 4.5:1 even over pure white. */
+.app-shell .lf-add-lane {
+  flex: 0 0 272px;
+  background: color-mix(in srgb, black 64%, transparent);
+  border: 1px solid color-mix(in srgb, white 14%, transparent);
+  backdrop-filter: blur(10px);
+  color: var(--tl-ink);
+  border-radius: 12px;
+  padding-block: 0.625rem;
+  box-shadow: var(--shadow-sm);
+}
+.app-shell .lf-add-lane:hover {
+  background: color-mix(in srgb, black 74%, transparent);
+  color: var(--tl-ink);
+}
+.app-shell .lf-composer textarea {
+  background: var(--tl-card);
+  color: var(--tl-ink);
+  border: 0;
+  border-radius: 8px;
+  box-shadow: 0 1px 1px color-mix(in srgb, black 40%, transparent);
+}
+.app-shell .lf-composer-label {
+  color: var(--tl-muted);
+}
+
+/* The lane's blur lives on a layer behind it: a backdrop-filter on the lane itself would become the containing block of
+   the lane menu (a fixed popover inside it), which then lands far from its button and is clipped by the lane. */
+.app-shell .lf-lane {
+  backdrop-filter: none;
+  isolation: isolate;
+}
+.app-shell .lf-lane::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+.app-shell .lf-lane {
+  position: relative;
+}
+/* The lane menu opens from its button towards the next lanes (Trello): its lane is a stacking context (isolation above),
+   so lift the whole lane while the menu is open, or the following lanes would paint over the menu. */
+.app-shell .lf-lane:has(.popover.lane-menu) {
+  z-index: 3;
+}
+
+/* ---- a card shows no tools, flag or tick (Trello): the title opens it, the pointer drags it. The drag grip and the menu stay for the keyboard
+   (the whole card drags with the pointer) and appear when focused; the select tick shows only in select mode. ---- */
+.app-shell .lf-card-tools {
+  /* 8px: the hover ring (2px, inside the card) and the pencil's outline (1.5px) eat into the gap; this leaves ~4px clear. */
+  inset-block-start: 8px;
+  inset-inline-end: 8px;
+  padding: 0;
+  background: transparent;
+}
+.app-shell .lf-card-tools .lf-card-edit:not(:focus-visible),
+.app-shell .lf-card-tools .lf-grip:not(:focus-visible) {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.app-shell .lf-card:not([data-select-mode]):not([data-selected]) .lf-card-check:not(:focus-visible) {
+  opacity: 0;
+  pointer-events: none;
+}
+.app-shell .lf-card:not([data-select-mode]):not([data-selected]) .lf-card-top {
+  padding-inline-start: 0;
+}
+
+/* ---- the card's quick actions: a round pencil in the top-right corner, shown on hover or keyboard focus (and while
+   its menu is open); a touch screen always shows it. It opens the quick-actions menu (card.tsx). ---- */
+.app-shell .lf-card-tools .menu-trigger {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 22px;
+  min-height: 22px;
+  block-size: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  /* The accent with its own ink: it stands out on the dark card, and a light outline lifts it off any cover image. */
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, white 70%, transparent),
+    0 2px 6px color-mix(in srgb, black 45%, transparent);
+  opacity: 0;
+}
+.app-shell .lf-card:hover .lf-card-tools .menu-trigger,
+.app-shell .lf-card:focus-within .lf-card-tools .menu-trigger,
+.app-shell .lf-card-tools .menu-trigger[aria-expanded='true'] {
+  opacity: 1;
+}
+.app-shell .lf-card-tools .menu-trigger:hover,
+.app-shell .lf-card-tools .menu-trigger[aria-expanded='true'] {
+  background: var(--accent-hover);
+  color: var(--accent-ink);
+}
+.app-shell .lf-card-tools .menu-trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, white 90%, transparent);
+  outline-offset: 2px;
+}
+.app-shell .lf-card-tools .menu-trigger > svg {
+  inline-size: 12px;
+  block-size: 12px;
+}
+/* A touch screen keeps the larger 28px target for a finger. */
+@media (hover: none) {
+  .app-shell .lf-card-tools .menu-trigger {
+    opacity: 1;
+    inline-size: 28px;
+    min-height: 28px;
+    block-size: 28px;
+  }
+  .app-shell .lf-card-tools .menu-trigger > svg {
+    inline-size: 14px;
+    block-size: 14px;
+  }
+}
+/* While a card is held, no pencil on the others. */
+.app-shell .lf-lane[data-card-drag] .lf-card-tools .menu-trigger:not([aria-expanded='true']) {
+  opacity: 0;
+}
+
+/* ---- light theme: light cards (the lanes keep their dark glass). The card tokens are redefined ON the card, so
+   only the card and what is inside it (title, meta, tools) turn light; lane titles keep the light ink. ---- */
+:root[data-theme='light'] .app-shell :is(.lf-card, .lf-card-overlay, .lf-composer textarea) {
+  --tl-card: var(--card);
+  --tl-card-hover: var(--hover);
+  --tl-ink: var(--ink);
+  --tl-muted: var(--muted);
+  --tl-danger: var(--danger);
+  box-shadow: 0 1px 2px color-mix(in srgb, black 18%, transparent);
+}
+:root[data-theme='light'] .app-shell .lf-card[data-selected] {
+  outline-color: var(--accent);
+}
+:root[data-theme='light'] .app-shell .lf-card-tools .menu-trigger {
+  box-shadow:
+    0 0 0 1.5px var(--card),
+    0 2px 6px color-mix(in srgb, black 25%, transparent);
+}
+@media not (prefers-color-scheme: dark) {
+  :root:not([data-theme='dark']) .app-shell :is(.lf-card, .lf-card-overlay, .lf-composer textarea) {
+    --tl-card: var(--card);
+    --tl-card-hover: var(--hover);
+    --tl-ink: var(--ink);
+    --tl-muted: var(--muted);
+    --tl-danger: var(--danger);
+    box-shadow: 0 1px 2px color-mix(in srgb, black 18%, transparent);
+  }
+  :root:not([data-theme='dark']) .app-shell .lf-card[data-selected] {
+    outline-color: var(--accent);
+  }
+  :root:not([data-theme='dark']) .app-shell .lf-card-tools .menu-trigger {
+    box-shadow:
+      0 0 0 1.5px var(--card),
+      0 2px 6px color-mix(in srgb, black 25%, transparent);
+  }
+}
+/* A held card keeps its large shadow in both themes (:root matches the light rules' weight; later, so it wins). */
+:root .app-shell .lf-card[data-dragging] {
+  box-shadow: var(--shadow-lg);
+}
+
+/* The lane header is the lane's drag handle. */
+.lf-lane-head[data-draggable] {
+  cursor: grab;
+  touch-action: manipulation;
+}
+.lf-lane[data-dragging] .lf-lane-head[data-draggable] {
+  cursor: grabbing;
+}
+.lf-lane-head[data-draggable]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.lf-lane-head[data-draggable] button {
+  cursor: pointer;
+}
+
+/* A held lane floats whole, tilted like a held card; its place on the board stays as an empty slot. */
+.app-shell .lf-lane.lf-lane-ghost {
+  max-height: 80vh;
+  overflow: hidden;
+  transform: rotate(2deg);
+  cursor: grabbing;
+  box-shadow: 0 12px 28px color-mix(in srgb, black 45%, transparent);
+}
+.app-shell .lf-lane-ghost .lf-card {
+  cursor: grabbing;
+}
+.app-shell .lf-lane[data-dragging] {
+  opacity: 1;
+  background: color-mix(in srgb, black 35%, transparent);
+  box-shadow: none;
+}
+.app-shell .lf-lane[data-dragging] > * {
+  visibility: hidden;
+}
+
+/* ---- the "Add card" / "Add lane" submit inside a lane: ONE clear action blue, the same in light and dark ----
+   The lanes are dark glass in BOTH themes, so the account accent does not work here: a muted accent (slate) reads as
+   grey, and light mode's darker accents sink into the dark lane. A light, saturated blue with dark ink stands out on
+   every lane tint (on a blue lane too: it is far lighter than the tint) and on any board photo. The high-contrast
+   theme keeps its own buttons. */
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer, .lf-lane-new) {
+  --lf-commit: oklch(0.74 0.14 252);
+  --lf-commit-hover: oklch(0.81 0.11 252);
+  --lf-commit-ink: oklch(0.2 0.03 252);
+}
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer, .lf-lane-new) .button-primary {
+  background: var(--lf-commit);
+  color: var(--lf-commit-ink);
+  border-color: transparent;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 30%, transparent),
+    0 1px 2px color-mix(in srgb, black 40%, transparent);
+}
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer, .lf-lane-new) .button-primary:hover:not(:disabled) {
+  background: var(--lf-commit-hover);
+  color: var(--lf-commit-ink);
+}
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer, .lf-lane-new) .button-primary:focus-visible {
+  outline: 2px solid color-mix(in srgb, white 90%, transparent);
+  outline-offset: 2px;
+}
+/* The new-card / new-lane box must not look like one more card: it is a FIELD, framed in the same blue as its submit
+   button, a touch lighter than the cards in dark mode, with an inset shadow instead of a card's drop shadow. */
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer textarea, .lf-lane-new input) {
+  background: color-mix(in oklab, var(--tl-card) 88%, var(--lf-commit));
+  border: 1.5px solid var(--lf-commit);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, black 30%, transparent);
+  /* The box's own ink: light on the dark field, dark where light mode turns the field light (the card composer). */
+  color: var(--tl-ink);
+}
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer textarea, .lf-lane-new input)::placeholder {
+  color: var(--tl-muted);
+}
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer textarea, .lf-lane-new input):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--lf-commit) 45%, transparent);
+  outline-offset: 1px;
+}
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer textarea, .lf-lane-new input)[aria-invalid='true'] {
+  border-color: var(--tl-danger);
+}
+/* Cancel sits on the same dark lane: the lane's light ink, never the theme's (dark in light mode). */
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer, .lf-lane-new) .button-ghost {
+  color: var(--tl-ink);
+}
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer, .lf-lane-new) .button-ghost:hover:not(:disabled) {
+  background: var(--tl-hover);
+  color: var(--tl-ink);
+}
+/* The hint and the error under the box: the lane's own muted ink and clear red, in light mode too. */
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer, .lf-lane-new) .field-hint {
+  color: var(--tl-muted);
+}
+:root:not([data-theme='contrast']) .app-shell :is(.lf-composer, .lf-lane-new) .field-error {
+  color: var(--tl-danger);
+}
+
+/* "Private" in the toolbar: a quiet label at button height, no chip, set off from the view switcher by a hairline. */
+.app-shell .lf-board-head .lf-board-private {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.625rem 0 0.25rem;
+  margin-right: 0.25rem;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: default;
+}

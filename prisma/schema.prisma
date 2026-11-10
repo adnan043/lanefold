@@ -89,14 +89,14 @@ model Role {
   @@map("roles")
 }
 
-/// The permission catalogue: one row per codename (`site:job:manage`,
+/// The permission catalogue: one row per codename (`site:user:read`,
 /// `site:user:*`, `*`). Shipped as idempotent migrations, matched by codename.
 model Permission {
   id          Int      @id @default(autoincrement())
   codename    String   @unique @db.VarChar(128)
   title       String   @db.VarChar(120)
   description String?  @db.VarChar(255)
-  /// Groups the catalogue in the roles screen ("Users", "Jobs").
+  /// Groups the catalogue in the roles screen ("Users", "Billing").
   groupName   String   @default("General") @map("group_name") @db.VarChar(48)
   createdAt   DateTime @default(now()) @map("created_at")
 
@@ -277,6 +277,7 @@ model AuditEvent {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([actorUserId, id])
+  @@index([actorUserId, action, id(sort: Desc)])
   @@index([targetType, targetId, id])
   @@map("audit_events")
 }
@@ -328,7 +329,7 @@ model Order {
   /// `test` (sandbox) or `live`.
   mode        String    @default("test") @db.VarChar(4)
   email       String?   @db.VarChar(254)
-  /// The signed-in buyer (`users.id`), from the checkout's `customerRef`. No foreign key: an
+  /// The signed-in buyer (`users.id`), from the checkout's `customerRef`. Foreign key ON DELETE SET NULL (with `email`): an
   /// order outlives a deleted account.
   userId      Int?      @map("user_id")
   /// `paid`, `failed`, `refunded` or `partially_refunded`.
@@ -358,46 +359,25 @@ model Membership {
   status           String    @db.VarChar(20)
   currentPeriodEnd DateTime? @map("current_period_end")
   accessEndsAt     DateTime? @map("access_ends_at")
+  /// The workspace a plan checkout paid for (from `customerRef` `<userId>:<workspaceId>`); null for older rows and non-workspace checkouts.
+  workspaceId      Int?      @map("workspace_id")
+  /// Time of the newest payment event applied; an older event never overwrites the row.
+  lastEventAt      DateTime? @map("last_event_at") @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   @@index([userId, priceKey])
   @@index([email, priceKey])
+  @@index([workspaceId, status])
   @@map("memberships")
 }
 
 // ---------------------------------------------------------------- the site's own data
 
-/// A job on the job board (`/jobs`, `/jobs/<slug>`). Holders of
-/// `site:job:manage` post and edit them from `/portal/jobs`.
-model Job {
-  id          Int      @id @default(autoincrement())
-  /// URL name, unique: `/jobs/<slug>`.
-  slug        String   @unique @db.VarChar(120)
-  title       String   @db.VarChar(120)
-  company     String   @db.VarChar(80)
-  location    String   @db.VarChar(80)
-  /// `full-time`, `part-time`, `contract` or `internship`.
-  type        String   @default("full-time") @db.VarChar(20)
-  remote      Boolean  @default(false)
-  /// Plain text; paragraphs separated by blank lines.
-  description String   @db.VarChar(10000)
-  /// Where to apply: an https URL or a mailto: link the poster chose to publish.
-  applyUrl    String   @map("apply_url") @db.VarChar(500)
-  /// `open` (listed) or `closed` (kept, not listed).
-  status      String   @default("open") @db.VarChar(10)
-  /// The user (`users.id`) who posted it. No foreign key: a job outlives its poster.
-  createdBy   Int      @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@index([status, id])
-  @@map("jobs")
-}
-
 // ---------------------------------------------------------------- Lanefold (docs/product/SPEC.md §6)
-// No foreign keys to `users` (managed table): a user id is a plain Int, and a daily cleanup job removes rows
-// of deleted accounts. Every workspace-owned table carries `workspace_id` FIRST in its indexes.
+// Foreign keys to `users` (managed table) exist in SQL ONLY, not modelled here (migration account_deletion_cleanup):
+// personal rows CASCADE, authored columns are SET NULL, and a BEFORE DELETE trigger on `users` guards and cleans up
+// (docs/product/delete-account-design.md). Authored user-id columns are therefore nullable in the database. Every workspace-owned table carries `workspace_id` FIRST in its indexes.
 // `position` columns are COLLATE "C" (migration SQL) so fractional-index keys sort by bytes.
 
 /// Per-user preferences (theme, language). One row per user, created on first use.
@@ -417,9 +397,24 @@ model UserProfile {
   /// `sharp`, `soft` or `round`.
   radius         String   @default("soft") @db.VarChar(8)
   reduceMotion   Boolean  @default(false) @map("reduce_motion")
+  /// Notification emails (Phase 12): `off` (default), `digest` or `immediate`. CHECK in the migration.
+  emailNotifyMode   String    @default("off") @map("email_notify_mode") @db.VarChar(10)
+  /// Last notification id already mailed (or skipped when switched on).
+  emailNotifyCursor BigInt    @default(0) @map("email_notify_cursor")
+  emailNotifiedAt   DateTime? @map("email_notified_at") @db.Timestamptz(3)
+  /// Morning digest (opt-in): the local hour (5 to 12) it is made at, null = off. CHECK in the migration.
+  digestHour        Int?      @map("digest_hour") @db.SmallInt
+  /// The IANA time zone that hour is read in (the browser's, checked when saved); null reads as UTC.
+  digestTz          String?   @map("digest_tz") @db.VarChar(64)
+  /// The local day of the last digest made (or skipped as empty): the job's once-a-day claim.
+  digestLastOn      DateTime? @map("digest_last_on") @db.Date
+  /// When the last digest was made: the next one counts mentions and assignments newer than this.
+  digestSentAt      DateTime? @map("digest_sent_at") @db.Timestamptz(3)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  @@index([emailNotifyMode, userId])
+  @@index([digestHour, userId])
   @@map("user_profiles")
 }
 
@@ -436,15 +431,24 @@ model Workspace {
   enforceTheme     Boolean   @default(false) @map("enforce_theme")
   defaultLocale    String    @default("en") @map("default_locale") @db.VarChar(8)
   graceUntil       DateTime? @map("grace_until") @db.Timestamptz(3)
-  createdBy        Int       @map("created_by")
+  /// Set when the owner archives the workspace: hidden from every list, answers 404 to everyone (members too)
+  /// until the owner restores it. Nothing is deleted.
+  /// NOTE: the partial index `workspaces_archived_idx` (WHERE archived_at IS NOT NULL) exists ONLY in SQL
+  /// (migration 20261103100100_workspace_archive); Prisma cannot model it. Do not drop it.
+  archivedAt       DateTime? @map("archived_at") @db.Timestamptz(3)
+  archivedBy       Int?      @map("archived_by")
+  createdBy        Int?      @map("created_by")
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   members   WorkspaceMember[]
+  removals  WorkspaceRemoval[]
   invites   WorkspaceInvite[]
   joinLinks WorkspaceJoinLink[]
   boards    Board[]
+  templates CardTemplate[]
 
+  @@index([createdBy])
   @@map("workspaces")
 }
 
@@ -463,6 +467,21 @@ model WorkspaceMember {
   @@map("workspace_members")
 }
 
+/// Who was removed from (or left) a workspace, and when: a link or invite created BEFORE this moment cannot bring
+/// them back (src/server/routes/members.ts). Written with the removal, deleted when they are accepted again.
+/// The user foreign key (ON DELETE CASCADE) lives in the migration only, like the other user links.
+model WorkspaceRemoval {
+  workspaceId Int      @map("workspace_id")
+  userId      Int      @map("user_id")
+  removedAt   DateTime @default(now()) @map("removed_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_removals")
+}
+
 /// Single-use link bound to an email (the email is only a hash; never copied).
 model WorkspaceInvite {
   id          Int       @id @default(autoincrement())
@@ -470,16 +489,30 @@ model WorkspaceInvite {
   tokenHash   String    @unique @map("token_hash") @db.VarChar(64)
   /// SHA-256 of the lower-cased email the link is bound to; null = anyone who signs in.
   emailHash   String?   @map("email_hash") @db.VarChar(64)
+  /// `admin`, `member`, `viewer`, or `guest` (a board invite: only a seat on `boardId`, no workspace membership).
   role        String    @db.VarChar(10)
   expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
   usedAt      DateTime? @map("used_at") @db.Timestamptz(3)
-  createdBy   Int       @map("created_by")
+  createdBy   Int?      @map("created_by")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Phase 11: `queued`, `sent`, `failed`, `not_configured`; null = no email requested. The address is never stored.
+  emailStatus   String?   @map("email_status") @db.VarChar(16)
+  emailQueuedAt DateTime? @map("email_queued_at") @db.Timestamptz(3)
+  emailSentAt   DateTime? @map("email_sent_at") @db.Timestamptz(3)
+  emailAttempts Int       @default(0) @map("email_attempts")
+  /// A board invite (role `guest`, or a workspace member seated on accept): the board and the role on it. Null = a workspace invite.
+  boardId       Int?      @map("board_id")
+  boardRole     String?   @map("board_role") @db.VarChar(10)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  board     Board?    @relation(fields: [boardId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, id])
+  @@index([createdBy])
+  @@index([workspaceId, emailQueuedAt])
+  @@index([createdBy, emailQueuedAt])
+  @@index([boardId])
   @@map("workspace_invites")
 }
 
@@ -492,13 +525,14 @@ model WorkspaceJoinLink {
   maxUses     Int       @map("max_uses")
   uses        Int       @default(0)
   revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
-  createdBy   Int       @map("created_by")
+  createdBy   Int?      @map("created_by")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, id])
+  @@index([createdBy])
   @@map("workspace_join_links")
 }
 
@@ -516,12 +550,28 @@ model Board {
   bgPattern      String    @default("none") @map("bg_pattern") @db.VarChar(16)
   bgFileId       String?   @map("bg_file_id") @db.VarChar(32)
   shareTokenHash String?   @unique @map("share_token_hash") @db.VarChar(64)
+  /// Public link stops working at this time (null = never). Set with the link by a board admin.
+  shareExpiresAt DateTime? @map("share_expires_at") @db.Timestamptz(3)
+  /// Stale card warning: remind about cards that sat this many days in one lane (3, 7, 14 or 30). Null = off.
+  staleDays      Int?      @map("stale_days")
+  /// Who may add people to the board ("Share"): `admins` (board admins) or `members` (any board member who is not a guest).
+  memberInvites  String    @default("admins") @map("member_invites") @db.VarChar(10)
+  /// Workspace members may join a workspace-visible board themselves ("Join board").
+  selfJoin       Boolean   @default(true) @map("self_join")
+  /// SHA-256 of the board's invite link token (`bl_…`); null = no link. The token itself is never stored.
+  inviteLinkHash String?   @unique @map("invite_link_hash") @db.VarChar(64)
+  /// The role the invite link gives: `member` or `viewer`.
+  inviteLinkRole String?   @map("invite_link_role") @db.VarChar(10)
+  /// Who made the invite link; it works only while they may still add people to the board.
+  inviteLinkBy   Int?      @map("invite_link_by")
   /// Bumped by every write transaction; clients poll it (SPEC §8).
   rev            BigInt    @default(0)
+  /// The next card number (#n) of this board; handed out by `src/server/card-number.ts`, never reused.
+  nextCardNumber Int       @default(1) @map("next_card_number")
   /// Personal Inbox board of one user (`inbox_of`), else null.
   inboxOf        Int?      @map("inbox_of")
   archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
-  createdBy      Int       @map("created_by")
+  createdBy      Int?      @map("created_by")
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -529,11 +579,16 @@ model Board {
   lanes        Lane[]
   cards        Card[]
   labels       Label[]
+  customFields CustomField[]
+  flows        Flow[]
   boardMembers BoardMember[]
   boardStars   BoardStar[]
+  invites      WorkspaceInvite[]
 
   @@index([workspaceId, archivedAt, id])
   @@index([inboxOf, workspaceId])
+  @@index([createdBy])
+  @@index([inviteLinkBy])
   @@map("boards")
 }
 
@@ -549,6 +604,8 @@ model BoardMember {
 
   @@id([boardId, userId])
   @@index([userId, workspaceId])
+  /// The guest count of a workspace (seats of people who are not workspace members).
+  @@index([workspaceId, userId])
   @@map("board_members")
 }
 
@@ -580,12 +637,33 @@ model Lane {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  board Board      @relation(fields: [boardId], references: [id], onDelete: Cascade)
   cards Card[]
+  prefs LanePref[]
 
   @@index([workspaceId, boardId, position, id])
   @@index([boardId, updatedRev])
   @@map("lanes")
+}
+
+/// One person's own choices about one lane: pinned (kept in view) and watching (told about new cards).
+/// A row exists only while at least one flag is on.
+model LanePref {
+  userId      Int      @map("user_id")
+  laneId      Int      @map("lane_id")
+  workspaceId Int      @map("workspace_id")
+  boardId     Int      @map("board_id")
+  pinned      Boolean  @default(false)
+  watching    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  lane Lane @relation(fields: [laneId], references: [id], onDelete: Cascade)
+
+  @@id([userId, laneId])
+  @@index([laneId])
+  @@index([userId, boardId])
+  @@map("lane_prefs")
 }
 
 model Card {
@@ -601,18 +679,31 @@ model Card {
   estimateMinutes Int?      @map("estimate_minutes")
   startDate       DateTime? @map("start_date") @db.Date
   dueDate         DateTime? @map("due_date") @db.Date
+  /// The exact due moment when a time was picked (the dates popup); null = a due DAY only. Cleared by the
+  /// cards_due_time trigger whenever `due_date` changes without it (bulk, flows, calendar drags).
+  dueAt           DateTime? @map("due_at") @db.Timestamptz(3)
+  /// Remind this many minutes before `due_at` (0, 5, 10, 15, 60, 120, 1440, 2880); null = no timed reminder.
+  /// Cards without `due_at` keep the day-before reminder (jobs/due-reminders.ts).
+  dueRemindMinutes Int?     @map("due_remind_minutes")
   completedAt     DateTime? @map("completed_at") @db.Timestamptz(3)
+  /// When the card came into its current lane (set by the cards_lane_entered trigger, so every move path is covered).
+  laneEnteredAt   DateTime  @default(now()) @map("lane_entered_at") @db.Timestamptz(3)
+  /// Short number within the board (#42); null only for a card written before the card_number migration.
+  number          Int?
   coverFileId     String?   @map("cover_file_id") @db.VarChar(32)
   checklistTotal  Int       @default(0) @map("checklist_total")
   checklistDone   Int       @default(0) @map("checklist_done")
   commentCount    Int       @default(0) @map("comment_count")
   attachmentCount Int       @default(0) @map("attachment_count")
+  /// Cards that block this one / cards this one blocks (kept in step with `card_dependencies` by its routes).
+  blockedByCount  Int       @default(0) @map("blocked_by_count")
+  blockingCount   Int       @default(0) @map("blocking_count")
   archivedAt      DateTime? @map("archived_at") @db.Timestamptz(3)
   updatedRev      BigInt    @default(0) @map("updated_rev")
   /// Import key: a re-run of an import skips cards it already made.
   importId        String?   @map("import_id") @db.VarChar(40)
   externalId      String?   @map("external_id") @db.VarChar(64)
-  createdBy       Int       @map("created_by")
+  createdBy       Int?      @map("created_by")
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -620,15 +711,27 @@ model Card {
   lane        Lane          @relation(fields: [laneId], references: [id], onDelete: Cascade)
   members     CardMember[]
   watchers    CardWatcher[]
+  dueReminders DueReminder[]
+  staleReminders StaleReminder[]
   labels      CardLabel[]
   checklists  Checklist[]
   comments    Comment[]
   attachments Attachment[]
+  fieldValues CardFieldValue[]
+  blockers    CardDependency[] @relation("blocked")
+  blocks      CardDependency[] @relation("blocker")
+  recurrence  CardRecurrence?
+  timeEntries TimeEntry[]
+  timers      TimeTimer[]
 
   @@unique([boardId, importId, externalId])
+  @@unique([boardId, number])
   @@index([workspaceId, laneId, position, id])
   @@index([boardId, updatedRev])
   @@index([workspaceId, dueDate, id])
+  @@index([dueDate, id])
+  @@index([boardId, laneEnteredAt])
+  @@index([createdBy])
   @@map("cards")
 }
 
@@ -655,6 +758,35 @@ model CardWatcher {
   @@id([cardId, userId])
   @@index([userId, cardId])
   @@map("card_watchers")
+}
+
+/// One row per reminder already sent (card, person, due day): the job's dedupe key. Cleared a week after the due day.
+/// One row per (card, person, lane entry) the stale card job has reminded: a second run, or a card still sitting in the same lane, sends nothing.
+model StaleReminder {
+  cardId    Int      @map("card_id")
+  userId    Int      @map("user_id")
+  enteredAt DateTime @map("entered_at") @db.Timestamptz(3)
+  sentAt    DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, userId, enteredAt])
+  @@index([userId])
+  @@map("stale_reminders")
+}
+
+model DueReminder {
+  cardId Int      @map("card_id")
+  userId Int      @map("user_id")
+  dueOn  DateTime @map("due_on") @db.Date
+  sentAt DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, userId, dueOn])
+  @@index([dueOn])
+  @@index([userId])
+  @@map("due_reminders")
 }
 
 model Label {
@@ -708,21 +840,49 @@ model ChecklistItem {
   text        String    @db.VarChar(300)
   position    String    @db.VarChar(64)
   doneAt      DateTime? @map("done_at") @db.Timestamptz(3)
+  /// One person the item is for (`users.id`, foreign key ON DELETE SET NULL in migration checklist_item_meta). No email here.
+  assigneeId  Int?      @map("assignee_id")
+  dueDate     DateTime? @map("due_date") @db.Date
+  /// The exact due moment when a time was picked (the item's due date popover); null = a due DAY only. Cleared by the
+  /// checklist_items_due_time trigger whenever `due_date` changes without it, like cards.due_at.
+  dueAt       DateTime? @map("due_at") @db.Timestamptz(3)
+  /// Remind this many minutes before `due_at` (the cards' REMIND_MINUTES list); null = no reminder.
+  dueRemindMinutes Int? @map("due_remind_minutes")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  checklist Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  checklist Checklist           @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  reminders ItemDueReminder[]
 
   @@index([workspaceId, checklistId, position, id])
+  @@index([assigneeId])
+  /// The reminder sweep: timed items whose reminder may be due (jobs/due-reminders.ts).
+  @@index([dueAt])
   @@map("checklist_items")
+}
+
+/// One reminder sent for a checklist item's due moment to one person: the key that stops a second one.
+/// A new due time is a new key, so changing the time can remind again.
+model ItemDueReminder {
+  itemId Int      @map("item_id")
+  userId Int      @map("user_id")
+  dueAt  DateTime @map("due_at") @db.Timestamptz(3)
+  sentAt DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  item ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, userId, dueAt])
+  @@index([dueAt])
+  @@index([userId])
+  @@map("item_due_reminders")
 }
 
 model Comment {
   id          Int       @id @default(autoincrement())
   cardId      Int       @map("card_id")
   workspaceId Int       @map("workspace_id")
-  /// No foreign key: shows as "Deleted user" when the account is gone.
-  authorId    Int       @map("author_id")
+  /// Foreign key to users, ON DELETE SET NULL (migration account_deletion_cleanup): null = "Deleted user".
+  authorId    Int?      @map("author_id")
   bodyMd      String    @map("body_md") @db.VarChar(5000)
   editedAt    DateTime? @map("edited_at") @db.Timestamptz(3)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -760,7 +920,7 @@ model Attachment {
   contentType String   @default("") @map("content_type") @db.VarChar(127)
   size        Int      @default(0)
   ready       Boolean  @default(false)
-  uploadedBy  Int      @map("uploaded_by")
+  uploadedBy  Int?     @map("uploaded_by")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -792,7 +952,7 @@ model Activity {
   workspaceId Int      @map("workspace_id")
   boardId     Int?     @map("board_id")
   cardId      Int?     @map("card_id")
-  actorId     Int      @map("actor_id")
+  actorId     Int?     @map("actor_id")
   /// Stable code like `card.created`, `card.moved`; the UI localizes it.
   kind        String   @db.VarChar(40)
   meta        Json?    @db.JsonB
@@ -800,6 +960,7 @@ model Activity {
 
   @@index([workspaceId, boardId, id(sort: Desc)])
   @@index([workspaceId, cardId, id(sort: Desc)])
+  @@index([actorId])
   @@map("activity")
 }
 
@@ -807,7 +968,7 @@ model Notification {
   id             BigInt    @id @default(autoincrement())
   userId         Int       @map("user_id")
   workspaceId    Int       @map("workspace_id")
-  /// `assigned`, `mentioned`, `due_soon`, `comment`, `message_mention`.
+  /// `assigned`, `mentioned`, `due_soon`, `comment`, `message_mention`, `digest` (the morning digest, inserted by its job only), and for followed cards `card_moved`, `card_due`, `card_done`, `card_member`.
   kind           String    @db.VarChar(20)
   actorId        Int?      @map("actor_id")
   boardId        Int?      @map("board_id")
@@ -816,9 +977,30 @@ model Notification {
   readAt         DateTime? @map("read_at") @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  digest Digest?
+
   @@index([userId, id(sort: Desc)])
   @@index([userId, readAt, id])
+  @@index([userId, workspaceId, id(sort: Desc)])
+  @@index([actorId])
+  @@index([cardId])
   @@map("notifications")
+}
+
+/// The numbers behind a `digest` notification (one per person per day): counts and up to 15 card ids, never a title or a name.
+model Digest {
+  notificationId BigInt   @id @map("notification_id")
+  userId         Int      @map("user_id")
+  day            DateTime @db.Date
+  dueCount       Int      @map("due_count")
+  overdueCount   Int      @map("overdue_count")
+  mentionCount   Int      @map("mention_count")
+  cardIds        Int[]    @map("card_ids")
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@map("digests")
 }
 
 model SavedFilter {
@@ -829,11 +1011,14 @@ model SavedFilter {
   name        String   @db.VarChar(60)
   /// Opaque snapshot of the filter bar.
   filter      Json     @db.JsonB
+  /// `private` (only its author) or `board` (everyone with a seat on the board).
+  scope       String   @default("private") @db.VarChar(8)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([userId, boardId, id])
   @@index([boardId, id])
+  @@index([boardId, scope, id])
   @@map("saved_filters")
 }
 
@@ -847,7 +1032,7 @@ model Conversation {
   /// `<smaller user id>:<larger user id>` for a DM, so a pair has one conversation.
   dmKey       String?  @map("dm_key") @db.VarChar(24)
   lastSeq     BigInt   @default(0) @map("last_seq")
-  createdBy   Int      @map("created_by")
+  createdBy   Int?     @map("created_by")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -856,6 +1041,7 @@ model Conversation {
 
   @@unique([workspaceId, dmKey])
   @@index([workspaceId, kind, id])
+  @@index([createdBy])
   @@map("conversations")
 }
 
@@ -879,7 +1065,7 @@ model Message {
   conversationId Int       @map("conversation_id")
   workspaceId    Int       @map("workspace_id")
   seq            BigInt
-  senderId       Int       @map("sender_id")
+  senderId       Int?      @map("sender_id")
   bodyMd         String    @map("body_md") @db.VarChar(4000)
   parentId       BigInt?   @map("parent_id")
   /// Client-made key: a retried send returns the same message.
@@ -900,6 +1086,7 @@ model Message {
   @@unique([conversationId, clientId])
   @@unique([conversationId, seq])
   @@index([conversationId, parentId, id])
+  @@index([conversationId, parentId, seq])
   @@index([senderId, createdAt])
   @@map("messages")
 }
@@ -913,6 +1100,7 @@ model MessageReaction {
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@id([messageId, userId, emoji])
+  @@index([userId])
   @@map("message_reactions")
 }
 
@@ -945,6 +1133,8 @@ model AppSettings {
   billingMode        String   @default("PAID") @map("billing_mode") @db.VarChar(12)
   graceDays          Int      @default(14) @map("grace_days")
   maintenanceMessage String   @default("") @map("maintenance_message") @db.VarChar(300)
+  /// The brand colour the admin chose, `#rrggbb` (CHECK in the migration); null = the default green.
+  brandColor         String?  @map("brand_color") @db.VarChar(7)
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("app_settings")
@@ -962,4 +1152,190 @@ model PlanLimit {
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("plan_limits")
+}
+
+/// Outbox of stored files whose row is gone (set by triggers on attachments, cards.cover_file_id, boards.bg_file_id).
+/// The `file-cleanup` job deletes the bytes through the platform, then sets `done_at`.
+model FileDeletion {
+  id        BigInt    @id @default(autoincrement())
+  fileId    String    @unique @map("file_id") @db.VarChar(32)
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  doneAt    DateTime? @map("done_at") @db.Timestamptz(3)
+
+  @@index([doneAt, id])
+  @@map("file_deletions")
+}
+
+/// A custom field a board defines for its cards. `type`: text, number, date, checkbox or dropdown (validator + CHECK).
+model CustomField {
+  id          Int      @id @default(autoincrement())
+  boardId     Int      @map("board_id")
+  workspaceId Int      @map("workspace_id")
+  name        String   @db.VarChar(40)
+  type        String   @db.VarChar(10)
+  /// The field's place on the card and in the manager (drag to reorder); ties fall back to id.
+  position    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  board   Board              @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  options CustomFieldOption[]
+  values  CardFieldValue[]
+
+  @@index([workspaceId, boardId, id])
+  @@map("custom_fields")
+}
+
+model CustomFieldOption {
+  id          Int    @id @default(autoincrement())
+  fieldId     Int    @map("field_id")
+  workspaceId Int    @map("workspace_id")
+  name        String @db.VarChar(40)
+  colorHex    String @map("color_hex") @db.VarChar(7)
+
+  field  CustomField       @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  values CardFieldValue[]
+
+  @@index([workspaceId, fieldId, id])
+  @@map("custom_field_options")
+}
+
+/// One typed column per kind (nothing is Json): a row exists only while the card has a value.
+model CardFieldValue {
+  cardId      Int       @map("card_id")
+  fieldId     Int       @map("field_id")
+  workspaceId Int       @map("workspace_id")
+  textValue   String?   @map("text_value") @db.VarChar(200)
+  numberValue Float?    @map("number_value")
+  dateValue   DateTime? @map("date_value") @db.Date
+  boolValue   Boolean?  @map("bool_value")
+  optionId    Int?      @map("option_id")
+
+  card   Card               @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  field  CustomField        @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  option CustomFieldOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+
+  @@id([cardId, fieldId])
+  @@index([fieldId, cardId])
+  @@index([optionId])
+  @@map("card_field_values")
+}
+
+/// "blocker blocks blocked", both cards on the same board. No cycles (checked in the route, under the board lock).
+model CardDependency {
+  blockerId   Int      @map("blocker_id")
+  blockedId   Int      @map("blocked_id")
+  workspaceId Int      @map("workspace_id")
+  boardId     Int      @map("board_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  blocker Card @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked Card @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+  @@index([workspaceId, boardId])
+  @@map("card_dependencies")
+}
+
+/// One automation rule of a board (Phase 7): trigger, optional conditions, up to 3 actions.
+/// `config` is validated field by field on every write (src/lib/flows.ts) and again before it runs; nothing is filtered on it.
+model Flow {
+  id          Int       @id @default(autoincrement())
+  boardId     Int       @map("board_id")
+  workspaceId Int       @map("workspace_id")
+  name        String    @db.VarChar(80)
+  /// `card_created`, `card_moved` or `daily_due`.
+  triggerKind String    @map("trigger_kind") @db.VarChar(16)
+  enabled     Boolean   @default(true)
+  config      Json      @db.JsonB
+  /// Scheduled flows only: the UTC day the daily job last ran this flow (its claim, so a retry never runs it twice).
+  lastRunOn   DateTime? @map("last_run_on") @db.Date
+  createdBy   Int?      @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, triggerKind, enabled])
+  @@index([workspaceId, id])
+  @@index([triggerKind, enabled, id])
+  @@map("flows")
+}
+
+/// A repeat rule on a card: a scheduled job makes a fresh copy on each due day (`next_run_on`), then moves it on.
+/// `frequency`: daily, weekly or monthly (CHECK). One rule per card; the copies carry no rule.
+model CardRecurrence {
+  cardId      Int       @id @map("card_id")
+  workspaceId Int       @map("workspace_id")
+  boardId     Int       @map("board_id")
+  frequency   String    @db.VarChar(8)
+  /// Every `intervalCount` days, weeks or months (1 to 99, CHECK); `endsOn` is the last day a copy may be made.
+  intervalCount Int     @default(1) @map("interval_count")
+  endsOn      DateTime? @map("ends_on") @db.Date
+  anchorOn    DateTime  @map("anchor_on") @db.Date
+  nextRunOn   DateTime  @map("next_run_on") @db.Date
+  lastRunOn   DateTime? @map("last_run_on") @db.Date
+  enabled     Boolean   @default(true)
+  createdBy   Int?      @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([enabled, nextRunOn, cardId])
+  @@index([workspaceId])
+  @@map("card_recurrences")
+}
+
+/// A saved template a workspace shares. `kind` `card`: title, description, priority, estimate, checklists, label names.
+/// `kind` `board`: lane names. The payload is validated on the way in and read back through the same shape.
+model CardTemplate {
+  id          Int      @id @default(autoincrement())
+  workspaceId Int      @map("workspace_id")
+  kind        String   @db.VarChar(8)
+  name        String   @db.VarChar(80)
+  payload     Json
+  createdBy   Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, kind, id])
+  @@map("card_templates")
+}
+
+/// Time logged on a card: whole minutes (1 to 1440) spent on a day. `userId` goes null when the person's account is deleted.
+model TimeEntry {
+  id          Int      @id @default(autoincrement())
+  cardId      Int      @map("card_id")
+  boardId     Int      @map("board_id")
+  workspaceId Int      @map("workspace_id")
+  userId      Int?     @map("user_id")
+  minutes     Int
+  spentOn     DateTime @map("spent_on") @db.Date
+  note        String   @default("") @db.VarChar(200)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, spentOn(sort: Desc), id(sort: Desc)])
+  @@index([boardId, spentOn])
+  @@index([workspaceId, userId, spentOn])
+  @@index([userId])
+  @@map("time_entries")
+}
+
+/// The running timer of one person (at most one: `userId` is the key). Stopping turns it into a `time_entries` row.
+model TimeTimer {
+  userId      Int      @id @map("user_id")
+  cardId      Int      @map("card_id")
+  boardId     Int      @map("board_id")
+  workspaceId Int      @map("workspace_id")
+  startedAt   DateTime @default(now()) @map("started_at") @db.Timestamptz(3)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId])
+  @@map("time_timers")
 }

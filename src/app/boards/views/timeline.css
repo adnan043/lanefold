@@ -1,0 +1,23 @@
+/* Timeline view of a board. Logical properties only (RTL-safe); positions come from grid columns set in CSSOM. */
+.lf-tl-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+.lf-tl-title { margin: 0; margin-inline-start: 0.5rem; margin-inline-end: auto; font-size: 1.125rem; }
+.lf-tl-zoom { display: inline-flex; gap: 0.125rem; padding: 0.125rem; border: 1px solid var(--line); border-radius: 8px; }
+.lf-tl-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.lf-tl-grid { --lf-tl-col: 2.5rem; position: relative; display: grid; grid-template-columns: repeat(var(--lf-tl-days), var(--lf-tl-col)); grid-auto-rows: auto; min-inline-size: max-content; padding-block-end: 0.5rem; }
+.lf-tl-grid[data-zoom='month'] { --lf-tl-col: 0.875rem; }
+.lf-tl-month { grid-row: 1; padding-block: 0.25rem; padding-inline: 0.5rem; font-size: 0.8125rem; font-weight: 600; border-inline-start: 1px solid var(--line); white-space: nowrap; overflow: hidden; }
+.lf-tl-day { grid-row: 2; padding-block: 0.125rem; text-align: center; font-size: 0.6875rem; opacity: 0.7; border-inline-start: 1px solid var(--line); border-block-end: 1px solid var(--line); white-space: nowrap; overflow: hidden; }
+.lf-tl-day[data-today] { opacity: 1; font-weight: 700; color: var(--accent); }
+.lf-tl-today { grid-row: 1 / -1; z-index: 1; justify-self: center; inline-size: 2px; background: var(--accent); pointer-events: none; }
+.lf-tl-none { grid-column: 1 / -1; padding: 0.75rem; }
+.lf-tl-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; padding-block: 0.125rem; }
+.lf-tl-barbtn { display: block; min-inline-size: 0; min-block-size: 1.75rem; padding-block: 0.125rem; padding-inline: 0.5rem; border: 1px solid var(--accent); border-radius: 6px; background: color-mix(in srgb, var(--accent) 22%, var(--card)); color: inherit; font: inherit; font-size: 0.8125rem; text-align: start; cursor: pointer; overflow: hidden; z-index: 2; }
+.lf-tl-barbtn:hover { background: color-mix(in srgb, var(--accent) 35%, var(--card)); }
+.lf-tl-barbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lf-tl-barbtn.is-done { opacity: 0.6; }
+.lf-tl-barbtn.is-done .lf-tl-bartext { text-decoration: line-through; }
+.lf-tl-barbtn.is-milestone { min-inline-size: 1.75rem; padding-inline: 0.25rem; border-radius: 999px; }
+.lf-tl-barbtn[data-clip-start] { border-start-start-radius: 0; border-end-start-radius: 0; border-inline-start-style: dashed; }
+.lf-tl-barbtn[data-clip-end] { border-start-end-radius: 0; border-end-end-radius: 0; border-inline-end-style: dashed; }
+.lf-tl-bartext { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lf-tl-unscheduled { padding: 0.5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }

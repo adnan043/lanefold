@@ -6,12 +6,20 @@
  * (`src/styles/app.css`), export it here, and use it everywhere; never a
  * second UI library.
  *
+ * NOT in this barrel on purpose (it kept ~14 KB of date picker, color picker, popover, chips and the command palette in the shared
+ * chunk every screen loads): import them straight from their file, `from '../ui/popover'` (Popover, DatePicker, ColorPicker),
+ * `'../ui/chips'` (Chip, ChipInput, AvatarStack, ColorDot), `'../ui/command'` (CommandPalette), `'../ui/date'` (date helpers),
+ * `'../ui/contrast'` and `'../ui/fuzzy'`.
+ *
  * On screen while you work: `/dashboard/components` in the Preview (dev only).
  */
 export * from './button';
+export * from './cooldown';
 export * from './display';
 export * from './form';
 export * from './icon';
+export * from './labels';
 export * from './nav';
 export * from './overlay';
+export * from './portal-host';
 export * from './table';

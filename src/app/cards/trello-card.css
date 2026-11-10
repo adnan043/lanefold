@@ -1,0 +1,1308 @@
+/* Trello-style card back: dark in the dark theme, light in the light theme (block at the end), cover banner, round header
+   buttons, a borderless title, an icon gutter with indented sections, custom fields three across. Loaded after
+   cards.css and wins by specificity. Tokens and colour-mix only, no hex, no style="". */
+.cd-dialog {
+  /* Slate grey, not black (like Trello's dark card back): panel ≈ #2b3138, header/inputs a step darker. */
+  --card: color-mix(in oklab, var(--info) 9%, color-mix(in oklab, white 30%, black));
+  --surface: var(--card);
+  --bg: var(--card);
+  --tl-top: color-mix(in oklab, var(--info) 9%, color-mix(in oklab, white 25%, black));
+  --tl-btn: color-mix(in oklab, white 10%, var(--card));
+  --tl-btn-hover: color-mix(in oklab, white 17%, var(--card));
+  /* Text: soft off-white, never pure white, and secondary text still clearly readable. */
+  --ink: color-mix(in oklab, var(--info) 6%, color-mix(in oklab, white 91%, black));
+  --muted: color-mix(in oklab, var(--info) 8%, color-mix(in oklab, white 78%, black));
+  --subtle: color-mix(in oklab, var(--info) 8%, color-mix(in oklab, white 72%, black));
+  --line: color-mix(in srgb, white 14%, transparent);
+  --line-strong: color-mix(in srgb, white 26%, transparent);
+  --control-border: color-mix(in oklab, white 52%, black);
+  --control-border-hover: var(--accent); /* hover: the full accent colour, every field */
+  --hover: var(--tl-btn);
+  --accent-soft: color-mix(in oklab, var(--accent) 24%, black);
+  --accent-text: color-mix(in oklab, var(--accent) 45%, white);
+  --danger-soft: color-mix(in oklab, var(--danger) 24%, black);
+  --warning-soft: color-mix(in oklab, var(--warning) 24%, black);
+  --success-soft: color-mix(in oklab, var(--success) 24%, black);
+  --info-soft: color-mix(in oklab, var(--info) 24%, black);
+  color-scheme: dark;
+}
+.cd-dialog::backdrop {
+  background: color-mix(in srgb, black 64%, transparent);
+  backdrop-filter: none;
+}
+.cd-dialog .cd-panel {
+  border: 0;
+  border-radius: 12px;
+  background: var(--card);
+}
+
+/* ---- header: cover banner, list chip left, round buttons right ---- */
+.cd-dialog .cd-top {
+  background: var(--tl-top);
+  border-block-end: 0;
+  min-block-size: 3.25rem;
+}
+.cd-dialog .cd-top[data-cover] {
+  block-size: 10rem;
+}
+.cd-dialog .cd-top-bar {
+  padding: 0.75rem 1rem;
+  gap: 0.375rem;
+}
+.cd-dialog .cd-lane-chip {
+  border: 0;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  background: color-mix(in oklab, var(--accent) 55%, black);
+  color: color-mix(in oklab, white 92%, black);
+  font-size: 0.875rem;
+}
+.cd-dialog .cd-card-num {
+  color: var(--muted);
+}
+.cd-dialog .cd-top-bar .btn,
+.cd-dialog .cd-top-bar .icon-btn,
+.cd-dialog .cd-top-bar .menu-trigger {
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, black 35%, transparent);
+  color: var(--ink);
+}
+.cd-dialog .cd-top-bar .btn:hover,
+.cd-dialog .cd-top-bar .icon-btn:hover,
+.cd-dialog .cd-top-bar .menu-trigger:hover {
+  background: color-mix(in srgb, black 55%, transparent);
+}
+
+/* ---- left column ---- */
+.cd-dialog .cd-main {
+  padding: 1rem 1.5rem 2rem;
+  gap: 1.5rem;
+}
+.cd-dialog .cd-side {
+  background: var(--card);
+  border-inline-start: 0;
+  padding: 1rem 1.5rem 2rem 1rem;
+}
+.cd-dialog .cd-panel .cd-title textarea {
+  min-block-size: 2.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 1.5rem;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: none;
+}
+.cd-dialog .cd-panel .cd-title textarea:hover {
+  background: color-mix(in srgb, white 6%, transparent);
+  border-color: transparent;
+}
+.cd-dialog .cd-panel .cd-title textarea:focus-visible {
+  background: var(--tl-field, var(--tl-top));
+  border-color: var(--accent-text);
+  box-shadow: none;
+}
+
+/* Add / Dates / Checklist / Attachment: flat dark buttons */
+.cd-dialog .cd-quick .btn,
+.cd-dialog .cd-quick button,
+.cd-dialog .cd-section-head .btn,
+.cd-dialog .cd-people-row .btn,
+.cd-dialog .cd-field-body .btn,
+.cd-dialog .cd-side .cd-section-head button {
+  border: 0;
+  border-radius: 6px;
+  background: var(--tl-btn);
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow: none;
+}
+.cd-dialog .cd-quick .btn:hover,
+.cd-dialog .cd-quick button:hover,
+.cd-dialog .cd-section-head .btn:hover,
+.cd-dialog .cd-people-row .btn:hover,
+.cd-dialog .cd-field-body .btn:hover,
+.cd-dialog .cd-side .cd-section-head button:hover {
+  background: var(--tl-btn-hover);
+}
+.cd-dialog .cd-quick {
+  gap: 0.5rem;
+}
+
+/* Members and Labels: small grey heading, then round avatars / solid label chips and a round "+" */
+.cd-dialog .cd-label-text,
+.cd-dialog .cd-field > label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* Section headings: the icon sits in a gutter, the body lines up under the title (Trello's 40px indent) */
+.cd-dialog .cd-main .cd-section {
+  gap: 0.5rem;
+}
+.cd-dialog .cd-main .cd-section-head {
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+}
+.cd-dialog .cd-main .cd-section-head > svg {
+  margin-inline-end: 0.875rem;
+  color: var(--muted);
+}
+.cd-dialog .cd-main .cd-section > :not(.cd-section-head) {
+  margin-inline-start: 2.5rem;
+}
+.cd-dialog .cd-main .cd-section-head h3 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+/* Custom fields / properties: three across, like Trello's field grid */
+.cd-dialog .cd-props {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem 0.5rem;
+}
+@media (max-width: 720px) {
+  .cd-dialog .cd-props {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cd-dialog .cd-main .cd-section > :not(.cd-section-head) {
+    margin-inline-start: 0;
+  }
+}
+
+/* Inputs, selects, textareas */
+.cd-dialog .cd-panel input:not([type='checkbox']):not([type='file']):not(.cd-title *),
+.cd-dialog .cd-panel textarea,
+.cd-dialog .cd-panel select {
+  border-radius: 8px;
+  border-color: var(--control-border);
+  background: var(--tl-field, var(--tl-top));
+  box-shadow: none;
+}
+.cd-dialog .cd-panel input:not([type='checkbox']):not([type='file']):not(.cd-title *):focus-visible,
+.cd-dialog .cd-panel textarea:focus-visible {
+  border-color: var(--accent-text);
+  box-shadow: none;
+}
+
+/* ---- right column: comments and activity ---- */
+.cd-dialog .cd-side .cd-section-head h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.cd-dialog .cd-editor,
+.cd-dialog .cd-comment-fake {
+  border-radius: 8px;
+  border-color: var(--control-border);
+  background: var(--tl-field, var(--tl-top));
+}
+.cd-dialog .cd-side .cd-comment {
+  border: 0;
+  border-radius: 8px;
+  background: var(--tl-top);
+  padding: 0.5rem 0.75rem;
+}
+.cd-dialog .cd-comment-head {
+  font-weight: 700;
+}
+.cd-dialog .cd-comment-head time,
+.cd-dialog .cd-activity time {
+  color: var(--accent-text);
+  text-decoration: underline;
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.cd-dialog .cd-attachment {
+  border: 0;
+  background: transparent;
+}
+
+/* ---- width and columns like Trello's card back (about 768px; details left, comments right) ---- */
+.cd-dialog .cd-panel {
+  inline-size: min(48rem, calc(100vw - 2rem));
+}
+.cd-dialog .cd-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+}
+@media (max-width: 720px) {
+  .cd-dialog .cd-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- "+ Add" button and its "Add to card" popover ---- */
+.cd-dialog .cd-quick {
+  display: flex;
+  flex-wrap: wrap;
+}
+.cd-add-pop {
+  inline-size: 20rem;
+  max-inline-size: calc(100vw - 1rem);
+  padding: 0.5rem 0.5rem 0.75rem;
+}
+.cd-add-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+.cd-add-list {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cd-add-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  inline-size: 100%;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.cd-add-item:hover,
+.cd-add-item:focus-visible {
+  background: var(--hover);
+}
+.cd-add-item > svg {
+  margin-block-start: 0.125rem;
+  color: var(--muted);
+}
+.cd-add-title,
+.cd-add-hint {
+  display: block;
+}
+.cd-add-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.cd-add-hint {
+  margin-block-start: 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* ---- Dates: start and due side by side with the state badge ---- */
+.cd-dates-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+}
+.cd-dates-row .cd-field {
+  inline-size: 10.5rem;
+}
+
+
+/* ---- light theme: the card modal turns light with the app (Light chosen, or System on a light computer). The same
+   tokens as above, light values; the few fixed mixes above get light versions. ---- */
+:root[data-theme='light'] .cd-dialog {
+  --card: color-mix(in oklab, white 99%, black);
+  --surface: var(--card);
+  --bg: var(--card);
+  --tl-top: color-mix(in oklab, var(--info) 5%, color-mix(in oklab, white 95%, black));
+  --tl-btn: color-mix(in oklab, black 6%, var(--card));
+  --tl-btn-hover: color-mix(in oklab, black 11%, var(--card));
+  --ink: color-mix(in oklab, black 86%, white);
+  --muted: color-mix(in oklab, black 60%, white);
+  --subtle: color-mix(in oklab, black 52%, white);
+  --line: color-mix(in srgb, black 11%, transparent);
+  --line-strong: color-mix(in srgb, black 22%, transparent);
+  --control-border: color-mix(in oklab, var(--accent) 40%, white); /* light mode: an accent tint, never grey or black */
+  --control-border-hover: var(--accent); /* hover: the full accent colour, every field */
+  --tl-field: #ffffff;
+  --hover: var(--tl-btn);
+  --accent-soft: color-mix(in oklab, var(--accent) 14%, white);
+  --accent-text: color-mix(in oklab, var(--accent) 78%, black);
+  --danger-soft: color-mix(in oklab, var(--danger) 12%, white);
+  --warning-soft: color-mix(in oklab, var(--warning) 14%, white);
+  --success-soft: color-mix(in oklab, var(--success) 12%, white);
+  --info-soft: color-mix(in oklab, var(--info) 12%, white);
+  color-scheme: light;
+}
+:root[data-theme='light'] .cd-dialog::backdrop {
+  background: color-mix(in srgb, black 45%, transparent);
+}
+:root[data-theme='light'] .cd-dialog .cd-panel {
+  box-shadow: 0 12px 40px color-mix(in srgb, black 25%, transparent);
+}
+:root[data-theme='light'] .cd-dialog .cd-panel .cd-title textarea:hover {
+  background: color-mix(in srgb, black 5%, transparent);
+}
+:root[data-theme='light'] .cd-dialog .cd-top-bar :is(.btn, .icon-btn, .menu-trigger) {
+  background: color-mix(in srgb, black 7%, transparent);
+}
+:root[data-theme='light'] .cd-dialog .cd-top-bar :is(.btn, .icon-btn, .menu-trigger):hover {
+  background: color-mix(in srgb, black 13%, transparent);
+}
+/* Over a cover image: light round buttons with dark ink, readable on any picture. */
+:root[data-theme='light'] .cd-dialog .cd-top[data-cover] .cd-top-bar :is(.btn, .icon-btn, .menu-trigger) {
+  background: color-mix(in srgb, white 82%, transparent);
+}
+:root[data-theme='light'] .cd-dialog .cd-top[data-cover] .cd-top-bar :is(.btn, .icon-btn, .menu-trigger):hover {
+  background: color-mix(in srgb, white 95%, transparent);
+}
+@media not (prefers-color-scheme: dark) {
+  :root:not([data-theme='dark']) .cd-dialog {
+    --card: color-mix(in oklab, white 99%, black);
+    --surface: var(--card);
+    --bg: var(--card);
+    --tl-top: color-mix(in oklab, var(--info) 5%, color-mix(in oklab, white 95%, black));
+    --tl-btn: color-mix(in oklab, black 6%, var(--card));
+    --tl-btn-hover: color-mix(in oklab, black 11%, var(--card));
+    --ink: color-mix(in oklab, black 86%, white);
+    --muted: color-mix(in oklab, black 60%, white);
+    --subtle: color-mix(in oklab, black 52%, white);
+    --line: color-mix(in srgb, black 11%, transparent);
+    --line-strong: color-mix(in srgb, black 22%, transparent);
+    --control-border: color-mix(in oklab, var(--accent) 40%, white); /* light mode: an accent tint, never grey or black */
+    --control-border-hover: var(--accent); /* hover: the full accent colour, every field */
+    --tl-field: #ffffff;
+    --hover: var(--tl-btn);
+    --accent-soft: color-mix(in oklab, var(--accent) 14%, white);
+    --accent-text: color-mix(in oklab, var(--accent) 78%, black);
+    --danger-soft: color-mix(in oklab, var(--danger) 12%, white);
+    --warning-soft: color-mix(in oklab, var(--warning) 14%, white);
+    --success-soft: color-mix(in oklab, var(--success) 12%, white);
+    --info-soft: color-mix(in oklab, var(--info) 12%, white);
+    color-scheme: light;
+  }
+  :root:not([data-theme='dark']) .cd-dialog::backdrop {
+    background: color-mix(in srgb, black 45%, transparent);
+  }
+  :root:not([data-theme='dark']) .cd-dialog .cd-panel {
+    box-shadow: 0 12px 40px color-mix(in srgb, black 25%, transparent);
+  }
+  :root:not([data-theme='dark']) .cd-dialog .cd-panel .cd-title textarea:hover {
+    background: color-mix(in srgb, black 5%, transparent);
+  }
+  :root:not([data-theme='dark']) .cd-dialog .cd-top-bar :is(.btn, .icon-btn, .menu-trigger) {
+    background: color-mix(in srgb, black 7%, transparent);
+  }
+  :root:not([data-theme='dark']) .cd-dialog .cd-top-bar :is(.btn, .icon-btn, .menu-trigger):hover {
+    background: color-mix(in srgb, black 13%, transparent);
+  }
+  /* Over a cover image: light round buttons with dark ink, readable on any picture. */
+  :root:not([data-theme='dark']) .cd-dialog .cd-top[data-cover] .cd-top-bar :is(.btn, .icon-btn, .menu-trigger) {
+    background: color-mix(in srgb, white 82%, transparent);
+  }
+  :root:not([data-theme='dark']) .cd-dialog .cd-top[data-cover] .cd-top-bar :is(.btn, .icon-btn, .menu-trigger):hover {
+    background: color-mix(in srgb, white 95%, transparent);
+  }
+}
+
+/* ---- the comment and description editors: ONE frame takes the focus ring (formatting bar + text together); the text
+   box inside never draws its own border or ring. Wins over the dialog's general textarea rules above. ---- */
+.cd-dialog .cd-panel .cd-editor textarea,
+.cd-dialog .cd-panel .cd-editor textarea:hover,
+.cd-dialog .cd-panel .cd-editor textarea:focus-visible {
+  border: 0;
+  border-radius: 0;
+  outline: 2px solid transparent;
+  box-shadow: none;
+  background: transparent;
+}
+.cd-dialog .cd-panel .cd-editor:focus-within {
+  border-color: var(--accent-text);
+  box-shadow: none;
+}
+/* Light theme: the writing boxes (description, comment, the one-line "Write a comment…") are plain white. */
+:root[data-theme='light'] .cd-dialog :is(.cd-editor, .cd-comment-fake) {
+  background: white;
+}
+@media not (prefers-color-scheme: dark) {
+  :root:not([data-theme='dark']) .cd-dialog :is(.cd-editor, .cd-comment-fake) {
+    background: white;
+  }
+}
+
+/* =====================================================================================================================
+   Card back, left column, as Trello lays it out (2026-11-05): round "complete" button before the title; a row of
+   outlined Add / Labels / Dates / Checklist / Members buttons, each opening a popover with a centred title; the
+   Members / Labels / Dates summary once set; Description; Custom Fields three across with a type icon on each name;
+   every checklist its own section with a % bar, items whose checkbox sits in the icon gutter, and "Add an item".
+   ===================================================================================================================== */
+
+/* Wider box, details left, comments right with a hairline between */
+.cd-dialog .cd-panel {
+  inline-size: min(67.5rem, calc(100vw - 2rem));
+}
+.cd-dialog .cd-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+}
+.cd-dialog .cd-side {
+  border-inline-start: 1px solid var(--line);
+}
+@media (max-width: 720px) {
+  .cd-dialog .cd-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cd-dialog .cd-side {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--line);
+  }
+}
+
+/* Title row: the round complete button sits in the icon gutter */
+.cd-dialog .cd-main .cd-head {
+  gap: 0.5rem;
+}
+.cd-done {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  margin-block-start: 0.375rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cd-done:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--tl-btn);
+}
+.cd-done[aria-checked='true'],
+.cd-done[aria-checked='true']:hover:not(:disabled) {
+  color: var(--success);
+}
+/* Done: a filled green circle with the tick cut out, like the board card */
+.cd-done[aria-checked='true'] svg circle {
+  fill: var(--success);
+}
+.cd-done[aria-checked='true'] svg path {
+  stroke: var(--card, var(--bg));
+  stroke-width: 2.5;
+}
+.cd-done:disabled {
+  cursor: not-allowed;
+}
+/* A little pop when toggled: the check springs in, the empty ring settles back */
+.cd-done svg {
+  transition: color 0.2s ease;
+}
+.cd-done.is-pop[aria-checked='true'] svg {
+  animation: cd-done-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.cd-done.is-pop[aria-checked='false'] svg {
+  animation: cd-done-unpop 0.2s ease-out;
+}
+@keyframes cd-done-pop {
+  0% { transform: scale(0.6) rotate(-20deg); opacity: 0.4; }
+  60% { transform: scale(1.25) rotate(0); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes cd-done-unpop {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cd-done.is-pop svg {
+    animation: none;
+  }
+}
+.cd-done:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+
+/* The action row and every secondary button on the card back: outlined, flat, small (Trello) */
+.cd-dialog .cd-quick {
+  gap: 0.5rem;
+  margin-inline-start: 2.5rem;
+}
+.cd-dialog .cd-quick .btn,
+.cd-dialog .cd-main .cd-section-head .btn,
+.cd-dialog .cd-add-item-open,
+.cd-dialog .cd-side .cd-section-head .btn {
+  min-block-size: 2rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: none;
+}
+.cd-dialog .cd-quick .btn:hover,
+.cd-dialog .cd-main .cd-section-head .btn:hover,
+.cd-dialog .cd-add-item-open:hover,
+.cd-dialog .cd-side .cd-section-head .btn:hover {
+  background: var(--tl-btn);
+}
+.cd-dialog .cd-quick .btn[aria-expanded='true'] {
+  background: var(--tl-btn-hover);
+}
+.cd-dialog .cd-quick .btn .icon {
+  color: var(--muted);
+}
+
+/* Members / Labels / Dates summary */
+.cd-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  margin-inline-start: 2.5rem;
+}
+.cd-summary-group {
+  display: grid;
+  gap: 0.375rem;
+  align-content: start;
+}
+.cd-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+.cd-summary-avatar {
+  display: inline-flex;
+}
+/* One 32px row height for avatars, label chips and the "+" buttons, so the groups line up. */
+.cd-summary-avatar .avatar {
+  inline-size: 2rem;
+  block-size: 2rem;
+}
+.cd-summary-label.chip {
+  box-sizing: border-box;
+  block-size: 2rem;
+  min-inline-size: 3rem;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  padding-block: 0;
+  padding-inline: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.cd-dialog .cd-round-add {
+  flex: none;
+  inline-size: 2rem;
+  block-size: 2rem;
+  min-inline-size: 2rem;
+  min-block-size: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tl-btn);
+  color: var(--ink);
+}
+.cd-dialog .cd-round-add.cd-square-add {
+  border-radius: 4px;
+}
+.cd-dialog .cd-round-add:hover {
+  background: var(--tl-btn-hover);
+}
+.cd-date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-block-size: 2rem;
+  padding: 0.25rem 0.625rem;
+  border: 0;
+  border-radius: 4px;
+  background: var(--tl-btn);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.cd-date-chip:hover:not(:disabled) {
+  background: var(--tl-btn-hover);
+}
+.cd-date-chip:disabled {
+  cursor: default;
+}
+.cd-date-chip:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+.cd-date-chip .badge {
+  font-size: 0.75rem;
+}
+
+/* Description: an empty box you click into, about two lines tall */
+.cd-dialog .cd-desc-fake {
+  /* auto, not 100%: the section indents its body 2.5rem, and 100% + that margin overflowed under the comments pane */
+  inline-size: auto;
+  min-block-size: 3.75rem;
+  align-items: flex-start;
+  text-align: start;
+}
+
+/* Custom Fields: icon + name over each control */
+.cd-field-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.cd-field-name .icon {
+  flex: none;
+}
+/* One height for every control in the grid. :root beats `.cd-panel input:not(…)` (40px, wider padding). */
+:root .cd-dialog .cd-props .select-trigger,
+:root .cd-dialog .cd-props .picker-trigger,
+:root .cd-dialog .cd-props input:not([type='checkbox']) {
+  box-sizing: border-box;
+  block-size: 2.25rem;
+  min-block-size: 2.25rem;
+  padding-block: 0;
+  padding-inline-start: 0.625rem;
+  font-size: 0.875rem;
+}
+@media (max-width: 480px) {
+  .cd-dialog .cd-props {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- popovers: centred title with a close button, wide buttons, small grey sub-headings ---- */
+.cd-pop {
+  inline-size: 19rem;
+  max-inline-size: calc(100vw - 1rem);
+  max-block-size: calc(100vh - 1rem);
+  max-block-size: calc(100dvh - 1rem);
+  overflow-y: auto;
+  padding: 0.5rem 0.75rem 0.75rem;
+  gap: 0.5rem;
+}
+.cd-pop-head {
+  display: grid;
+  grid-template-columns: 2rem 1fr 2rem;
+  align-items: center;
+  margin-block-end: 0.25rem;
+}
+.cd-pop-head > strong {
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.cd-pop-head .icon-button {
+  inline-size: 2rem;
+  block-size: 2rem;
+  min-inline-size: 2rem;
+  min-block-size: 2rem;
+}
+.cd-pop-sub,
+.cd-pop-label {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.cd-pop-note {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--muted);
+  text-align: center;
+}
+.cd-pop-wide {
+  inline-size: 100%;
+  justify-content: center;
+}
+.cd-pop-rule {
+  margin: 0.25rem 0;
+  border: 0;
+  border-block-start: 1px solid var(--line);
+}
+.cd-pop-form {
+  display: grid;
+  gap: 0.5rem;
+}
+.cd-pop .search-input {
+  min-inline-size: 0;
+}
+.cd-pop input:not([type='checkbox']) {
+  inline-size: 100%;
+  min-block-size: 2.25rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--control-border);
+  border-radius: 4px;
+  background: var(--tl-field, var(--tl-top));
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+}
+.cd-pop input:not([type='checkbox']):focus-visible {
+  outline: 2px solid transparent;
+  border-color: var(--accent-text);
+  box-shadow: none;
+}
+/* Search: the magnifier sits above the field, and typed text starts clear of it. */
+.cd-pop .search-input .icon {
+  z-index: 1;
+  inset-inline-start: 0.75rem;
+  color: var(--muted);
+}
+.cd-pop .search-input input:not([type='checkbox']) {
+  padding-inline-start: 2.5rem;
+}
+
+/* Add to card: icon tile, title, one-line hint */
+.cd-add-pop {
+  inline-size: 19rem;
+}
+.cd-add-list {
+  gap: 0.125rem;
+}
+.cd-add-item {
+  align-items: center;
+  padding: 0.375rem 0.5rem;
+}
+.cd-add-icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--muted);
+}
+
+/* Labels: checkbox, a full-width colour bar with the name, a pencil */
+.cd-labels-pop .cd-label-list {
+  gap: 0.25rem;
+}
+.cd-labels-pop .cd-label-list li .chip {
+  min-block-size: 2rem;
+  border-radius: 4px;
+  padding-inline: 0.75rem;
+  font-weight: 500;
+}
+.cd-labels-pop .cd-label-list .checkbox {
+  align-items: center;
+}
+
+/* Members: rows with avatar and name; card members carry an x */
+.cd-members-pop .cd-pick {
+  min-block-size: 2.5rem;
+}
+
+/* Dates: the calendar, then start and due with a checkbox each, recurring, the reminder note, Save, Remove */
+.cd-dates-pop .calendar .date-nav {
+  min-inline-size: 2rem;
+  min-block-size: 2rem;
+}
+.cd-dates-pop .calendar .date-title {
+  flex: 1;
+  font-size: 0.875rem;
+}
+/* 2px between the day numbers, across and down. */
+.cd-dates-pop .calendar .date-grid,
+.cd-dates-pop .calendar .date-row {
+  gap: 2px;
+}
+.cd-dates-pop .calendar .date-day {
+  min-block-size: 2rem;
+  font-size: 0.875rem;
+}
+@media (pointer: coarse) {
+  .cd-dates-pop .calendar .date-day,
+  .cd-dates-pop .calendar .date-nav {
+    min-block-size: 2.75rem;
+  }
+}
+.cd-date-field {
+  display: grid;
+  gap: 0.25rem;
+}
+.cd-date-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cd-date-check {
+  flex: none;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.cd-pop .cd-date-text {
+  inline-size: 8.5rem;
+}
+.cd-pop .cd-date-text:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.cd-date-field[data-active] .cd-date-text {
+  border-color: var(--accent-text);
+}
+/* The due time sits beside the due date and takes the rest of the row. */
+.cd-dates-pop .cd-date-time {
+  flex: 1;
+  min-inline-size: 0;
+}
+.cd-dates-pop .cd-date-time .select-trigger {
+  inline-size: 100%;
+}
+/* Due date popup: the date boxes, time, reminder, Repeat, Save and Remove are all 32px tall. */
+/* `.cd-date-row > input.cd-date-text` outranks `.cd-panel input:not(…):not(…)` (min-block-size: 40px, cards.css). */
+:root .cd-dates-pop .cd-date-row > input.cd-date-text,
+:root .cd-dates-pop .select-trigger,
+:root .cd-dates-pop .cd-pop-form > .button {
+  box-sizing: border-box;
+  block-size: 32px;
+  min-block-size: 32px;
+  padding-block: 0;
+}
+/* Touch screens keep the site's 44px touch target (a11y.css). */
+@media (pointer: coarse) {
+  :root .cd-dates-pop .cd-date-row > input.cd-date-text,
+  :root .cd-dates-pop .select-trigger,
+  :root .cd-dates-pop .cd-pop-form > .button {
+    block-size: 44px;
+    min-block-size: 44px;
+  }
+}
+
+/* ---- checklists ---- */
+.cd-dialog .cd-checklist {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  gap: 0.5rem;
+}
+.cd-dialog .cd-checklist .cd-section-head .cd-inline {
+  flex: 1;
+}
+/* The head keeps the height of its small buttons, so "Hide checked items" appearing on the first tick never shifts the list. */
+.cd-dialog .cd-checklist > .cd-section-head {
+  min-block-size: 32px;
+}
+@media (pointer: coarse) {
+  .cd-dialog .cd-checklist > .cd-section-head {
+    min-block-size: 44px;
+  }
+}
+.cd-checklist-title {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.cd-checklist-title:hover {
+  text-decoration: underline;
+}
+/* The % sits in the icon gutter, the bar runs across under the title */
+.cd-dialog .cd-main .cd-checklist > .cd-progress {
+  margin-inline-start: 0;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0;
+}
+.cd-progress-num {
+  font-size: 0.6875rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cd-dialog .cd-checklist .progress {
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cd-dialog .cd-checklist .progress-track {
+  fill: var(--tl-btn-hover);
+}
+.cd-dialog .cd-checklist .cd-progress[data-complete] .progress-fill {
+  fill: var(--success);
+}
+/* Items: the checkbox in the gutter, the text where the title starts, who / when at the end */
+.cd-dialog .cd-main .cd-checklist > .cd-items {
+  margin-inline-start: 0;
+  gap: 0;
+}
+.cd-dialog .cd-checklist .cd-item {
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+  min-block-size: 2.25rem;
+  padding-inline-end: 0.25rem;
+  border-radius: 6px;
+}
+.cd-dialog .cd-checklist .cd-item:hover {
+  background: var(--tl-btn);
+}
+.cd-dialog .cd-checklist .cd-item > .checkbox {
+  gap: 0;
+  align-items: center;
+  padding-block: 0.375rem;
+}
+.cd-dialog .cd-checklist .cd-item > .checkbox input {
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin-block: 0;
+  margin-inline: 0.25rem 1.25rem;
+}
+.cd-dialog .cd-checklist .cd-item > .checkbox .checkbox-label {
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.cd-dialog .cd-checklist .cd-item[data-done] .checkbox-label {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.cd-dialog .cd-checklist .cd-item[data-editing] {
+  padding-inline-start: 2.5rem;
+  padding-block: 0.25rem;
+}
+.cd-dialog .cd-checklist .cd-item .cd-item-meta {
+  flex: none;
+  flex-basis: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+}
+/* Empty who / when buttons and the item menu show on hover or keyboard focus (always on touch screens). */
+.cd-dialog .cd-checklist .cd-item :is(.cd-item-due:not([data-set]), .cd-item-assign:not([data-set]), .menu-trigger) {
+  opacity: 0;
+}
+.cd-dialog .cd-checklist .cd-item:is(:hover, :focus-within) :is(.cd-item-due, .cd-item-assign, .menu-trigger) {
+  opacity: 1;
+}
+@media (hover: none) {
+  .cd-dialog .cd-checklist .cd-item :is(.cd-item-due, .cd-item-assign, .menu-trigger) {
+    opacity: 1;
+  }
+}
+.cd-item-due:not([data-set]) .picker-value {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.cd-dialog .cd-checklist .cd-item-due .picker-trigger {
+  min-block-size: 1.75rem;
+  inline-size: auto;
+  padding: 0.125rem 0.5rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 0.8125rem;
+}
+.cd-dialog .cd-checklist .cd-item-due[data-set] .picker-trigger {
+  background: var(--tl-btn-hover);
+}
+.cd-dialog .cd-checklist .cd-item-due[data-overdue] .picker-trigger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.cd-item-assign {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cd-item-assign:hover:not(:disabled) {
+  background: var(--tl-btn-hover);
+  color: var(--ink);
+}
+.cd-item-assign .avatar-sm,
+.cd-item-avatar .avatar-sm {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  font-size: 0.625rem;
+}
+.cd-item-assign:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+.cd-dialog .cd-checklist .cd-item .menu-trigger {
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  min-inline-size: 1.75rem;
+  min-block-size: 1.75rem;
+}
+.cd-dialog .cd-checklist .cd-item-chip {
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  background: var(--tl-btn-hover);
+}
+.cd-dialog .cd-checklist .cd-item-chip[data-overdue] {
+  background: var(--danger-soft);
+}
+/* "Add an item": the composer under the items */
+.cd-item-composer {
+  display: grid;
+  gap: 0.5rem;
+}
+.cd-dialog .cd-panel .cd-item-composer textarea {
+  min-block-size: 2.5rem;
+  resize: none;
+  font-size: 0.875rem;
+}
+.cd-item-composer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* The chosen assignee's avatar fits inside the 32px Assign button with room above and below. */
+.cd-item-composer-row > .button .avatar {
+  inline-size: 20px;
+  block-size: 20px;
+  margin-inline-start: -4px;
+  font-size: 0.5625rem;
+}
+/* The new item's Due date: looks like the Assign button beside it (a secondary button), not a disabled field. */
+.cd-item-composer-due .picker-trigger {
+  min-block-size: 32px;
+  inline-size: auto;
+  padding-inline: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+.cd-item-composer-due .picker-trigger:hover:not(:disabled) {
+  background: var(--hover);
+}
+.cd-item-composer-due .picker-placeholder {
+  color: inherit;
+}
+@media (max-width: 720px) {
+  .cd-dialog .cd-quick,
+  .cd-summary {
+    margin-inline-start: 0;
+  }
+}
+
+/* Description text: a click on it opens the editor */
+.cd-dialog .cd-desc-view {
+  cursor: pointer;
+  border-radius: var(--radius-sm, 6px);
+}
+.cd-dialog .cd-desc-view:hover {
+  background: var(--surface);
+}
+.cd-dialog .cd-desc-view a {
+  cursor: pointer;
+}
+
+/* ---- Custom Fields: a collapsible heading, and the manager popover (field list, suggestions, new / edit steps) ---- */
+.cd-collapse {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.125rem 0.375rem 0.125rem 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.cd-collapse > svg {
+  margin-inline-end: 0.875rem;
+  color: var(--muted);
+}
+.cd-collapse:hover {
+  color: var(--accent-text);
+}
+.cd-collapse:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+/* The popover is fixed to its trigger: the section body's gutter indent must not move it. */
+.cd-dialog .cd-main .cd-section > .popover {
+  margin: 0;
+}
+.cd-fm-pop {
+  inline-size: 20rem;
+}
+.cd-fm-body {
+  display: grid;
+  gap: 0.5rem;
+}
+.cd-fm-hint {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.cd-fm-list,
+.cd-fm-suggest {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cd-fm-row,
+.cd-fm-suggest li {
+  display: flex;
+  align-items: stretch;
+  gap: 0.375rem;
+}
+.cd-fm-row[data-dragging] {
+  opacity: 0.45;
+}
+.cd-fm-grip,
+.cd-fm-open,
+.cd-fm-suggest-name {
+  min-block-size: 2.25rem;
+  border: 0;
+  border-radius: 4px;
+  background: var(--tl-btn);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+}
+.cd-fm-grip {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 1.75rem;
+  color: var(--muted);
+  cursor: grab;
+}
+.cd-fm-grip:disabled {
+  cursor: not-allowed;
+}
+.cd-fm-open {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-inline-size: 0;
+  padding: 0 0.5rem;
+  text-align: start;
+  cursor: pointer;
+}
+.cd-fm-open > svg,
+.cd-fm-suggest-name > svg,
+.cd-fm-type > svg {
+  flex: none;
+  color: var(--muted);
+}
+.cd-fm-name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-fm-grip:hover:not(:disabled),
+.cd-fm-open:hover {
+  background: var(--tl-btn-hover);
+}
+.cd-fm-grip:focus-visible,
+.cd-fm-open:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+.cd-fm-suggest li {
+  align-items: center;
+}
+.cd-fm-suggest-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-inline-size: 0;
+  padding: 0 0.5rem;
+}
+.cd-fm-type {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.875rem;
+}
+.cd-fm-options {
+  display: grid;
+  gap: 0.375rem;
+}
+/* Checklist item: the box ticks (pointer), the text opens the edit field. */
+.cd-item > .cd-item-check {
+  cursor: default;
+}
+.cd-item-check input[type='checkbox'] {
+  cursor: pointer;
+}
+.cd-item-check input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+.cd-item-text {
+  flex: 1;
+  min-inline-size: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: text;
+}
+.cd-item-text:disabled {
+  cursor: not-allowed;
+}
+.cd-item-text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* The item's due button: a clock, or the clock and "Nov 6, 3:00 PM" once set; opens the item's due date popover. */
+.cd-item-due-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cd-item-due-btn:disabled {
+  cursor: not-allowed;
+}
+.cd-item-due-btn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+/* Date and time share the row evenly and shrink with the popover, so the time is never cut off at the edge. */
+:root .cd-dates-pop .cd-date-row > .cd-date-text,
+:root .cd-dates-pop .cd-date-row > .cd-date-time {
+  flex: 1 1 0;
+  /* 0, not auto: an input's auto width is ~20 characters, which would push the whole popover wider than its panel. */
+  inline-size: 0;
+  min-inline-size: 0;
+}
+/* Nothing in the popover may grow it past its own width (the grid track would follow the widest child). */
+.cd-dates-pop > .cd-pop-form,
+.cd-dates-pop .cd-pop-form > * {
+  min-inline-size: 0;
+}

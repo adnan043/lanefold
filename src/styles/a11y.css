@@ -1,0 +1,71 @@
+/*
+ * Accessibility layer, loaded after global.css / app.css.
+ * Touch targets, field-border contrast and motion. Colours are tokens only.
+ */
+
+/* Field borders: one token for every field (an accent tint in light mode, owner's choice: never grey or black there;
+   black in the contrast theme), and a stronger one on hover. */
+input:is([type='text'], [type='email'], [type='search'], [type='url'], [type='tel'], [type='number'], [type='password'], [type='date'], :not([type])):not(:hover):not(:focus-visible):not([aria-invalid='true']),
+select:not(:hover):not(:focus-visible):not([aria-invalid='true']),
+:is(.input, .select-trigger, .picker-trigger):not(:hover):not(:focus-visible):not([aria-invalid='true']),
+textarea:not(:hover):not(:focus-visible):not([aria-invalid='true']) {
+  border-color: var(--control-border);
+}
+input:is([type='text'], [type='email'], [type='search'], [type='url'], [type='tel'], [type='number'], [type='password'], [type='date'], :not([type])):hover:not(:focus-visible):not(:disabled):not([aria-invalid='true']),
+select:hover:not(:focus-visible):not(:disabled):not([aria-invalid='true']),
+:is(.input, .select-trigger, .picker-trigger):hover:not(:focus-visible):not(:disabled):not([aria-invalid='true']),
+textarea:hover:not(:focus-visible):not(:disabled):not([aria-invalid='true']) {
+  border-color: var(--control-border-hover);
+}
+/* Boxes that wrap a borderless text field (comment / description editor, chat composer, chip input, the "Write a
+   comment…" opener) take the same hover border as a plain field. */
+:is(.cd-editor, .chat-composer-box, .chip-input, .cd-comment-fake):hover:not(:focus-within):not(:disabled):not([data-invalid]) {
+  border-color: var(--control-border-hover);
+}
+
+/* Touch targets: 44 px under a coarse pointer. */
+@media (pointer: coarse) {
+  .button,
+  .button-sm,
+  .icon-button,
+  .button-sm.icon-button,
+  .menu-trigger,
+  .lf-card .icon-button,
+  .lf-lane-head .icon-button,
+  .lf-star,
+  .lf-card .menu-trigger {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Every input, select and picker reads this one token (global.css). */
+  :root {
+    --control-h: 44px;
+  }
+}
+
+/* Motion: the device setting, or the in-app switch (html[data-motion='reduce']). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .lf-lanes {
+    scroll-snap-type: none !important;
+  }
+}
+
+html[data-motion='reduce'] *,
+html[data-motion='reduce'] *::before,
+html[data-motion='reduce'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+html[data-motion='reduce'] .lf-lanes {
+  scroll-snap-type: none !important;
+}

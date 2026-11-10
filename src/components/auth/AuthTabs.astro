@@ -1,0 +1,212 @@
+---
+/**
+ * Sign in and Create account as two tabs of one screen, used by `/account/login/` (`active="signin"`)
+ * and `/account/register/` (`active="signup"`). Switching tabs swaps the panel in place and puts the
+ * matching address in the bar (a reload or a shared link opens the same tab), keeping `?next=`.
+ * The forms' logic: `src/lib/auth-signin.ts` and `src/lib/auth-signup.ts`.
+ * Both pages are PRERENDERED: nothing here knows the visitor until the script runs.
+ */
+import Icon from '../home/Icon.astro';
+
+interface Props {
+  active: 'signin' | 'signup';
+}
+
+const {active} = Astro.props;
+const signin = active === 'signin';
+/** One <h1> for both tabs: its words follow the tab (the script keeps each tab's own). */
+const HEADINGS = {
+  signin: {title: 'Welcome back', lead: "Enter your email and we'll send you a 6-digit code. No password needed."},
+  signup: {title: 'Create your account', lead: 'Free to start. Make a workspace and add your first board in a minute.'},
+};
+const heading = HEADINGS[active];
+---
+
+<div class="auth-tabs" id="auth-tabs" data-active={active}>
+  <div class="auth-tablist" role="tablist" aria-label="Account">
+    <button class="auth-tab" type="button" role="tab" id="tab-signin" data-tab="signin" aria-controls="panel-signin" aria-selected={signin ? 'true' : 'false'} tabindex={signin ? 0 : -1}>Sign in</button>
+    <button class="auth-tab" type="button" role="tab" id="tab-signup" data-tab="signup" aria-controls="panel-signup" aria-selected={signin ? 'false' : 'true'} tabindex={signin ? -1 : 0}>Create account</button>
+    <span class="auth-tab-pill" aria-hidden="true"></span>
+  </div>
+
+  <div class="auth-heading">
+    <h1 id="login-title" data-signin={HEADINGS.signin.title} data-signup={HEADINGS.signup.title}>{heading.title}</h1>
+    <p class="auth-lead" id="login-lead" data-signin={HEADINGS.signin.lead} data-signup={HEADINGS.signup.lead}>{heading.lead}</p>
+  </div>
+
+  <!-- Sign in -->
+  <section class="auth-panel" role="tabpanel" id="panel-signin" aria-labelledby="tab-signin" hidden={!signin}>
+    <p class="notice notice-error" id="login-notice" role="alert" hidden></p>
+
+    <!-- 1. The usual way: a code by email (no password needed). -->
+    <form id="email-form" class="auth-form" novalidate>
+      <div class="field">
+        <label for="login-email">Email</label>
+        <input id="login-email" name="email" type="email" autocomplete="username" inputmode="email" placeholder="name@example.com" />
+      </div>
+      <p class="notice" data-form-status hidden></p>
+      <button class="button auth-submit" type="submit"><Icon name="mail" size={18} />Email me a code</button>
+    </form>
+
+    <!-- 2. The emailed code. -->
+    <form id="email-code-form" class="auth-form" novalidate hidden>
+      <p class="auth-hint" id="email-code-lead" aria-live="polite"></p>
+      <div class="field">
+        <label for="email-code">Code from the email</label>
+        <input id="email-code" class="auth-code-input" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" maxlength="7" spellcheck="false" />
+      </div>
+      <p class="notice" data-form-status hidden></p>
+      <button class="button auth-submit" type="submit">Sign in</button>
+      <p class="auth-links">
+        <button class="button link" type="button" id="code-resend">Send a new code</button>
+        <button class="button link" type="button" id="code-other-email">Use another email</button>
+      </p>
+    </form>
+
+    <!-- Or a password, for an account that set one. -->
+    <form id="login-form" class="auth-form" novalidate hidden>
+      <div class="field">
+        <label for="login-password-email">Email</label>
+        <input id="login-password-email" name="email" type="email" autocomplete="username" inputmode="email" placeholder="name@example.com" />
+      </div>
+      <div class="field">
+        <div class="auth-label-row">
+          <label for="login-password">Password</label>
+          <a class="auth-inline-link" href="/account/forgot/" data-astro-prefetch>Forgot password?</a>
+        </div>
+        <div class="pw-input">
+          <input id="login-password" name="password" type="password" autocomplete="current-password" />
+          <button class="pw-reveal" type="button" data-reveal-password aria-controls="login-password" aria-pressed="false" aria-label="Show password" hidden>Show</button>
+        </div>
+      </div>
+      <p class="notice" data-form-status hidden></p>
+      <button class="button auth-submit" type="submit">Sign in</button>
+    </form>
+
+    <!-- Two-step sign-in: the authenticator code, after a password, an emailed code or one click. -->
+    <form id="code-form" class="auth-form" novalidate hidden>
+      <p class="auth-hint">Open your authenticator app and enter the 6-digit code for this site. Lost your phone? Enter one of your recovery codes instead.</p>
+      <div class="field">
+        <label for="login-code">Code</label>
+        <input id="login-code" class="auth-code-input" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" maxlength="20" spellcheck="false" />
+      </div>
+      <p class="notice" data-form-status hidden></p>
+      <button class="button auth-submit" type="submit">Continue</button>
+    </form>
+
+    <div class="auth-alt" id="login-links">
+      <span class="auth-or" aria-hidden="true">or</span>
+      <button class="button ghost auth-alt-button" type="button" id="use-password"><Icon name="lock" size={18} />Use a password instead</button>
+      <button class="button ghost auth-alt-button" type="button" id="use-code" hidden><Icon name="mail" size={18} />Email me a code instead</button>
+      <p class="auth-foot">
+        <a href="/account/forgot/" data-astro-prefetch>Forgot your password?</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- Create account -->
+  <section class="auth-panel" role="tabpanel" id="panel-signup" aria-labelledby="tab-signup" hidden={signin}>
+    <form id="register-form" class="auth-form" novalidate>
+      <div class="field">
+        <label for="register-name">Your name</label>
+        <input id="register-name" name="name" type="text" autocomplete="name" maxlength="80" placeholder="Sam Rivera" />
+      </div>
+      <div class="field">
+        <label for="register-email">Email</label>
+        <input id="register-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="name@example.com" />
+      </div>
+      <div class="field">
+        <label for="register-password">Password</label>
+        <div class="pw-input">
+          <input id="register-password" name="password" type="password" autocomplete="new-password" aria-describedby="register-password-checks" data-describedby="register-password-checks" />
+          <button class="pw-reveal" type="button" data-reveal-password aria-controls="register-password" aria-pressed="false" aria-label="Show password" hidden>Show</button>
+        </div>
+        <ul class="pw-checks" id="register-password-checks"><li>At least 10 characters</li></ul>
+        <p class="field-hint">A short sentence works well.</p>
+      </div>
+      <p class="notice" data-form-status hidden></p>
+      <button class="button auth-submit" type="submit">Create account<Icon name="arrow-right" size={18} /></button>
+    </form>
+    <p class="auth-foot">
+      Already have an account? <button class="button link" type="button" data-tab-to="signin">Sign in</button>
+    </p>
+  </section>
+</div>
+
+<script>
+  import {nextPath, signedIn} from '../../lib/account';
+  import {initSignIn} from '../../lib/auth-signin';
+  import {initSignUp} from '../../lib/auth-signup';
+  import {bindPasswordReveal} from '../../lib/password-checks';
+
+  type Tab = 'signin' | 'signup';
+  const PATHS: Record<Tab, string> = {signin: '/account/login/', signup: '/account/register/'};
+  const TITLES: Record<Tab, string> = {signin: 'Sign in', signup: 'Create an account'};
+
+  // Client navigation (ClientRouter): a bundled script runs once, so this code runs on every
+  // `astro:page-load` (the first load, each navigation, back/forward) while it is this page.
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('#auth-tabs');
+    if (!root) return;
+    bindPasswordReveal(document);
+    const mfa = initSignIn();
+    initSignUp();
+
+    const next = nextPath();
+    if (!mfa) void signedIn().then(yes => yes && window.location.replace(next));
+
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    // The shared heading: each tab keeps its own words (Sign in changes them per step).
+    const title = root.querySelector<HTMLElement>('#login-title')!;
+    const lead = root.querySelector<HTMLElement>('#login-lead')!;
+    const words: Record<Tab, {title: string; lead: string}> = {
+      signin: {title: title.dataset.signin!, lead: lead.dataset.signin!},
+      signup: {title: title.dataset.signup!, lead: lead.dataset.signup!},
+    };
+    const siteName = document.title.includes(' · ') ? document.title.slice(document.title.indexOf(' · ')) : '';
+
+    function select(tab: Tab, focusTab = false) {
+      const from = root!.dataset.active as Tab;
+      if (from !== tab) {
+        words[from] = {title: title.textContent ?? '', lead: lead.textContent ?? ''};
+        title.textContent = words[tab].title;
+        lead.textContent = words[tab].lead;
+      }
+      for (const button of tabs) {
+        const on = button.dataset.tab === tab;
+        button.setAttribute('aria-selected', String(on));
+        button.tabIndex = on ? 0 : -1;
+        document.getElementById(button.getAttribute('aria-controls')!)!.hidden = !on;
+        if (on && focusTab) button.focus();
+      }
+      root!.dataset.active = tab;
+      // The address follows the tab (a reload opens the same one); `?next=` and the rest stay.
+      // Keep `history.state`: the client router keeps its own entry data there.
+      if (window.location.pathname !== PATHS[tab]) {
+        history.replaceState(history.state, '', PATHS[tab] + window.location.search);
+      }
+      document.title = TITLES[tab] + siteName;
+    }
+
+    if (mfa) select('signin');
+
+    for (const button of tabs) {
+      button.addEventListener('click', () => select(button.dataset.tab as Tab));
+      button.addEventListener('keydown', event => {
+        const i = tabs.indexOf(button);
+        const rtl = getComputedStyle(root).direction === 'rtl';
+        const step: Record<string, number> = {ArrowRight: rtl ? -1 : 1, ArrowLeft: rtl ? 1 : -1};
+        let to = -1;
+        if (event.key in step) to = (i + step[event.key]! + tabs.length) % tabs.length;
+        else if (event.key === 'Home') to = 0;
+        else if (event.key === 'End') to = tabs.length - 1;
+        if (to < 0) return;
+        event.preventDefault();
+        select(tabs[to]!.dataset.tab as Tab, true);
+      });
+    }
+    root.querySelectorAll<HTMLButtonElement>('[data-tab-to]').forEach(button =>
+      button.addEventListener('click', () => select(button.dataset.tabTo as Tab, true))
+    );
+  });
+</script>

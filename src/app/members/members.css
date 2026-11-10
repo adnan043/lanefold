@@ -1,0 +1,12 @@
+.members-page {
+  display: grid;
+  gap: 1.25rem;
+  align-content: start;
+}
+.join-card {
+  max-width: 32rem;
+  margin: 2rem auto;
+}
+.join-card .lf-form {
+  justify-items: start;
+}

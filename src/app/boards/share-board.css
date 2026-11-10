@@ -1,0 +1,80 @@
+/* The board's "Share" drawer (share-board.tsx): add people, board members, workspace admins. */
+.lf-share {
+  display: grid;
+  gap: 1.5rem;
+}
+.lf-share-group {
+  display: grid;
+  gap: 0.5rem;
+}
+.lf-share-group h3 {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.lf-share-hint,
+.lf-share-empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.lf-share-add-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.lf-share-add-bar .search-input {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+}
+.lf-share-role {
+  inline-size: 8.5rem;
+  flex: none;
+}
+/* The search box and the role picker share one height. */
+.lf-share-add-bar .search-input input,
+.lf-share-role .select-trigger {
+  block-size: 40px;
+  min-block-size: 40px;
+  box-sizing: border-box;
+}
+.lf-share-list {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lf-share-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-block-size: 2.75rem;
+}
+.lf-share-row > .person {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+.lf-share-invite {
+  display: grid;
+  gap: 0.5rem;
+}
+.lf-share-sent {
+  display: grid;
+  gap: 0.5rem;
+}
+.lf-share-group > input[readonly] {
+  inline-size: 100%;
+}
+.lf-share-pending-text {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 0.875rem;
+}
+/* The board list's "Guest boards" tiles: the workspace the board belongs to, under its name. */
+.lf-board-ws {
+  display: block;
+  padding: 0 0.25rem 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}

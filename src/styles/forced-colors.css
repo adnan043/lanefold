@@ -1,0 +1,107 @@
+/* Windows High Contrast / forced colours (WCAG 1.4.11, 2.4.7): the browser drops backgrounds and box-shadows,
+   so selected, checked and focus states are redrawn with borders, outlines and system colours. */
+@media (forced-colors: active) {
+  :focus-visible,
+  .lf-swatch:focus-visible,
+  .switch:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  /* Visible rings the page draws on a wrapper (the field itself keeps a transparent outline). */
+  .field input:focus-visible,
+  .field select:focus-visible,
+  .field textarea:focus-visible,
+  .cd-panel input:focus-visible,
+  .cd-panel textarea:focus-visible,
+  .chat-composer-box:focus-within,
+  .lf-card:has(.lf-card-title:focus-visible) {
+    outline: 2px solid Highlight;
+    border-color: Highlight;
+  }
+
+  /* Things that were only a fill get an outline, never a border: a border would add 2px and shift the layout
+     (.badge, .segment and .switch have none in normal mode). Outlines take no space. */
+  .badge,
+  .switch,
+  .switch-thumb,
+  .segment {
+    outline: 1px solid ButtonText;
+    outline-offset: -1px;
+  }
+  /* These already have their own 1px border: same width, so nothing moves. */
+  .chip,
+  .color-dot,
+  .radio-card {
+    border: 1px solid ButtonText;
+  }
+
+  /* Selected and checked states: a 2px outline inside the box (the border keeps its size). */
+  .switch[aria-checked='true'] {
+    background: Highlight;
+    outline-color: Highlight;
+  }
+  .switch-thumb {
+    background: ButtonText;
+  }
+  .switch[aria-checked='true'] .switch-thumb {
+    background: HighlightText;
+  }
+  .segment[aria-checked='true'],
+  .tab[aria-selected='true'],
+  .palette-item[aria-selected='true'],
+  .radio-card:has(input:checked),
+  .cd-pick[aria-pressed='true'],
+  .chat-conv[aria-current='page'],
+  .lf-swatch[aria-checked='true'],
+  .lf-swatch[aria-pressed='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  /* A selected item that is also focused keeps the outside focus ring. */
+  :is([aria-checked='true'], [aria-selected='true'], [aria-pressed='true'], [aria-current='page']):focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .tab[aria-selected='true']::after {
+    background: Highlight;
+  }
+  .swatch[aria-pressed='true'] .color-dot {
+    border-color: Highlight;
+  }
+
+  /* Board backgrounds, previews, label colour dots (.color-dot): they are only a fill, which forced colours would drop. Keep the
+     colour and draw an explicit edge so each stays distinguishable (outline: no layout shift). */
+  .lf-swatch-row .lf-swatch,
+  .lf-swatch-preview,
+  .color-dot {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+    outline: 1px solid CanvasText;
+    outline-offset: 1px;
+  }
+  .lf-swatch-row .lf-swatch[aria-pressed='true'] {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
+  .lf-swatch-row .lf-swatch:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 3px;
+  }
+
+  /* Accent swatch dots keep their own colour, with a border and a visible check. */
+  .lf-swatch-dot {
+    forced-color-adjust: none;
+    background: var(--swatch-bg);
+    color: #ffffff;
+    border: 2px solid CanvasText;
+  }
+  .lf-swatch[aria-checked='true'] .lf-swatch-dot {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  a {
+    color: LinkText;
+  }
+}

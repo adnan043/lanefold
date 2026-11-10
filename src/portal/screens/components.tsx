@@ -1,6 +1,7 @@
-import {useState} from 'react';
+import {useRef, useState} from 'react';
 
 import {
+  Avatar,
   Badge,
   BarChart,
   Button,
@@ -37,6 +38,10 @@ import {
   useForm,
   useToast,
 } from '../ui';
+import {AvatarStack, Chip, ChipInput} from '../ui/chips';
+import {CommandPalette, useCommandShortcut} from '../ui/command';
+import {COLOR_PRESETS, contrastRatio, readableOn} from '../ui/contrast';
+import {ColorPicker, DatePicker, Popover} from '../ui/popover';
 
 /**
  * `/components`: the UI kit on one screen, DEV ONLY (the Preview and
@@ -57,7 +62,7 @@ const STATUS_TONES = {active: 'success', trial: 'info', overdue: 'warning'} as c
 export function Components() {
   const toast = useToast();
   const confirm = useConfirm();
-  const [tab, setTab] = useState<'buttons' | 'forms' | 'data' | 'feedback' | 'icons'>('buttons');
+  const [tab, setTab] = useState<'buttons' | 'forms' | 'pickers' | 'data' | 'feedback' | 'icons'>('buttons');
 
   return (
     <div className="app-page">
@@ -79,12 +84,14 @@ export function Components() {
         items={[
           {value: 'buttons', label: 'Buttons & overlays'},
           {value: 'forms', label: 'Forms'},
+          {value: 'pickers', label: 'Pickers & chips'},
           {value: 'data', label: 'Data'},
           {value: 'feedback', label: 'States'},
           {value: 'icons', label: 'Icons & colours', count: ICON_NAMES.length},
         ]}>
         {tab === 'buttons' && <ButtonsDemo onToast={toast.success} confirm={confirm} />}
         {tab === 'forms' && <FormsDemo onSaved={() => toast.success('Saved.')} />}
+        {tab === 'pickers' && <PickersDemo />}
         {tab === 'data' && <DataDemo />}
         {tab === 'feedback' && <FeedbackDemo />}
         {tab === 'icons' && <IconsDemo />}
@@ -232,10 +239,10 @@ function FormsDemo({onSaved}: {onSaved: () => void}) {
         }>
         <div className="form-grid">
           <Field id="f-name" label="Name" error={form.error('name')}>
-            <input {...form.field('name')} autoComplete="name" />
+            <input {...form.field('name')} autoComplete="name" placeholder="e.g. Maya Rahman" />
           </Field>
           <Field id="f-email" label="Email" hint="We never share it." error={form.error('email')}>
-            <input {...form.field('email')} type="email" autoComplete="email" />
+            <input {...form.field('email')} type="email" autoComplete="email" placeholder="name@example.com" />
           </Field>
           <Field id="f-size" label="Team size (a long list: Select)">
             <Select
@@ -250,7 +257,7 @@ function FormsDemo({onSaved}: {onSaved: () => void}) {
           </Field>
           <div className="full">
             <Field id="f-notes" label="Notes" optional>
-              <textarea {...form.field('notes')} rows={3} />
+              <textarea {...form.field('notes')} rows={3} placeholder="Anything we should know" />
             </Field>
           </div>
         </div>
@@ -290,7 +297,7 @@ function FormsDemo({onSaved}: {onSaved: () => void}) {
         </SettingRow>
         <SettingRow title="Display name" description="How your name appears to others.">
           <Field id="kit-display" label="Display name">
-            <input id="kit-display" defaultValue="Maya" />
+            <input id="kit-display" defaultValue="Maya" placeholder="Display name" />
           </Field>
         </SettingRow>
       </Card>
@@ -413,6 +420,90 @@ function IconsDemo() {
               {name}
             </div>
           ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+const DEMO_PEOPLE = ['Maya Patel', 'Sam Rivera', 'Ava Chen', 'Noor Haddad', 'Lee Park', 'Zoe Adams'].map(name => ({name}));
+
+function PickersDemo() {
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [popover, setPopover] = useState(false);
+  const popoverButton = useRef<HTMLButtonElement>(null);
+  const [color, setColor] = useState(COLOR_PRESETS[5]);
+  const [date, setDate] = useState('2026-11-02');
+  const [monday, setMonday] = useState('');
+  const [labels, setLabels] = useState(['Bug', 'Design']);
+  const [picked, setPicked] = useState('Nothing yet');
+  const toast = useToast();
+  useCommandShortcut(() => setPaletteOpen(open => !open));
+  const items = ['Go to Overview', 'Invite a teammate', 'Create a board', 'Open settings', 'Toggle theme'].map((label, i) => ({
+    id: String(i),
+    label,
+    group: i < 2 ? 'Navigate' : 'Actions',
+    hint: i === 1 ? 'Users' : undefined,
+    keywords: i === 4 ? ['dark', 'light'] : undefined,
+    icon: (['dashboard', 'user-plus', 'layout-kanban', 'settings', 'sun'] as const)[i],
+    onSelect: () => setPicked(label),
+  }));
+  return (
+    <div className="kit-section">
+      <Card title="CommandPalette" description="Cmd/Ctrl+K anywhere on this page, or the button. Fuzzy filter, arrows, Enter, Esc.">
+        <div className="kit-row">
+          <Button variant="secondary" icon="command" onClick={() => setPaletteOpen(true)}>
+            Open palette
+          </Button>
+          <span className="muted">Last chosen: {picked}</span>
+        </div>
+        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={items} />
+      </Card>
+      <Card title="Popover" description="Anchored panel: Esc or an outside click closes it and focus returns to the button.">
+        <button ref={popoverButton} type="button" className="button button-secondary" aria-haspopup="dialog" aria-expanded={popover} onClick={() => setPopover(o => !o)}>
+          Show details
+        </button>
+        <Popover open={popover} onClose={() => setPopover(false)} anchor={popoverButton} label="Details">
+          <p>Any content goes here.</p>
+          <Button size="sm" onClick={() => setPopover(false)}>
+            Got it
+          </Button>
+        </Popover>
+      </Card>
+      <Card title="ColorPicker" description={`Presets and a strict #rrggbb box. Text on ${color} would be ${readableOn(color)} (contrast ${contrastRatio(color, readableOn(color)).toFixed(1)}:1).`}>
+        <div className="kit-row">
+          <ColorPicker label="Label colour" value={color} onChange={setColor} />
+          <Chip color={color}>Preview</Chip>
+        </div>
+      </Card>
+      <Card title="DatePicker" description="Month grid, arrow keys, PageUp/PageDown, Home/End. The value is ISO yyyy-mm-dd.">
+        <div className="kit-row">
+          <DatePicker label="Due date" value={date} onChange={setDate} clearable />
+          <DatePicker label="Starts (Monday first)" value={monday} onChange={setMonday} firstDayOfWeek={1} clearable />
+          <code>{date || '(none)'}</code>
+        </div>
+      </Card>
+      <Card title="Chip and ChipInput" description="Any hex colour; the text colour is chosen for contrast. Enter or comma adds.">
+        <div className="kit-row">
+          <Chip color={COLOR_PRESETS[0]}>Urgent</Chip>
+          <Chip color={COLOR_PRESETS[2]}>Review</Chip>
+          <Chip color={COLOR_PRESETS[9]} size="sm">
+            Small
+          </Chip>
+          <Chip>Neutral</Chip>
+          <Chip color={COLOR_PRESETS[3]} onRemove={() => toast.success('Removed.')} removeLabel="Remove Done">
+            Removable
+          </Chip>
+        </div>
+        <ChipInput label="Labels" value={labels} onChange={setLabels} placeholder="Add a label…" max={8} />
+      </Card>
+      <Card title="Avatar and AvatarStack" description="Initials when there is no picture; +N past the limit.">
+        <div className="kit-row">
+          <Avatar name="Maya Patel" size="sm" />
+          <Avatar name="Sam Rivera" />
+          <Avatar name="Ava Chen" size="lg" />
+          <AvatarStack people={DEMO_PEOPLE} max={3} />
+          <AvatarStack people={DEMO_PEOPLE.slice(0, 2)} size="md" />
         </div>
       </Card>
     </div>

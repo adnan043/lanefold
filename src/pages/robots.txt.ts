@@ -19,6 +19,9 @@ export const GET: APIRoute = () => {
     'User-agent: *',
     'Allow: /',
     'Disallow: /site-api/',
+    'Disallow: /app',
+    'Disallow: /dashboard',
+    'Disallow: /account/',
     ...(sitemap ? ['', `Sitemap: ${sitemap}`] : []),
     '',
   ].join('\n');

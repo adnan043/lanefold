@@ -16,7 +16,10 @@ const {site} = Astro.props;
 <main id="main" tabindex="-1" class="wrap narrow section center">
   <BrandMark site={site} size={56} />
   <p class="eyebrow">404</p>
-  <h1>This page does not exist</h1>
-  <p class="lede">The page you were looking for isn’t part of {site?.name ?? 'this site'}.</p>
-  <p><a class="button" href="/" data-astro-prefetch>Back to home</a></p>
+  <h1>We can’t find that page</h1>
+  <p class="lede">The link may be old or mistyped. Nothing is lost: head back home or pick up where you left off in {site?.name ?? 'this site'}.</p>
+  <p class="actions">
+    <a class="button" href="/" data-astro-prefetch>Home</a>
+    <a class="button ghost" href="/app/">Open your boards</a>
+  </p>
 </main>

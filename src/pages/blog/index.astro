@@ -14,11 +14,11 @@ import {staticContext} from '../../server/page';
 export const prerender = true;
 
 const {site, viewer} = await staticContext(Astro.request);
-const name = site?.name ?? 'My site';
+const name = site?.name ?? 'Lanefold';
 const [featured, ...rest] = await publishedPosts();
 ---
 
-<Base site={site} viewer={viewer} isStatic title="Blog" description={`Stories and updates from ${name}.`}>
+<Base site={site} viewer={viewer} isStatic title="Blog" description={`Guides, product news and tips from ${name}: how to run boards, use chat beside your cards and move your team over from other tools.`}>
   <main id="main" tabindex="-1" class="pub">
     <header class="pub-masthead">
       <BrandMark site={site} size={64} />

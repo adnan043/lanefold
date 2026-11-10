@@ -15,6 +15,9 @@ export function siteOrigin(): string {
   return /^https?:\/\/[^/\s]+$/.test(origin) ? origin : '';
 }
 
+/** The default social card (1200x630), used by pages that pass no `image`. */
+export const DEFAULT_SOCIAL_IMAGE = '/images/og-lanefold.png';
+
 /** `path` (or an https URL) as an absolute URL; null when the origin is not known. */
 export function absoluteUrl(path: string): string | null {
   if (/^https:\/\//.test(path)) return path;
@@ -44,7 +47,7 @@ const organizationId = () => {
   return origin ? `${origin}/#organization` : null;
 };
 
-/** The site as an `Organization` (name, address, logo): the publisher of posts and the hiring org of jobs. */
+/** The site as an `Organization` (name, address, logo): the publisher of posts. */
 function organization(site: {name: string; logo?: string | null}): JsonLd {
   const id = organizationId();
   const url = absoluteUrl('/');
@@ -52,7 +55,7 @@ function organization(site: {name: string; logo?: string | null}): JsonLd {
   return {'@type': 'Organization', ...(id && {'@id': id}), name: site.name, ...(url && {url}), ...(logo && {logo})};
 }
 
-/** The home page's `WebSite` + `Organization` (the site name in search results). */
+/** The home page's `WebSite`, `Organization` and `SoftwareApplication` (no ratings or prices: only facts the site shows). */
 export function siteJsonLd(site: {name: string; logo?: string | null}, description: string, lang: string): JsonLd {
   const origin = siteOrigin();
   const url = absoluteUrl('/');
@@ -70,6 +73,16 @@ export function siteJsonLd(site: {name: string; logo?: string | null}, descripti
         ...(id && {publisher: {'@id': id}}),
       },
       organization(site),
+      {
+        '@type': 'SoftwareApplication',
+        ...(origin && {'@id': `${origin}/#app`}),
+        name: site.name,
+        description,
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Web',
+        ...(url && {url}),
+        ...(id && {publisher: {'@id': id}}),
+      },
     ],
   };
 }
@@ -96,35 +109,3 @@ export function postJsonLd(
   };
 }
 
-const EMPLOYMENT_TYPE: Record<string, string> = {
-  'full-time': 'FULL_TIME',
-  'part-time': 'PART_TIME',
-  contract: 'CONTRACTOR',
-  internship: 'INTERN',
-};
-
-/** An open job's `JobPosting` (Google for Jobs). The description is plain text, as on the page. */
-export function jobJsonLd(job: {
-  slug: string;
-  title: string;
-  company: string;
-  location: string;
-  type: string;
-  remote: boolean;
-  description: string;
-  createdAt: string;
-}): JsonLd {
-  const url = absoluteUrl(`/jobs/${encodeURIComponent(job.slug)}/`);
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'JobPosting',
-    title: job.title,
-    description: job.description,
-    datePosted: job.createdAt,
-    hiringOrganization: {'@type': 'Organization', name: job.company},
-    jobLocation: {'@type': 'Place', address: {'@type': 'PostalAddress', addressLocality: job.location}},
-    ...(job.remote && {jobLocationType: 'TELECOMMUTE'}),
-    ...(EMPLOYMENT_TYPE[job.type] && {employmentType: EMPLOYMENT_TYPE[job.type]}),
-    ...(url && {url}),
-  };
-}

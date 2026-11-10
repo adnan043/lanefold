@@ -7,7 +7,7 @@ import type {Viewer} from '../platform/types';
  */
 
 /** `?next=` as a same-site PATH, or the fallback. Mirrors `safeNext` on the server. */
-export function nextPath(fallback = '/dashboard'): string {
+export function nextPath(fallback = '/app'): string {
   const value = new URLSearchParams(window.location.search).get('next');
   if (!value || value.length > 512) return fallback;
   if (!value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) return fallback;

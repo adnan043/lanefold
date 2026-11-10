@@ -1,0 +1,188 @@
+/* Board polish: whole-card click, drag feedback, pending items, skeletons, failure bar, visible labels. Tokens only. */
+
+/* ---- the whole card opens it ---- */
+.lf-card {
+  position: relative;
+}
+.lf-card-title::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+}
+.lf-card .lf-grip,
+.lf-card .menu-trigger {
+  position: relative;
+  z-index: 1;
+}
+.lf-card:has(.lf-card-title:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lf-card-title:focus-visible {
+  outline: 2px solid transparent; /* the card's :has() ring above is the visible one */
+}
+
+/* ---- pending (not saved yet) ---- */
+.lf-card[data-pending],
+.lf-lane[data-pending] {
+  opacity: 0.65;
+}
+.lf-card[data-pending] .lf-card-title {
+  cursor: progress;
+}
+
+/* ---- drag feedback ---- */
+.lf-lane {
+  transition: outline-color 0.15s ease, background-color 0.15s ease;
+}
+.lf-lane[data-drop-target] {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  background: color-mix(in oklab, var(--accent) 8%, color-mix(in oklab, var(--lane) 10%, var(--surface)));
+}
+/* The held card sits where it would land: a 2 px line marks that spot. */
+.lf-card[data-dragging]::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: -6px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.lf-drop-hint {
+  margin: 0;
+  padding: 1rem 0.5rem;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ---- visible labels in the composers ---- */
+.lf-composer-label {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-block-end: 0;
+}
+/* The card composer, pinned under the list: tight label-to-field spacing. */
+.lf-lane-foot > .lf-composer {
+  gap: 0.25rem;
+}
+.lf-lane-foot > .lf-composer .lf-composer-actions {
+  margin-block-start: 0.375rem;
+}
+
+/* ---- skeletons ---- */
+.lf-skel-lanes {
+  padding-inline: 0.75rem;
+}
+.lf-skel-lane {
+  gap: 0.5rem;
+  padding: 0.75rem 0.5rem;
+}
+.lf-skel-title {
+  height: 14px;
+  margin-block-end: 0.25rem;
+}
+.lf-skel-card {
+  display: block;
+  height: 56px;
+  border-radius: 10px;
+}
+.lf-skel-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* ---- failure bar (stays until dismissed or retried) ---- */
+.lf-failure-region {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 4.5rem;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 31;
+}
+.lf-failure {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: min(32rem, calc(100vw - 2rem));
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lf-lane {
+    transition: none;
+  }
+}
+
+/* ---- long lanes: skip layout and paint of off-screen cards (find-in-page and focus still reach them).
+   Off while a card is held so dnd-kit measures real heights. ---- */
+.lf-lane:not([data-card-drag]) .lf-cards > .lf-card:not(:focus-within) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 5.5rem;
+}
+
+/* ---- the card's short number (#42): quiet, digits stay left-to-right in RTL ---- */
+.lf-card-num {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  unicode-bidi: isolate;
+  direction: ltr;
+}
+
+/* ---- motion: a new card or list (still saving) grows in; the add form and rename field ease open.
+   Leaving (archive) and coming back (undo) are animated from script: src/app/motion.ts. ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .lf-card[data-pending] {
+    animation: lf-card-in 0.22s cubic-bezier(0.2, 0, 0, 1);
+  }
+  .lf-lane[data-pending] {
+    animation: lf-lane-in 0.24s cubic-bezier(0.2, 0, 0, 1);
+  }
+  .lf-composer,
+  .lf-lane-name-input {
+    animation: lf-fade-down 0.16s ease-out;
+  }
+  .lf-card,
+  .lf-card-title {
+    transition: opacity 0.2s ease, color 0.2s ease;
+  }
+}
+
+@keyframes lf-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+}
+@keyframes lf-lane-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px) scale(0.98);
+  }
+}
+@keyframes lf-fade-down {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}

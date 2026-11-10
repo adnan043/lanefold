@@ -3,7 +3,9 @@ import {bodyLimit} from 'hono/body-limit';
 import {createMiddleware} from 'hono/factory';
 import {validator} from 'hono/validator';
 
+import type {PrismaClient} from '../../generated/prisma/client';
 import type {Viewer} from '../../lib/types';
+import {getDb} from '../../platform/db';
 import {formCsrf, problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {
   cancelMembership,
@@ -15,7 +17,9 @@ import {
   membershipOf,
   type PaymentEventInfo,
 } from '../../platform/payments';
-import {paymentHooks, recordMembership} from '../payments-hooks';
+import {softLimited} from '../soft-limit';
+import {membership} from '../workspaces';
+import {applyWorkspacePlan, paymentHooks, recordMembership} from '../payments-hooks';
 
 /**
  * Payments, the site's side (docs/agent/payments.md).
@@ -85,7 +89,10 @@ const checkoutBody = createMiddleware<{Variables: {input: CheckoutForm; form: bo
     const pairs = raw.metadata && typeof raw.metadata === 'object' ? Object.entries(raw.metadata) : null;
     if (!pairs || pairs.length > 20 || pairs.some(([k, v]) => typeof v !== 'string' || k.length > 40 || v.length > 500)) {
       fields.metadata = 'Notes are up to 20 short text pairs.';
-    } else metadata = Object.fromEntries(pairs) as Record<string, string>;
+    } else {
+      // `workspaceId` and `plan` name a workspace's plan checkout (set only by routes/billing.ts, read by the refund hook): never the browser's.
+      metadata = Object.fromEntries(pairs.filter(([k]) => k !== 'workspaceId' && k !== 'plan')) as Record<string, string>;
+    }
   }
   if (Object.keys(fields).length) {
     return c.json({...problem('invalid_input', Object.values(fields)[0]!), fields}, 422);
@@ -143,6 +150,18 @@ export const checkoutRoutes = new Hono()
       if (c.var.form) return c.redirect(redirectUrl, 303);
       return c.json({redirectUrl, ...extra}, status);
     };
+    // Plans are sold ONLY through the workspace route (`POST /workspaces/:id/billing/checkout`): a plan's price key
+    // here would charge without ever naming a workspace.
+    if (signedIn && (await softLimited(viewer.id!, 'checkout-start', 20, 600))) {
+      if (c.var.form) return c.redirect(`${CHECKOUT_PAGE}?error=E_RATE_LIMITED`, 303);
+      c.header('Retry-After', '60');
+      return c.json(problem('rate_limited', 'Too many checkout attempts. Wait a few minutes and try again.'), 429);
+    }
+    const planPrice = await getDb()?.planLimit.findFirst({where: {priceKeyMonthly: input.price}, select: {plan: true}});
+    if (planPrice) {
+      if (c.var.form) return c.redirect(`${CHECKOUT_PAGE}?error=E_PRICE_NOT_FOUND`, 303);
+      return c.json(problem('e_price_not_found', 'That price cannot be bought here.'), 404);
+    }
     // Several ways to pay this price and none chosen yet: the buyer chooses on the checkout page.
     let gateway = input.gateway;
     if (!gateway) {
@@ -197,13 +216,15 @@ export const checkoutRoutes = new Hono()
       return c.json(problem('payments_unavailable', found.message), 503);
     }
     const checkout = found.data;
+    let recorded = true;
     if (checkout.status === 'paid') {
       // The confirm: the Preview gets no events, and a live event may still be on its way.
       const event: PaymentEventInfo = {
         id: `confirm_${checkout.id}`,
         type: 'checkout.paid',
         mode: checkout.mode,
-        createdAt: new Date().toISOString(),
+        // The payment's own time (never "now"): a real platform event older than this confirm is still applied.
+        createdAt: checkout.paidAt ?? '',
         source: 'confirm',
       };
       try {
@@ -211,12 +232,13 @@ export const checkoutRoutes = new Hono()
         const membership = membershipOf(checkout);
         if (membership) await paymentHooks.onMembershipChanged?.(membership, {...event, type: 'membership.started'});
       } catch (error) {
-        // The payment stands; the event (live) records it again later.
+        // The payment stands, but it is not recorded yet: the thanks page says to check again (the live event retries too).
+        recorded = false;
         console.error(`[payments] confirm ${checkout.id}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500));
       }
     }
     c.header('Cache-Control', 'private, no-store');
-    return c.json({checkout: publicCheckout(checkout)});
+    return c.json({checkout: publicCheckout(checkout), recorded});
   });
 
 const memberSelect = {
@@ -226,22 +248,46 @@ const memberSelect = {
   status: true,
   currentPeriodEnd: true,
   accessEndsAt: true,
+  workspaceId: true,
 } as const;
 
-/** The member's own rows: bought signed in, or with their VERIFIED address. */
-const ownedBy = (viewer: Viewer) => ({
-  OR: [{userId: viewer.id!}, ...(viewer.email && viewer.emailVerified ? [{email: viewer.email.toLowerCase()}] : [])],
-});
+/**
+ * The member's own rows: bought signed in, or with their VERIFIED address, plus the plans of every workspace the
+ * visitor CURRENTLY owns or administers (the buyer may have left; the owner must still see and stop the billing).
+ * An archived workspace counts for its owner only (it is closed to everyone else).
+ */
+async function visibleTo(db: PrismaClient, viewer: Viewer) {
+  const admins = await db.workspaceMember.findMany({
+    where: {userId: viewer.id!, role: {in: ['owner', 'admin']}},
+    select: {workspaceId: true, role: true, workspace: {select: {archivedAt: true}}},
+    take: 50,
+  });
+  const workspaceIds = admins.filter(row => row.workspace.archivedAt === null || row.role === 'owner').map(row => row.workspaceId);
+  return {
+    OR: [
+      // Own rows of a workspace's plan only while still an admin or owner there (the cancel route's rule): the
+      // workspace clause below covers those; a removed or demoted buyer sees (and can stop) nothing of it.
+      {userId: viewer.id!, workspaceId: null},
+      ...(viewer.email && viewer.emailVerified ? [{email: viewer.email.toLowerCase(), workspaceId: null}] : []),
+      ...(workspaceIds.length ? [{workspaceId: {in: workspaceIds}}] : []),
+    ],
+  };
+}
 
 const cancelBody = validator('json', value => ({atPeriodEnd: (value as {atPeriodEnd?: unknown})?.atPeriodEnd !== false}));
 
 export const membershipRoutes = new Hono()
   .get('/', withViewer, requireAuth, withDb, async c => {
-    const rows = await c.var.db.membership.findMany({where: ownedBy(c.var.viewer), select: memberSelect, orderBy: {id: 'desc'}, take: 20});
+    const rows = await c.var.db.membership.findMany({where: await visibleTo(c.var.db, c.var.viewer), select: memberSelect, orderBy: {id: 'desc'}, take: 20});
+    const ids = [...new Set(rows.flatMap(row => (row.workspaceId ? [row.workspaceId] : [])))];
+    const names = new Map(
+      ids.length ? (await c.var.db.workspace.findMany({where: {id: {in: ids}}, select: {id: true, name: true}, take: 20})).map(w => [w.id, w.name] as const) : [],
+    );
     c.header('Cache-Control', 'private, no-store');
     return c.json({
       memberships: rows.map(row => ({
         ...row,
+        workspaceName: row.workspaceId ? (names.get(row.workspaceId) ?? null) : null,
         currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
         accessEndsAt: row.accessEndsAt?.toISOString() ?? null,
       })),
@@ -251,12 +297,28 @@ export const membershipRoutes = new Hono()
   .post('/:id/cancel', cancelBody, withViewer, requireAuth, withDb, async c => {
     const subscriptionId = c.req.param('id');
     const mine = await c.var.db.membership.findFirst({
-      where: {subscriptionId, ...ownedBy(c.var.viewer)},
-      select: {subscriptionId: true, mode: true},
+      where: {subscriptionId, ...(await visibleTo(c.var.db, c.var.viewer))},
+      select: {subscriptionId: true, mode: true, workspaceId: true},
     });
     if (!mine) return c.json(problem('not_found', 'No such membership.'), 404);
+    // A workspace's plan is cancelled only by someone who is still an admin or owner there (not a removed or demoted buyer).
+    if (mine.workspaceId) {
+      const member = await membership(c.var.db, mine.workspaceId, c.var.viewer.id!);
+      let allowed = member !== null && member.rank >= 3;
+      if (!member) {
+        // An ARCHIVED workspace is closed to everyone (membership() is null), but its owner must still be able to stop paying.
+        const owner = await c.var.db.workspaceMember.findFirst({
+          where: {workspaceId: mine.workspaceId, userId: c.var.viewer.id!, role: 'owner', workspace: {archivedAt: {not: null}}},
+          select: {userId: true},
+        });
+        allowed = owner !== null;
+      }
+      if (!allowed) return c.json(problem('not_found', 'No such membership.'), 404);
+    }
     const done = await cancelMembership(c.req.url, mine.subscriptionId, c.req.valid('json').atPeriodEnd);
     if (!done.ok) return c.json(problem(done.code.toLowerCase(), done.message), done.status === 404 ? 404 : 502);
     await recordMembership(done.data, mine.mode);
+    // An immediate cancel ends access now: the workspace falls back to free without waiting for an event.
+    await applyWorkspacePlan(done.data);
     return c.json({ok: true, accessEndsAt: done.data.accessEndsAt});
   });

@@ -1,0 +1,158 @@
+/*
+ * Language support (SPEC 11): per-locale fonts and right-to-left.
+ * `applyDocumentLocale()` sets <html lang dir class="lang-xx">.
+ *
+ * Fonts: system stacks first. A self-hosted Noto subset is declared with
+ * @font-face but is only fetched when a rule that names its family matches,
+ * so a language's font loads only while that language is active. The
+ * woff2 files are in public/fonts/ (same origin: font-src 'self'; licenses in
+ * public/fonts/LICENSES.txt).
+ */
+
+/* zh / ja / ko: one rule per unicode-range slice (generated) lives in i18n-cjk.css (~84 KB gzip), loaded on
+   demand by the I18nProvider (src/i18n/index.tsx) only when one of those languages is active. */
+
+@font-face {
+  font-family: 'LF Noto Bengali';
+  src: url('/fonts/noto-sans-bengali.woff2') format('woff2');
+  font-display: swap;
+  font-weight: 400 600;
+}
+@font-face {
+  font-family: 'LF Noto Devanagari';
+  src: url('/fonts/noto-sans-devanagari.woff2') format('woff2');
+  font-display: swap;
+  font-weight: 400 600;
+}
+@font-face {
+  font-family: 'LF Noto Arabic';
+  src: url('/fonts/noto-sans-arabic.woff2') format('woff2');
+  font-display: swap;
+  font-weight: 400 600;
+}
+@font-face {
+  font-family: 'LF Noto Nastaliq';
+  src: url('/fonts/noto-nastaliq-urdu.woff2') format('woff2');
+  font-display: swap;
+  font-weight: 400 700;
+}
+@font-face {
+  font-family: 'LF Noto Thai';
+  src: url('/fonts/noto-sans-thai.woff2') format('woff2');
+  font-display: swap;
+  font-weight: 400 600;
+}
+
+:root {
+  --font-bn: 'LF Noto Bengali', 'Noto Sans Bengali', 'Nirmala UI', 'Kalpurush', var(--font-sans);
+  --font-hi: 'LF Noto Devanagari', 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', var(--font-sans);
+  --font-ar: 'LF Noto Arabic', 'Noto Sans Arabic', 'Segoe UI', Tahoma, var(--font-sans);
+  --font-ur: 'LF Noto Nastaliq', 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'LF Noto Arabic', 'Noto Sans Arabic', 'Segoe UI', Tahoma, var(--font-sans);
+  --font-th: 'LF Noto Thai', 'Noto Sans Thai', 'Leelawadee UI', 'Tahoma', var(--font-sans);
+  --font-zh: 'LF Noto SC', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', var(--font-sans);
+  --font-ja: 'LF Noto JP', 'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans CJK JP', var(--font-sans);
+  --font-ko: 'LF Noto KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', var(--font-sans);
+}
+
+html.lang-bn { --font-sans: var(--font-bn); }
+html.lang-hi { --font-sans: var(--font-hi); }
+html.lang-ar,
+html.lang-fa { --font-sans: var(--font-ar); }
+html.lang-ur { --font-sans: var(--font-ur); }
+html.lang-th { --font-sans: var(--font-th); }
+html.lang-zh { --font-sans: var(--font-zh); }
+html.lang-ja { --font-sans: var(--font-ja); }
+html.lang-ko { --font-sans: var(--font-ko); }
+
+/* Scripts with tall marks need more line height. */
+html.lang-bn body,
+html.lang-hi body,
+html.lang-th body {
+  line-height: 1.6;
+}
+html.lang-ur body {
+  line-height: 1.9;
+}
+
+/* Right-to-left: the app uses logical properties; these cover what is left. */
+html[dir='rtl'] {
+  text-align: start;
+}
+html[dir='rtl'] input[type='email'],
+html[dir='rtl'] input[type='url'],
+html[dir='rtl'] input[type='tel'],
+html[dir='rtl'] input[type='number'],
+html[dir='rtl'] code,
+html[dir='rtl'] kbd {
+  direction: ltr;
+  text-align: start;
+}
+
+/* Typography by script (2026-11-03). Selectors use :lang(), which matches the lang attribute that
+   applyDocumentLocale() and App.astro set on <html> (bare codes: ar, fa, ur, th, hi, bn, zh, ja, ko)
+   and any lang on a nested element. Latin locales match none of these, so their output is unchanged. */
+
+/* --font-display copied --font-sans where it was declared on :root, so per-language --font-sans never
+   reached it. Re-resolve it on <html> after the language rule. Latin: resolves to Inter as before. */
+html[class*='lang-'] {
+  --font-display: var(--font-sans);
+}
+
+/* Letter-spacing breaks joining in cursive scripts and spreads Indic/Thai clusters. !important: tracking is
+   set by many single-class rules (.app-shell, .btn, titles, .eyebrow) that this must beat. */
+html:lang(ar),
+html:lang(ur),
+html:lang(fa),
+html:lang(th),
+html:lang(hi),
+html:lang(bn),
+html:lang(ar) *,
+html:lang(ur) *,
+html:lang(fa) *,
+html:lang(th) *,
+html:lang(hi) *,
+html:lang(bn) *,
+html:lang(zh) *,
+html:lang(ja) *,
+html:lang(ko) * {
+  letter-spacing: 0 !important;
+}
+
+/* Uppercase has no meaning outside Latin/Cyrillic/Greek and can break shaping. */
+html:lang(ar) *,
+html:lang(ur) *,
+html:lang(fa) *,
+html:lang(th) *,
+html:lang(hi) *,
+html:lang(bn) *,
+html:lang(zh) *,
+html:lang(ja) *,
+html:lang(ko) * {
+  text-transform: none !important;
+}
+
+/* Nastaliq has tall ascenders and deep descenders: fixed line-heights on titles, buttons and badges clip. */
+html:lang(ur) :is(h1, h2, h3, h4, h5, h6, p, li, label, button, input, select, textarea, a, .btn, .badge, .lf-card-title, .lf-lane-name, .lf-label, .app-nav-link, .toast, [class*='title']) {
+  line-height: 1.9;
+}
+
+/* Thai and Indic stacked marks need room on compact text too. */
+html:lang(th) :is(h1, h2, h3, h4, h5, h6, .btn, .badge, .lf-card-title, .lf-lane-name, .app-nav-link),
+html:lang(hi) :is(.btn, .badge, .lf-card-title, .lf-lane-name, .app-nav-link),
+html:lang(bn) :is(.btn, .badge, .lf-card-title, .lf-lane-name, .app-nav-link) {
+  line-height: 1.6;
+}
+
+/* No spaces between words: break at dictionary/kinsoku points, and never overflow a narrow card. */
+html:lang(th),
+html:lang(zh),
+html:lang(ja) {
+  line-break: strict;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+/* Korean uses spaces, so keep words whole and wrap at spaces; break-word is the overflow safety net. */
+html:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}

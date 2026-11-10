@@ -1,0 +1,951 @@
+/*
+ * The card modal (src/app/cards). A native <dialog> shown with showModal(): top layer, the board behind it inert and dimmed.
+ * The dialog itself is a transparent full-viewport frame (a click on it, outside the box, is a click on the scrim);
+ * `.cd-panel` is the visible box. Tokens only (no hex), no one-sided colour stripes, no `style=""`.
+ * No transform / filter / contain on the dialog or the box: they would become the containing block of the position-fixed
+ * popovers, menus and toasts that render inside it.
+ */
+.cd-dialog {
+  position: fixed;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  max-inline-size: none;
+  max-block-size: none;
+  margin: 0;
+  padding: 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.cd-dialog[open] {
+  display: grid;
+  place-items: center;
+}
+.cd-dialog:focus {
+  outline: none;
+}
+.cd-dialog::backdrop {
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+html.cd-locked,
+html.cd-locked body {
+  overflow: hidden;
+}
+.cd-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  inline-size: min(62.5rem, calc(100vw - 2rem));
+  block-size: calc(100vh - 2rem);
+  block-size: calc(100dvh - 2rem);
+  min-block-size: 0;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cd-dialog[open] .cd-panel {
+    animation: cd-in 0.16s ease-out;
+  }
+  .cd-dialog[open]::backdrop {
+    animation: cd-fade 0.16s ease-out;
+  }
+}
+@keyframes cd-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+@keyframes cd-fade {
+  from {
+    opacity: 0;
+  }
+}
+.cd-panel[data-dropping] {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+}
+.cd-drop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.5rem;
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--accent-text);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.cd-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cd-title {
+  flex: 1;
+  min-inline-size: 0;
+}
+.cd-panel input:not([type='checkbox']):not([type='file']),
+.cd-panel textarea,
+.cd-panel select {
+  inline-size: 100%;
+  min-block-size: var(--control-h);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+}
+.cd-panel input:not([type='checkbox']):not([type='file']),
+.cd-panel select {
+  line-height: 1.25; /* see `.field input` in global.css: keeps the box at --control-h */
+}
+.cd-panel input:not([type='checkbox']):not([type='file']):hover,
+.cd-panel textarea:hover {
+  border-color: var(--control-border-hover);
+}
+.cd-panel input:not([type='checkbox']):not([type='file']):focus-visible,
+.cd-panel textarea:focus-visible {
+  outline: 2px solid transparent;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.cd-panel [aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.cd-title textarea {
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 1.4;
+  border-color: transparent;
+  background: transparent;
+}
+.cd-title textarea:not([readonly]):hover {
+  border-color: var(--line-strong);
+}
+.cd-title textarea[readonly] {
+  cursor: default;
+}
+
+.cd-scroll {
+  flex: 1;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* Trello-style: details on the left, comments and activity on the right; each pane scrolls on its own */
+.cd-grid {
+  flex: 1;
+  min-block-size: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+}
+.cd-main,
+.cd-side {
+  display: grid;
+  align-content: start;
+  gap: 1.5rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+}
+.cd-side {
+  background: var(--surface);
+  border-inline-start: 1px solid var(--line);
+}
+.cd-scroll > .notice-box {
+  margin: 1rem 1.25rem 0;
+}
+.cd-scroll > :not(.cd-grid):not(.notice-box) {
+  margin: 1rem 1.25rem;
+}
+/* properties: a compact grid of labelled controls above the description */
+.cd-props {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.75rem 1rem;
+  min-inline-size: 0;
+}
+.cd-field {
+  display: grid;
+  gap: 0.35rem;
+  min-inline-size: 0;
+}
+.cd-field > label,
+.cd-label-text {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.cd-field-body {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+.cd-none {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.cd-spacer {
+  flex: 1;
+}
+
+.cd-section {
+  display: grid;
+  gap: 0.75rem;
+}
+.cd-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.cd-section-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.cd-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+.cd-mention {
+  color: var(--accent-text);
+}
+.cd-composer {
+  display: grid;
+  gap: 0.5rem;
+}
+.cd-composer textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+.cd-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* labels, people, pickers */
+.cd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+.cd-pop {
+  inline-size: 18rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.cd-pick-list,
+.cd-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+  max-block-size: 14rem;
+  overflow-y: auto;
+  inline-size: 100%;
+}
+.cd-pick-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.cd-people li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cd-pick {
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-block-size: 36px;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.cd-pick:hover {
+  background: var(--hover);
+}
+.cd-pick[aria-pressed='true'] {
+  background: var(--accent-soft);
+}
+.cd-pick:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.cd-pick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.cd-pick-name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* checklists */
+.cd-checklist {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.cd-checklist-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cd-checklist-head h4 {
+  flex: 1;
+  margin: 0;
+  font-size: 0.95rem;
+}
+.cd-checklist-head .cd-inline {
+  flex: 1;
+}
+.cd-progress {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.cd-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.125rem;
+}
+.cd-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  min-block-size: 36px;
+}
+.cd-item-meta {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline-start: 1.75rem;
+  padding-block-end: 0.25rem;
+}
+.cd-item-chip,
+.cd-item-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.cd-item-chip[data-overdue],
+.cd-item-due[data-overdue] {
+  color: var(--danger);
+}
+.cd-item-late {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+}
+.cd-item > .checkbox {
+  flex: 1;
+  min-inline-size: 0;
+}
+.cd-item[data-done] .checkbox-label {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.cd-item-actions {
+  display: inline-flex;
+  gap: 0.125rem;
+}
+.cd-inline {
+  display: grid;
+  gap: 0.25rem;
+  inline-size: 100%;
+}
+.cd-inline-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+/* The input and Save are both 32px tall. */
+/* :root .cd-panel beats `.cd-panel input:not(…)` (min-block-size: 40px) above. */
+:root .cd-panel .cd-inline-row > input,
+:root .cd-panel .cd-inline-row > .button {
+  box-sizing: border-box;
+  block-size: 32px;
+  min-block-size: 32px;
+}
+:root .cd-panel .cd-inline-row > input {
+  padding-block: 0;
+}
+.cd-inline-row > .button {
+  flex: none;
+}
+/* Touch screens keep the site's 44px touch target (a11y.css), both together. */
+@media (pointer: coarse) {
+  :root .cd-panel .cd-inline-row > input,
+  :root .cd-panel .cd-inline-row > .button {
+    block-size: 44px;
+    min-block-size: 44px;
+  }
+}
+
+/* attachments */
+.cd-attachments,
+.cd-uploads,
+.cd-comments,
+.cd-activity {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.cd-attachment {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.25rem;
+}
+.cd-attachment-open {
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+.cd-attachment-open:hover {
+  background: var(--hover);
+}
+.cd-attachment-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.cd-thumb {
+  flex: none;
+  inline-size: 56px;
+  block-size: 56px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface);
+}
+.cd-thumb-icon {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.cd-attachment-text {
+  display: grid;
+  min-inline-size: 0;
+}
+.cd-attachment-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-uploads li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+}
+.cd-cover,
+.cd-lightbox {
+  inline-size: 100%;
+  max-block-size: 70vh;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.cd-cover {
+  max-block-size: 8rem;
+  object-fit: cover;
+}
+
+/* comments, activity */
+.cd-comment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+/* editing: the editor takes the comment's full width, under the avatar and name */
+.cd-comment > .cd-composer {
+  flex-basis: 100%;
+  min-inline-size: 0;
+}
+.cd-comment-main {
+  flex: 1;
+  min-inline-size: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.cd-comment-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.cd-comment-head time {
+  color: var(--muted);
+}
+.cd-activity li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.cd-activity li > .avatar {
+  flex: none;
+}
+.cd-activity-text {
+  flex: 1;
+  min-width: 0;
+}
+.cd-activity time {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* one column at <= 720px: details first, then comments, the whole sheet scrolls */
+@media (max-width: 720px) {
+  .cd-scroll {
+    overflow-y: auto;
+  }
+  .cd-grid {
+    flex: none;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cd-main,
+  .cd-side {
+    overflow: visible;
+  }
+  .cd-side {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--line);
+  }
+}
+/* phones: a full-screen sheet, clear of the notch and the home bar */
+@media (max-width: 560px) {
+  .cd-dialog {
+    padding: 0;
+  }
+  .cd-panel {
+    inline-size: 100%;
+    block-size: 100%;
+    max-block-size: none;
+    border: 0;
+    border-radius: 0;
+    padding-block: env(safe-area-inset-top) env(safe-area-inset-bottom);
+    padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  }
+}
+
+/* right pane: "Comments and activity" feed with the attachments below it, like Trello */
+.cd-feed {
+  display: grid;
+  gap: 0.75rem;
+  min-inline-size: 0;
+}
+.cd-side .cd-section-head h3 {
+  font-size: 0.95rem;
+}
+.cd-side .cd-comment {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+/* top bar: the cover behind the lane chip and the close button */
+.cd-top {
+  position: relative;
+  flex: none;
+  min-block-size: 3.5rem;
+  background: var(--surface);
+  border-block-end: 1px solid var(--line);
+}
+.cd-top[data-cover] {
+  block-size: 12rem;
+}
+.cd-top-img {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+.cd-top-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+.cd-lane-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-inline-size: 60%;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cd-lane-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-lane-chip:disabled {
+  cursor: default;
+}
+.cd-lane-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.cd-move {
+  inline-size: 18rem;
+}
+.cd-move-title {
+  margin: 0;
+  text-align: center;
+  font-size: 0.9rem;
+}
+.cd-move-form {
+  display: grid;
+  gap: 0.75rem;
+}
+/* the one-line "Write a comment…" that opens on click */
+.cd-comment-fake {
+  inline-size: 100%;
+  min-block-size: 40px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--muted);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.cd-comment-fake:hover {
+  border-color: var(--muted);
+}
+.cd-comment-fake:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.cd-main .cd-title textarea {
+  font-size: 1.5rem;
+}
+
+/* Trello's "Add" row and the members + labels row */
+.cd-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.cd-people-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem 1.5rem;
+}
+.cd-comment-tools {
+  display: flex;
+  gap: 0.125rem;
+}
+.cd-main .cd-head {
+  align-items: flex-start;
+}
+.cd-main .cd-title textarea {
+  white-space: normal;
+}
+
+/* image attachments: a big preview in the feed, name and size under it, menu beside them */
+.cd-attachment[data-image] {
+  position: relative;
+  display: block;
+  padding: 0.5rem;
+  background: var(--card);
+  border-radius: var(--radius);
+}
+.cd-attachment[data-image] .cd-attachment-open {
+  display: grid;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0;
+}
+.cd-attachment[data-image] .cd-thumb {
+  inline-size: 100%;
+  block-size: auto;
+  min-block-size: 8rem;
+  max-block-size: 32rem;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+.cd-attachment[data-image] > :last-child {
+  position: absolute;
+  inset-block-start: 0.75rem;
+  inset-inline-end: 0.75rem;
+}
+
+/* the comment editor: a formatting bar over the text, one box that takes the focus ring together */
+.cd-editor {
+  display: grid;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow: hidden;
+}
+.cd-editor:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.cd-editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.25rem 0.5rem;
+  border-block-end: 1px solid var(--line);
+  background: var(--surface);
+}
+.cd-editor-bar .icon-button,
+.cd-editor-bar .menu-trigger {
+  min-inline-size: 32px;
+  min-block-size: 32px;
+}
+.cd-editor-sep {
+  inline-size: 1px;
+  block-size: 1.25rem;
+  margin-inline: 0.25rem;
+  background: var(--line-strong);
+}
+.cd-panel .cd-editor textarea {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  min-block-size: 5rem;
+}
+.cd-panel .cd-editor textarea:focus-visible {
+  box-shadow: none;
+}
+.cd-editor > .md,
+.cd-editor > :not(.cd-editor-bar):not(textarea) {
+  padding: 0.5rem 0.75rem;
+}
+.cd-syntax {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.375rem;
+}
+
+/* the "+" insert menu: search, then icon tile + title + description (+ the syntax it types) */
+.cd-pop.cd-insert {
+  inline-size: 22rem;
+  padding: 0.5rem;
+}
+.cd-insert-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline-start: 0.75rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+.cd-panel .cd-insert-search input:not([type='checkbox']):not([type='file']),
+.cd-panel .cd-insert-search input:not([type='checkbox']):not([type='file']):hover,
+.cd-panel .cd-insert-search input:not([type='checkbox']):not([type='file']):focus-visible {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.cd-insert-search:focus-within {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.cd-insert-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.125rem;
+  max-block-size: 22rem;
+  overflow-y: auto;
+}
+.cd-insert-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  inline-size: 100%;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.cd-insert-row[data-active] {
+  background: var(--accent-soft);
+}
+.cd-insert-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.cd-insert-text {
+  flex: 1;
+  min-inline-size: 0;
+  display: grid;
+  gap: 0.125rem;
+}
+.cd-insert-text span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.cd-insert-row kbd {
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+}
+.cd-insert-none {
+  padding: 0.75rem;
+}
+.cd-emoji {
+  display: grid;
+  gap: 0.5rem;
+}
+.cd-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 0.25rem;
+}
+.cd-emoji-pick {
+  min-block-size: 36px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+.cd-emoji-pick:hover,
+.cd-emoji-pick:focus-visible {
+  background: var(--hover);
+}
+
+/* custom fields manager: an option's name and its Add button */
+.cd-option-add {
+  display: flex;
+  gap: 0.5rem;
+}
+.cd-option-add input {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+/* label picker: a checkbox, the full-width coloured label, and its edit button */
+.cd-label-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cd-label-list li > .checkbox {
+  flex: 1;
+  min-inline-size: 0;
+}
+.cd-label-list li > .checkbox > span {
+  flex: 1;
+  min-inline-size: 0;
+}
+.cd-label-list li .chip {
+  display: flex;
+  inline-size: 100%;
+  box-sizing: border-box;
+  min-block-size: 2rem;
+  justify-content: flex-start;
+}
+
+/* The card's short number in the panel's top bar. */
+.cd-card-num {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  unicode-bidi: isolate;
+  direction: ltr;
+}
+
+/* The title is a textarea that grows with the text (card-panel.tsx sets its height): the whole title is visible. */
+.cd-title textarea {
+  display: block;
+  inline-size: 100%;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

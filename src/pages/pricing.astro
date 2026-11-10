@@ -1,0 +1,191 @@
+---
+import '../styles/pricing.css';
+
+import Icon, {type IconName} from '../components/home/Icon.astro';
+import {PRICING, withName} from '../content/site';
+import {formatPrice, withLiveLimits} from '../lib/pricing-view';
+import type {PublicPricing} from '../server/pricing';
+import {read} from '../server/backend';
+import Base from '../layouts/Base.astro';
+import {pageContext} from '../server/page';
+
+// On demand: the limits are read from the database (through the Site Cache) at request time, so an edit in
+// /dashboard shows at once. Prices appear only when the plan has a price in the catalogue. The copy in
+// src/content/site.ts is the fallback when the read fails.
+const {api, site, viewer} = await pageContext(Astro.request, Astro.response);
+const name = site?.name ?? 'Lanefold';
+const live = await read<PublicPricing>(api.billing['public-plans'].$get());
+const plans = withLiveLimits(PRICING.plans, live);
+const free = live?.billingMode === 'FREE_FOR_ALL';
+const signedIn = viewer.state === 'user';
+const priceOf = (key: string) => {
+  const price = live?.plans.find(plan => plan.plan === key)?.price;
+  return price && !free ? formatPrice(price) : null;
+};
+/** "$9 / month" → the amount, shown large, and the period after it. */
+const priceParts = (key: string) => {
+  const text = priceOf(key);
+  if (!text) return key === 'free' ? {amount: PRICING.freePrice, period: ''} : null;
+  const [amount = text, ...rest] = text.split(' / ');
+  return {amount, period: rest.length ? `/ ${rest.join(' / ')}` : ''};
+};
+---
+
+<Base site={site} viewer={viewer} title={PRICING.title} description={PRICING.description}>
+  <main id="main" tabindex="-1" class="pricing">
+    <section class="pricing-hero">
+      <div class="pricing-glow" aria-hidden="true"></div>
+      <div class="wrap pricing-head">
+        <p class="pricing-eyebrow">{PRICING.eyebrow}</p>
+        <h1>{PRICING.heading}</h1>
+        <p class="pricing-lede">{PRICING.lede}</p>
+        <div class="pricing-notes">
+          {free ? <p class="pricing-note pricing-note-ok">{withName(PRICING.freeNote, name)}</p> : <p class="pricing-note"><span class="pricing-note-dot" aria-hidden="true"></span>{PRICING.testNote}</p>}
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap pricing-plans" aria-label={PRICING.plansLabel}>
+      <ul class="pricing-grid">
+        {
+          plans.map(plan => {
+            const price = priceParts(plan.key);
+            return (
+              <li class:list={['pricing-plan', {featured: plan.featured}]}>
+                <div class="pricing-plan-top">
+                  <h2>{plan.name}</h2>
+                  {plan.featured && <span class="pricing-badge">{PRICING.popularLabel}</span>}
+                </div>
+                <p class="pricing-blurb">{plan.blurb}</p>
+                <div class="pricing-price-row">
+                  {price && (
+                    <p class="pricing-price">
+                      {price.amount}
+                      {price.period && <span>{price.period}</span>}
+                    </p>
+                  )}
+                  <p class="pricing-unit">{PRICING.perWorkspace}</p>
+                </div>
+                {signedIn ? (
+                  !free && <a class:list={['button', 'pricing-cta', {ghost: !plan.featured}]} href={PRICING.changePlanHref}>{PRICING.changePlan}</a>
+                ) : (
+                  <a class:list={['button', 'pricing-cta', {ghost: !plan.featured}]} href="/account/register/" data-astro-prefetch>{plan.cta}</a>
+                )}
+                <div class="pricing-divider" aria-hidden="true"></div>
+                <p class="pricing-lead">{plan.lead}</p>
+                <ul class="pricing-features">
+                  {plan.features.map(feature => (
+                    <li>
+                      <span class="pricing-check"><Icon name="check" size={12} /></span>
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            );
+          })
+        }
+      </ul>
+      {!free && <p class="pricing-mode-note">{withName(PRICING.modeNote, name)}</p>}
+    </section>
+
+    <section class="wrap pricing-included" aria-labelledby="pricing-included">
+      <div class="pricing-section-head">
+        <h2 id="pricing-included">{PRICING.includedTitle}</h2>
+        <p>{PRICING.includedBody}</p>
+      </div>
+      <ul class="pricing-included-grid">
+        {
+          PRICING.included.map((item, i) => (
+            <li class:list={['pricing-inc', `tone-${['mint', 'sky', 'peach', 'leaf', 'sky', 'mint'][i % 6]}`]}>
+              <span class="pricing-inc-icon"><Icon name={item.icon as IconName} size={22} /></span>
+              <div>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <section class="wrap pricing-compare" aria-labelledby="pricing-compare">
+      <div class="pricing-section-head">
+        <h2 id="pricing-compare">{PRICING.compareTitle}</h2>
+        <p>{PRICING.compareCaption}</p>
+      </div>
+      <div class="pricing-table-wrap" role="region" aria-labelledby="pricing-compare" tabindex="0">
+        <table class="pricing-table">
+          <caption class="visually-hidden">{PRICING.compareCaption}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{PRICING.compareHeaders.plan}</th>
+              {plans.map(plan => <th scope="col" class:list={{featured: plan.featured}}>{plan.name}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {
+              (['members', 'file', 'storage', 'flows'] as const).map(row => (
+                <tr>
+                  <th scope="row">{PRICING.compareHeaders[row]}</th>
+                  {plans.map(plan => <td class:list={{featured: plan.featured}}>{plan.limits[row]}</td>)}
+                </tr>
+              ))
+            }
+            {
+              (['audit'] as const).map(row => (
+                <tr>
+                  <th scope="row">{PRICING.compareHeaders[row]}</th>
+                  {plans.map(plan => (
+                    <td class:list={{featured: plan.featured}}>
+                      {plan.limits[row] ? (
+                        <span class="pricing-yes"><span class="pricing-check"><Icon name="check" size={12} /></span>{PRICING.yes}</span>
+                      ) : (
+                        <span class="pricing-no"><span class="pricing-dash" aria-hidden="true"></span>{PRICING.no}</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="wrap pricing-faq-grid" aria-labelledby="pricing-faq">
+      <div class="pricing-section-head">
+        <h2 id="pricing-faq">{PRICING.faqTitle}</h2>
+        <p>{PRICING.faqLede}</p>
+      </div>
+      <div class="pricing-faq">
+        {
+          PRICING.faq.map(item => (
+            <details>
+              <summary>
+                {item.q}
+                <Icon name="plus" size={20} class="pricing-faq-icon" />
+              </summary>
+              <p>{item.a}</p>
+            </details>
+          ))
+        }
+      </div>
+    </section>
+
+    {
+      !signedIn && (
+        <section class="wrap pricing-end" aria-labelledby="pricing-end">
+          <div class="pricing-cta-band">
+            <h2 id="pricing-end">{PRICING.endTitle}</h2>
+            <p>{PRICING.endBody}</p>
+            <a class="button pricing-end-button" href="/account/register/" data-astro-prefetch>
+              {PRICING.endCta}
+              <Icon name="arrow-right" size={18} />
+            </a>
+          </div>
+        </section>
+      )
+    }
+  </main>
+</Base>

@@ -1,0 +1,46 @@
+---
+/**
+ * The two-column frame of the account pages (sign in, sign up, forgot password):
+ * the form on one side, a calm brand panel on the other (hidden on small screens).
+ * The panel is decorative except its short list; words from `AUTH` in
+ * `src/content/site.ts`. Styles: `src/styles/account.css` (`.auth-*`).
+ */
+import Icon from '../home/Icon.astro';
+import {AUTH} from '../../content/site';
+---
+
+<main id="main" tabindex="-1" class="auth-split">
+  <div class="auth-glow" aria-hidden="true"></div>
+  <div class="auth-pane">
+    <div class="auth-box">
+      <slot />
+    </div>
+  </div>
+  <aside class="auth-aside" aria-label={AUTH.asideLabel}>
+    <div class="auth-aside-inner">
+      <p class="auth-aside-title">{AUTH.asideTitle}</p>
+      <p class="auth-aside-body">{AUTH.asideBody}</p>
+      <div class="auth-mock" aria-hidden="true">
+        <div class="auth-mock-lane">
+          <span class="auth-mock-head"><i></i>{AUTH.mock.lane}</span>
+          <span class="auth-mock-card">{AUTH.mock.cards[0]}<b></b></span>
+          <span class="auth-mock-card auth-mock-lift">{AUTH.mock.cards[1]}<b></b></span>
+        </div>
+        <div class="auth-mock-chat">
+          <span class="auth-mock-msg">{AUTH.mock.message}</span>
+          <span class="auth-mock-msg auth-mock-mine">{AUTH.mock.reply}</span>
+        </div>
+      </div>
+      <ul class="auth-points">
+        {
+          AUTH.points.map(point => (
+            <li>
+              <span class="auth-point-icon"><Icon name="check" size={14} /></span>
+              {point}
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </aside>
+</main>

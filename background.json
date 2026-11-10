@@ -1,4 +1,28 @@
 {
-  "lists": {},
-  "schedules": {}
+  "lists": {
+    "invite-emails": {"retries": 4, "concurrency": 2},
+    "notification-emails": {"retries": 3, "concurrency": 1},
+    "flows-daily": {"retries": 3, "concurrency": 1},
+    "plan-sweep": {"retries": 3, "concurrency": 1},
+    "grace-sweep": {"retries": 3, "concurrency": 1},
+    "old-data-cleanup": {"retries": 3, "concurrency": 1},
+    "file-cleanup": {"retries": 3, "concurrency": 1},
+    "recurring-cards": {"retries": 3, "concurrency": 1},
+    "due-reminders": {"retries": 3, "concurrency": 1},
+    "due-reminder-at": {"retries": 3, "concurrency": 2},
+    "morning-digest": {"retries": 3, "concurrency": 1},
+    "stale-cards": {"retries": 3, "concurrency": 1}
+  },
+  "schedules": {
+    "notification-emails": {"cron": "*/15 * * * *", "label": "Email mentions and assignments to people who turned it on"},
+    "flows-daily": {"every": "hour", "label": "Run today's due-date Flows"},
+    "plan-sweep": {"every": "day", "at": "04:00", "tz": "UTC", "label": "Move ended paid plans back to free"},
+    "grace-sweep": {"every": "day", "at": "04:20", "tz": "UTC", "label": "Start or clear over-limit grace periods"},
+    "old-data-cleanup": {"every": "day", "at": "04:40", "tz": "UTC", "data": {"inviteDays": 30, "notificationDays": 90}, "label": "Delete old invites, join links and read notifications"},
+    "file-cleanup": {"every": "hour", "label": "Delete stored files whose card, board or workspace is gone"},
+    "recurring-cards": {"every": "hour", "label": "Make the next copy of repeating cards that are due"},
+    "morning-digest": {"every": "hour", "label": "Make the morning digest of people who turned it on"},
+    "due-reminders": {"every": "hour", "label": "Remind assignees and followers of cards due soon (day before, or the reminder picked with a due time)"},
+    "stale-cards": {"every": "day", "at": "05:00", "tz": "UTC", "label": "Remind assignees and followers of cards that sat too long in one lane"}
+  }
 }

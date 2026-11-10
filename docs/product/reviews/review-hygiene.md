@@ -1,0 +1,9 @@
+# Pre-commit hygiene audit (no commit made)
+
+1. Ignore rules: .env, .dev.vars, dist, node_modules, .platform all ignored (.gitignore lines 1-5, 12). Also ignored: .astro, .wrangler, *.local, src/generated.
+   Secret scan of 750 untracked/modified files (package-lock excluded): no `sk_`, `-----BEGIN`, JWT-like strings, AWS/GitHub/Slack keys or long key=value secrets. Only hits: 4 test fixtures for "URL with credentials is rejected" (`https://u:p@...`): tests/chat-mentions.test.ts:37, tests/integration/card-detail.test.ts:171, tests/markdown.test.ts:99, tests/trello-import.test.ts:179. Dummy values, fine.
+2. Large/odd files: none over 1 MB. Largest: package-lock.json 272 KB, src/styles/i18n-cjk.css 266 KB, fonts under public/fonts (15 MB total, max 239 KB each, expected). No *.log, coverage, .bak, scratch files. (tests/errors-coverage.test.ts is a real test, name only.) Many docs/product/*.md review/audit files are untracked: owner decides whether to commit them.
+3. Headers: public/_headers matches src/platform/headers.ts for all six headers (nosniff, Referrer-Policy, Permissions-Policy, COOP, X-Frame-Options DENY, HSTS 15552000), same values. CSP comes from Astro (`security.csp`), not in either file. Extra /fonts/* immutable cache rule is intentional.
+4. Dependencies: `npm audit --omit=dev`: 0 vulnerabilities. `npm ls --depth=0`: no errors, lockfile consistent. New runtime deps beyond dnd-kit and fractional-indexing: `@fontsource-variable/inter` 5.3.0 (exact pin). New dev dep: `typescript` ^7.0.2. dnd-kit core/sortable/utilities and fractional-indexing 4.0.0 are pinned exactly. Not in the expected list: decide whether Inter and typescript are accepted.
+5. Scripts: dev/build/preview/test/studio/platform unchanged and match publishing.md (build = prisma generate && astro build; npm ci then build). Added: `typecheck`, `seed:demo` (needs .env; do not run against live DB).
+No files fixed; none needed.

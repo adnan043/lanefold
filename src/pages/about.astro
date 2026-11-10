@@ -8,10 +8,10 @@ import {staticContext} from '../server/page';
 export const prerender = true;
 
 const {site, viewer} = await staticContext(Astro.request);
-const name = site?.name ?? 'My site';
+const name = site?.name ?? 'Lanefold';
 ---
 
-<Base site={site} viewer={viewer} isStatic title="About" description={withName(ABOUT.lede, name)}>
+<Base site={site} viewer={viewer} isStatic title="About" description="Lanefold is a kanban app with built-in chat: boards, cards and team conversation in one workspace. Why we built it and what it does.">
   <main id="main" tabindex="-1" class="wrap narrow section">
     <BrandMark site={site} size={56} />
     <h1 data-brand-text={ABOUT.title}>{withName(ABOUT.title, name)}</h1>
@@ -25,7 +25,7 @@ const name = site?.name ?? 'My site';
       ))
     }
     <div class="actions">
-      <a class="button" href="/account/register/?next=%2Fabout%2F" data-astro-prefetch data-guest-only>Create an account</a>
+      <a class="button" href="/account/register/?next=%2Fabout%2F" data-astro-prefetch data-guest-only>Start free</a>
       <a class="button ghost" href="/blog/" data-astro-prefetch>Read the blog</a>
     </div>
   </main>

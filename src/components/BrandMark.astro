@@ -1,11 +1,10 @@
 ---
 /**
- * The site's mark: logo when it has one, monogram fallback otherwise.
+ * The site's mark: the admin's logo when set, otherwise the Lanefold mark (`public/logo.svg`).
  * `initial-data` carries no description and no brand colour, so name + logo is
  * the whole brand.
  */
 import type {Site} from '../lib/types';
-import {initials} from '../lib/format';
 
 interface Props {
   site: Site | null;
@@ -24,8 +23,6 @@ const name = site?.name ?? 'My site';
   site?.logo ? (
     <img class:list={['brand-logo', `brand-size-${size}`]} src={site.logo} alt={name} height={size} decoding="async" />
   ) : (
-    <span class:list={['brand-monogram', `brand-size-${size}`]} aria-hidden="true">
-      {initials(name)}
-    </span>
+    <img class:list={['brand-logo', 'brand-logo-default', `brand-size-${size}`]} src="/logo.svg" alt="" width={size} height={size} decoding="async" />
   )
 }

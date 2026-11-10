@@ -31,6 +31,7 @@ import {
   StatusBadge,
   useConfirm,
   useToast,
+  useCooldown,
 } from '../ui';
 
 type StatusFilter = '' | 'active' | 'suspended';
@@ -355,6 +356,7 @@ function RoleEditor({
 }) {
   const roles = useQuery(rolesQuery);
   const [picked, setPicked] = useState<string[]>(user.roles);
+  const cooldown = useCooldown();
   const save = useMutation({
     mutationFn: () =>
       read<{user: AdminUser}>(
@@ -364,6 +366,7 @@ function RoleEditor({
         })
       ),
     onSuccess: onSaved,
+    onError: err => cooldown.note(err),
   });
   const changed = picked.slice().sort().join() !== user.roles.slice().sort().join();
 
@@ -391,7 +394,7 @@ function RoleEditor({
             type="submit"
             pending={save.isPending}
             pendingLabel="Saving…"
-            disabled={!changed || roles.isPending}>
+            disabled={!changed || roles.isPending || cooldown.blocked}>
             Save roles
           </Button>
         </>

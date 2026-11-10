@@ -11,10 +11,13 @@ import {
   useRef,
   useState,
 } from 'react';
+import {createPortal} from 'react-dom';
 
 import {Button, IconButton} from './button';
 import {Notice} from './display';
 import {Icon, type IconName} from './icon';
+import {useUiLabels} from './labels';
+import {portalHost, useOverlayHost} from './portal-host';
 
 /**
  * Dialogs, drawers, confirmations, toasts and menus. Dialogs are the native
@@ -70,17 +73,18 @@ type DialogProps = {
  */
 export function Modal({open, onClose, title, description, children, footer, dismissible = true, size = 'md'}: DialogProps) {
   const {ref, onClick} = useDialog(open, onClose, dismissible);
+  const labels = useUiLabels();
   const id = useId();
   return (
-    <dialog ref={ref} className={`modal modal-${size}`} aria-labelledby={`${id}-title`} onClick={onClick}>
+    <dialog ref={ref} className={`modal modal-${size}`} aria-labelledby={`${id}-title`} aria-describedby={description ? `${id}-desc` : undefined} onClick={onClick}>
       {open && (
         <div className="modal-box">
           <div className="modal-head">
             <div>
               <h2 id={`${id}-title`}>{title}</h2>
-              {description && <p>{description}</p>}
+              {description && <p id={`${id}-desc`}>{description}</p>}
             </div>
-            <IconButton icon="x" label="Close" size="sm" onClick={onClose} disabled={!dismissible} />
+            <IconButton icon="x" label={labels.close} size="sm" onClick={onClose} disabled={!dismissible} />
           </div>
           {children && <div className="modal-body">{children}</div>}
           {footer && <div className="modal-foot">{footer}</div>}
@@ -106,22 +110,23 @@ export function Drawer({
   onSubmit,
 }: DialogProps & {onSubmit?: (event: React.FormEvent<HTMLFormElement>) => void}) {
   const {ref, onClick} = useDialog(open, onClose, dismissible);
+  const labels = useUiLabels();
   const id = useId();
   const content = (
     <>
       <div className="drawer-head">
         <div>
           <h2 id={`${id}-title`}>{title}</h2>
-          {description && <p>{description}</p>}
+          {description && <p id={`${id}-desc`}>{description}</p>}
         </div>
-        <IconButton icon="x" label="Close" size="sm" onClick={onClose} disabled={!dismissible} />
+        <IconButton icon="x" label={labels.close} size="sm" onClick={onClose} disabled={!dismissible} />
       </div>
       <div className="drawer-body">{children}</div>
       {footer && <div className="drawer-foot">{footer}</div>}
     </>
   );
   return (
-    <dialog ref={ref} className="drawer" aria-labelledby={`${id}-title`} onClick={onClick}>
+    <dialog ref={ref} className="drawer" aria-labelledby={`${id}-title`} aria-describedby={description ? `${id}-desc` : undefined} onClick={onClick}>
       {open &&
         (onSubmit ? (
           <form className="drawer-box" noValidate onSubmit={onSubmit}>
@@ -166,6 +171,7 @@ export function useConfirm() {
 }
 
 export function ConfirmProvider({children}: {children: ReactNode}) {
+  const labels = useUiLabels();
   const [request, setRequest] = useState<(ConfirmOptions & {resolve: (ok: boolean) => void}) | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -211,7 +217,7 @@ export function ConfirmProvider({children}: {children: ReactNode}) {
         footer={
           <>
             <Button variant="secondary" onClick={() => close(false)} disabled={pending}>
-              Cancel
+              {labels.cancel}
             </Button>
             <Button variant={request?.tone ?? 'danger'} pending={pending} pendingLabel={request?.pendingLabel} onClick={() => void run()}>
               {request?.confirmLabel}
@@ -228,13 +234,14 @@ export function ConfirmProvider({children}: {children: ReactNode}) {
 // ----------------------------------------------------------------- toast --
 
 type ToastTone = 'success' | 'info' | 'danger';
-type ToastItem = {id: number; tone: ToastTone; message: string};
-type Toaster = Record<ToastTone, (message: string) => void>;
+type ToastAction = {label: string; onSelect: () => void};
+type ToastItem = {id: number; tone: ToastTone; message: string; action?: ToastAction};
+type Toaster = Record<ToastTone, (message: string, options?: {action?: ToastAction}) => void>;
 
 const ToastContext = createContext<Toaster | null>(null);
 
 /**
- * A short message after an action, at the bottom of the screen for 5 s:
+ * A short message after an action, at the bottom of the screen for about 6 s (errors stay until dismissed; hover, focus and a hidden tab pause the timer):
  * `toast.success('Job posted.')`. For the result of a save that leaves the
  * screen (a drawer closed, a row removed). Errors that need fixing stay next
  * to the action instead (in the form, in the dialog).
@@ -245,31 +252,100 @@ export function useToast() {
   return toast;
 }
 
-export function ToastProvider({children}: {children: ReactNode}) {
+const TOAST_ICONS: Record<ToastTone, IconName> = {success: 'check-circle', info: 'info', danger: 'alert'};
+
+/**
+ * One toast. Its auto-dismiss timer (WCAG 2.2.1, 1.4.13) pauses on hover,
+ * on focus inside and while the tab is hidden, then restarts with the time
+ * left. Errors and toasts with an action never time out.
+ */
+function ToastView({item, onDismiss, dismissLabel}: {item: ToastItem; onDismiss: (id: number) => void; dismissLabel: string}) {
+  // Errors never time out; neither does a toast that carries an action next to an error (WCAG 2.2.1).
+  const sticky = item.tone === 'danger';
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const [hidden, setHidden] = useState(() => typeof document !== 'undefined' && document.hidden);
+  const left = useRef(item.action ? 9000 : 6000);
+  const paused = hover || focus || hidden;
+  useEffect(() => {
+    const onVisibility = () => setHidden(document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+  useEffect(() => {
+    if (sticky || paused) return;
+    const started = Date.now();
+    const timer = window.setTimeout(() => onDismiss(item.id), left.current);
+    return () => {
+      window.clearTimeout(timer);
+      left.current = Math.max(2000, left.current - (Date.now() - started));
+    };
+  }, [sticky, paused, item.id, onDismiss]);
+  return (
+    <div
+      className={`toast toast-${item.tone}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onFocus={() => setFocus(true)}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocus(false);
+      }}>
+      <Icon name={TOAST_ICONS[item.tone]} size={18} />
+      <span>{item.message}</span>
+      {item.action && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            item.action?.onSelect();
+            onDismiss(item.id);
+          }}>
+          {item.action.label}
+        </Button>
+      )}
+      <IconButton icon="x" label={dismissLabel} size="sm" onClick={() => onDismiss(item.id)} />
+    </div>
+  );
+}
+
+/** `dismissLabel`: the dismiss button's accessible name; the /app provider passes a translated one. */
+export function ToastProvider({children, dismissLabel}: {children: ReactNode; dismissLabel?: string}) {
+  const labels = useUiLabels();
+  dismissLabel ??= labels.dismiss;
   const [items, setItems] = useState<ToastItem[]>([]);
   const next = useRef(1);
   const dismiss = useCallback((id: number) => setItems(current => current.filter(item => item.id !== id)), []);
   const toaster = useMemo<Toaster>(() => {
-    const push = (tone: ToastTone) => (message: string) => {
+    const push = (tone: ToastTone) => (message: string, options?: {action?: ToastAction}) => {
       const id = next.current++;
-      setItems(current => [...current.slice(-2), {id, tone, message}]);
-      window.setTimeout(() => dismiss(id), 5000);
+      setItems(current => [...current.slice(-3), {id, tone, message, ...(options?.action ? {action: options.action} : {})}]);
     };
     return {success: push('success'), info: push('info'), danger: push('danger')};
-  }, [dismiss]);
-  const icons: Record<ToastTone, IconName> = {success: 'check-circle', info: 'info', danger: 'alert'};
+  }, []);
+  // In the body normally; inside the top-most open modal dialog while one is open (its top layer hides the body).
+  const host = useOverlayHost();
+  const layer = (
+      <div className="toasts">
+        <div className="toast-region" role="status" aria-live="polite">
+          {items
+            .filter(item => item.tone !== 'danger')
+            .map(item => (
+              <ToastView key={item.id} item={item} onDismiss={dismiss} dismissLabel={dismissLabel} />
+            ))}
+        </div>
+        <div className="toast-region" role="alert" aria-live="assertive">
+          {items
+            .filter(item => item.tone === 'danger')
+            .map(item => (
+              <ToastView key={item.id} item={item} onDismiss={dismiss} dismissLabel={dismissLabel} />
+            ))}
+        </div>
+      </div>
+  );
   return (
     <ToastContext.Provider value={toaster}>
       {children}
-      <div className="toasts" role="status" aria-live="polite">
-        {items.map(item => (
-          <div key={item.id} className={`toast toast-${item.tone}`}>
-            <Icon name={icons[item.tone]} size={18} />
-            <span>{item.message}</span>
-            <IconButton icon="x" label="Dismiss" size="sm" onClick={() => dismiss(item.id)} />
-          </div>
-        ))}
-      </div>
+      {host ? createPortal(layer, host) : layer}
     </ToastContext.Provider>
   );
 }
@@ -312,11 +388,12 @@ export function Menu({
   const focusItem = (index: number) => {
     const nodes = list.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)');
     if (!nodes?.length) return;
-    nodes[(index + nodes.length) % nodes.length]?.focus();
+    // preventScroll: focusing an item must never scroll anything, a scroll event closes the menu again at once.
+    nodes[(index + nodes.length) % nodes.length]?.focus({preventScroll: true});
   };
   const close = (refocus = true) => {
     setOpen(false);
-    if (refocus) button.current?.focus();
+    if (refocus) button.current?.focus({preventScroll: true});
   };
 
   useLayoutEffect(() => {
@@ -326,7 +403,9 @@ export function Menu({
       const menu = list.current!;
       const below = window.innerHeight - rect.bottom > menu.offsetHeight + 12;
       menu.style.top = `${below ? rect.bottom + 6 : rect.top - menu.offsetHeight - 6}px`;
-      const left = align === 'end' ? rect.right - menu.offsetWidth : rect.left;
+      const rtl = getComputedStyle(menu).direction === 'rtl';
+      const atEnd = (align === 'end') !== rtl; // 'start'/'end' are logical: flip the physical edge in RTL
+      const left = atEnd ? rect.right - menu.offsetWidth : rect.left;
       menu.style.left = `${Math.max(8, Math.min(left, window.innerWidth - menu.offsetWidth - 8))}px`;
     };
     place();
@@ -334,7 +413,11 @@ export function Menu({
     const outside = (event: PointerEvent) => {
       if (!list.current?.contains(event.target as Node) && !button.current?.contains(event.target as Node)) close(false);
     };
-    const away = () => close(false);
+    // A scroll INSIDE the menu (a long list) must not close it; only the page or a container scrolling away does.
+    const away = (event?: Event) => {
+      if (event?.target instanceof Node && list.current?.contains(event.target)) return;
+      close(false);
+    };
     document.addEventListener('pointerdown', outside);
     window.addEventListener('resize', away);
     window.addEventListener('scroll', away, true);
@@ -352,8 +435,16 @@ export function Menu({
     else if (event.key === 'ArrowUp') focusItem(at - 1);
     else if (event.key === 'Home') focusItem(0);
     else if (event.key === 'End') focusItem(nodes.length - 1);
-    else if (event.key === 'Escape' || event.key === 'Tab') return close(event.key === 'Escape');
-    else return;
+    else if (event.key === 'Escape') {
+      // Only the menu closes: a dialog around it must not also take this Esc (native close request).
+      event.preventDefault();
+      event.stopPropagation();
+      return close(true);
+    } else if (event.key === 'Tab') {
+      // The menu lives in the body: hand focus back to the trigger so Tab continues from there, not from the end of the page.
+      close(true);
+      return;
+    } else return;
     event.preventDefault();
   };
 
@@ -378,7 +469,10 @@ export function Menu({
         }}>
         {trigger ?? <Icon name="more" size={16} />}
       </button>
-      {open && (
+      {/* In the body, not next to the trigger: an ancestor with backdrop-filter/transform (the top bar has one) makes a
+          `position: fixed` child position against itself instead of the window, and the menu then jumps. */}
+      {open &&
+        createPortal(
         <div ref={list} id={id} className="menu" role="menu" aria-label={label} onKeyDown={onKeyDown}>
           {items.map((item, i) =>
             item === 'separator' ? (
@@ -400,7 +494,9 @@ export function Menu({
               </button>
             )
           )}
-        </div>
+        </div>,
+        // Inside a modal <dialog> the top layer hides anything in the body: stay in that dialog then.
+        portalHost(button.current)
       )}
     </>
   );

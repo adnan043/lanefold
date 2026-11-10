@@ -13,20 +13,23 @@
  * (performance.md "Scripts with the ClientRouter"); the portal has no router, so
  * it is a full load. Only links to PRERENDERED pages carry `data-astro-prefetch` (fetched on hover;
  * the header nav as soon as it is on screen). Pages rendered per visit
- * (`/jobs/*`, `/dashboard`) answer `no-store`: a prefetch of them is thrown away.
+ * (`/dashboard`) answer `no-store`: a prefetch of them is thrown away.
  *
  * Structured data (JSON-LD, src/lib/seo.ts): the home page gets `WebSite` +
- * `Organization`; a page passes its own in `jsonLd` (a post, a job).
+ * `Organization`; a page passes its own in `jsonLd` (a post).
  */
+import '@fontsource-variable/inter';
 import '../styles/global.css';
+import '../styles/a11y.css';
+import '../styles/forced-colors.css';
 
 import {ClientRouter} from 'astro:transitions';
 
 import BrandMark from '../components/BrandMark.astro';
-import {NAV, SITE, withName} from '../content/site';
+import {FOOTER_NAV, NAV, SITE, USER_MENU, withName} from '../content/site';
 import type {Site, Viewer} from '../lib/types';
 import {initials} from '../lib/format';
-import {absoluteUrl, type JsonLd, jsonLdText, siteJsonLd} from '../lib/seo';
+import {absoluteUrl, DEFAULT_SOCIAL_IMAGE, type JsonLd, jsonLdText, siteJsonLd} from '../lib/seo';
 import {config} from '../platform/config';
 
 interface Props {
@@ -55,8 +58,13 @@ interface Props {
   noindex?: boolean;
   /** The page URL carries a secret (a reset or confirmation token): send no Referer. */
   secretInUrl?: boolean;
-  /** The page's own structured data (src/lib/seo.ts): `postJsonLd(…)`, `jobJsonLd(…)`. */
+  /** The page's own structured data (src/lib/seo.ts): `postJsonLd(…)`. */
   jsonLd?: JsonLd;
+  /**
+   * A focused page (sign-in, sign-up, password reset): the header keeps only the brand and a way
+   * back to the website, and there is no footer.
+   */
+  bare?: boolean;
 }
 
 const {
@@ -73,19 +81,22 @@ const {
   noindex = false,
   secretInUrl = false,
   jsonLd,
+  bare = false,
 } = Astro.props;
-const name = site?.name ?? 'My site';
-const fullTitle = title ? `${title} · ${name}` : name;
+const name = site?.name ?? 'Lanefold';
+// Home has no `title`: it gets the name plus what the product is.
+const fullTitle = title ? `${title} · ${name}` : `${name} · Kanban boards with built-in chat`;
+const shareTitle = title ?? fullTitle;
 const description = pageDescription ?? withName(SITE.description, name);
 const path = Astro.url.pathname;
 /** Every page URL ends with `/`: prerendered pages are served there (`/about` redirects to `/about/`). */
 const withSlash = (p: string) => (p.endsWith('/') ? p : `${p}/`);
 // One URL per page for search engines: the path without its query (filters, paging).
 const canonical = noindex || secretInUrl ? null : absoluteUrl(withSlash(path));
-const socialImage = image ? absoluteUrl(image) : null;
+const socialImage = absoluteUrl(image ?? DEFAULT_SOCIAL_IMAGE);
 const active = (href: string) => (href === '/' ? path === '/' : withSlash(path).startsWith(withSlash(href)));
 // Back to this page after signing in. A PATH only (`safeNext` refuses anything else).
-const back = encodeURIComponent(path.startsWith('/account') ? '/dashboard' : `${path}${isStatic ? '' : Astro.url.search}`);
+const back = encodeURIComponent(path.startsWith('/account') ? '/app' : `${path}${isStatic ? '' : Astro.url.search}`);
 // The editor Preview's gateway drops cookies: the server never sees the session
 // there, so every page fills the visitor in in the browser, like a prerendered one.
 const hydrate = isStatic || (config.preview && viewer.state !== 'user');
@@ -97,7 +108,9 @@ const structured = indexable
 ---
 
 <!doctype html>
-<html lang={SITE.lang}>
+{/* The public website is always light (owner's choice): `data-theme="light"` turns off the dark
+    tokens in global.css and the brand colours. The app and dashboard (App.astro) keep their theme setting. */}
+<html lang={SITE.lang} data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -108,19 +121,23 @@ const structured = indexable
     {secretInUrl && <meta name="referrer" content="no-referrer" />}
     <meta property="og:site_name" content={name} />
     <meta property="og:type" content={type} />
-    <meta property="og:title" content={title ?? name} />
+    <meta property="og:title" content={shareTitle} />
     <meta property="og:description" content={description} />
     {canonical && <meta property="og:url" content={canonical} />}
     {socialImage && <meta property="og:image" content={socialImage} />}
-    {socialImage && imageAlt && <meta property="og:image:alt" content={imageAlt} />}
+    {socialImage && <meta property="og:image:alt" content={imageAlt ?? `${name}: kanban boards with built-in chat`} />}
     {type === 'article' && publishedAt && <meta property="article:published_time" content={publishedAt.toISOString()} />}
     {type === 'article' && updatedAt && <meta property="article:modified_time" content={updatedAt.toISOString()} />}
+    <meta property="og:locale" content={SITE.lang} />
     <meta name="twitter:card" content={socialImage ? 'summary_large_image' : 'summary'} />
-    <meta name="twitter:title" content={title ?? name} />
+    <meta name="twitter:title" content={shareTitle} />
     <meta name="twitter:description" content={description} />
     {socialImage && <meta name="twitter:image" content={socialImage} />}
-    <meta name="color-scheme" content="light dark" />
+    {socialImage && <meta name="twitter:image:alt" content={imageAlt ?? `${name}: kanban boards with built-in chat`} />}
+    <meta name="color-scheme" content="light" />
     {site?.favIcon ? <link rel="icon" href={site.favIcon} /> : <link rel="icon" href="/favicon.svg" type="image/svg+xml" />}
+    {/* The admin's brand colour (/dashboard Branding, src/server/routes/branding.ts); empty when none is set. */}
+    <link rel="stylesheet" href="/site-api/brand.css" />
     <link rel="alternate" type="application/rss+xml" title={`${name} blog`} href="/rss.xml" />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
     {structured.map(data => <script type="application/ld+json" set:html={jsonLdText(data)} />)}
@@ -128,8 +145,22 @@ const structured = indexable
         portal has no router, so a link to it is a normal page load. Page scripts run on `astro:page-load`. */}
     <ClientRouter />
   </head>
-  <body data-viewer={viewer.state} data-static={hydrate ? '1' : undefined}>
+  <body data-viewer={viewer.state} data-static={hydrate ? '1' : undefined} class:list={{'is-bare': bare}}>
     <a class="skip-link" href="#main">Skip to content</a>
+    {bare ? (
+    <header class="site-header site-header-bare">
+      <div class="wrap site-header-inner">
+        <a href="/" class="brand" data-astro-prefetch>
+          <BrandMark site={site} />
+          <span class="brand-name" data-brand-text="{name}" data-built-name={name}>{name}</span>
+        </a>
+        <a class="bare-back" href="/" data-astro-prefetch>
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+          Back to website
+        </a>
+      </div>
+    </header>
+    ) : (
     <header class="site-header">
       <div class="wrap site-header-inner">
         <a href="/" class="brand" data-astro-prefetch>
@@ -141,46 +172,59 @@ const structured = indexable
             <a
               href={item.href}
               class:list={{active: active(item.href)}}
+              aria-current={active(item.href) ? 'page' : undefined}
               data-astro-prefetch={item.prefetch === false ? undefined : 'viewport'}>
               {item.label}
             </a>
           ))}
-          <a
-            href="/dashboard"
-            class:list={{active: active('/dashboard')}}
-            data-user-only
-            hidden={viewer.state !== 'user'}>
-            Dashboard
-          </a>
         </nav>
-        <div class="session" data-session>
-          {viewer.state === 'user' ? (
-            <>
-              <span class="viewer" title={viewer.name ?? ''}>
-                <span class="avatar-fallback" aria-hidden="true">
-                  {initials(viewer.name ?? '')}
+        {/* No `data-session` here on purpose: the visitor menu is this site's own (the script below
+            fills it in on prerendered pages); `[data-user-only]` / `[data-guest-only]` still toggle. */}
+        <div class="session">
+          <a class="button link small-button" href={`/account/login/?next=${back}`} data-guest-only hidden={viewer.state === 'user'} data-astro-prefetch>
+            Sign in
+          </a>
+          <a class="button small-button header-cta" href={`/account/register/?next=${back}`} data-guest-only hidden={viewer.state === 'user'} data-astro-prefetch>
+            Create account
+          </a>
+          <div class="user-menu" data-user-menu data-user-only hidden={viewer.state !== 'user'}>
+            <button class="user-menu-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="user-menu-list" aria-label={USER_MENU.label}>
+              <span class="user-avatar" aria-hidden="true" data-user-initials>{initials(viewer.name ?? '')}</span>
+              <svg class="user-menu-caret" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            <div class="user-menu-panel" id="user-menu-list" role="menu" aria-label={USER_MENU.label} hidden>
+              <div class="user-menu-head" role="presentation">
+                <span class="user-avatar user-avatar-lg" aria-hidden="true" data-user-initials>{initials(viewer.name ?? '')}</span>
+                <span class="user-menu-who">
+                  <strong data-user-name>{viewer.name ?? ''}</strong>
+                  <span data-user-email>{viewer.state === 'user' ? (viewer.email ?? '') : ''}</span>
                 </span>
-              </span>
-              <button class="button link small-button" type="button" data-logout>
-                Sign out
+              </div>
+              {USER_MENU.items.map(item => (
+                <a class="user-menu-item" role="menuitem" href={item.href} tabindex="-1">
+                  {item.icon === 'dashboard' ? (
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 7v7M12 7v4M16 7v9" /></svg>
+                  )}
+                  {item.label}
+                </a>
+              ))}
+              <div class="user-menu-sep" role="separator"></div>
+              <button class="user-menu-item user-menu-out" role="menuitem" type="button" tabindex="-1" data-logout>
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></svg>
+                {USER_MENU.signOut}
               </button>
-            </>
-          ) : (
-            <>
-              <a class="button link small-button" href={`/account/login/?next=${back}`} data-astro-prefetch>
-                Sign in
-              </a>
-              <a class="button small-button" href={`/account/register/?next=${back}`} data-astro-prefetch>
-                Create account
-              </a>
-            </>
-          )}
+            </div>
+          </div>
         </div>
       </div>
     </header>
+    )}
 
     <slot />
 
+    {!bare && (
     <footer class="site-footer">
       <div class="wrap site-footer-inner">
         <div class="footer-brand">
@@ -193,7 +237,7 @@ const structured = indexable
         <nav class="footer-col" aria-label="Footer">
           <p class="footer-title">Explore</p>
           <ul>
-            {NAV.map(item => (
+            {FOOTER_NAV.map(item => (
               <li>
                 <a href={item.href} data-astro-prefetch={item.prefetch === false ? undefined : ''}>
                   {item.label}
@@ -223,13 +267,16 @@ const structured = indexable
           </ul>
         </nav>
       </div>
-      <div class="wrap site-footer-bottom">
-        <span data-brand-text="© {year} {name}">© {new Date().getUTCFullYear()} {name}</span>
+      <div class="site-footer-bottom">
+        <div class="wrap">
+          <span data-brand-text="© {year} {name}">© {new Date().getUTCFullYear()} {name}</span>
+        </div>
       </div>
     </footer>
+    )}
 
     <script>
-      import {logout, refreshSession} from '../platform/browser';
+      import {logout, refreshSession, siteFetch} from '../platform/browser';
       import {hydrateStaticPage} from '../platform/static-page';
       import {notifyPaymentOpener} from '../lib/checkout-session';
 
@@ -244,7 +291,8 @@ const structured = indexable
       document.addEventListener('astro:page-load', () => {
         // Back from the payment provider INSIDE the payment window: tell the checkout page, close.
         notifyPaymentOpener();
-        if (document.body.dataset.static === '1') void hydrateStaticPage();
+        if (document.body.dataset.static === '1') void hydrateStaticPage().then(fillUserMenu);
+        bindUserMenu();
 
         // The server saw an expired access token but a refresh cookie: refresh
         // ONCE in the browser (the server never rotates it), then re-render signed in.
@@ -276,7 +324,98 @@ const structured = indexable
         );
       });
 
+      /** Initials for the round avatar. */
+      const initialsOf = (name: string) =>
+        name
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map(word => word[0]?.toUpperCase() ?? '')
+          .join('') || '·';
+
+      /**
+       * A prerendered page knows no visitor: once the platform has marked a signed-in visitor
+       * (`data-viewer="user"`), put their name in the avatar menu. Their OWN name and email only,
+       * written with `textContent`.
+       */
+      async function fillUserMenu() {
+        if (document.body.dataset.viewer !== 'user') return;
+        const menu = document.querySelector<HTMLElement>('[data-user-menu]');
+        if (!menu) return;
+        try {
+          const res = await siteFetch('/site-api/me', {headers: {accept: 'application/json'}});
+          const body = (await res.json()) as {viewer?: {name?: string | null; email?: string | null}};
+          const name = body.viewer?.name ?? '';
+          menu.querySelectorAll<HTMLElement>('[data-user-initials]').forEach(el => (el.textContent = initialsOf(name)));
+          menu.querySelectorAll<HTMLElement>('[data-user-name]').forEach(el => (el.textContent = name));
+          menu.querySelectorAll<HTMLElement>('[data-user-email]').forEach(el => (el.textContent = body.viewer?.email ?? ''));
+        } catch {
+          // The menu still works with the initials it has.
+        }
+      }
+
+      /** The avatar button opens a small menu: Dashboard, Your boards, Sign out (WAI-ARIA menu button). */
+      function bindUserMenu() {
+        const menu = document.querySelector<HTMLElement>('[data-user-menu]');
+        if (!menu) return;
+        const button = menu.querySelector<HTMLButtonElement>('.user-menu-button')!;
+        const panel = menu.querySelector<HTMLElement>('.user-menu-panel')!;
+        const items = () => [...panel.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+        const isOpen = () => !panel.hidden;
+        const open = (focus: 'first' | 'last' | null = null) => {
+          panel.hidden = false;
+          button.setAttribute('aria-expanded', 'true');
+          const list = items();
+          if (focus) (focus === 'first' ? list[0] : list[list.length - 1])?.focus();
+        };
+        const close = (returnFocus = false) => {
+          if (!isOpen()) return;
+          panel.hidden = true;
+          button.setAttribute('aria-expanded', 'false');
+          if (returnFocus) button.focus();
+        };
+        button.addEventListener('click', () => (isOpen() ? close() : open('first')));
+        button.addEventListener('keydown', event => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            open('first');
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            open('last');
+          }
+        });
+        panel.addEventListener('keydown', event => {
+          const list = items();
+          const at = list.indexOf(document.activeElement as HTMLElement);
+          let to = -1;
+          if (event.key === 'ArrowDown') to = (at + 1) % list.length;
+          else if (event.key === 'ArrowUp') to = (at - 1 + list.length) % list.length;
+          else if (event.key === 'Home') to = 0;
+          else if (event.key === 'End') to = list.length - 1;
+          else if (event.key === 'Escape') {
+            event.preventDefault();
+            close(true);
+            return;
+          } else if (event.key === 'Tab') {
+            close();
+            return;
+          }
+          if (to < 0) return;
+          event.preventDefault();
+          list[to]?.focus();
+        });
+      }
+
       // Once for the document (it stays across navigations):
+
+      // A click outside the avatar menu closes it (whichever page is showing).
+      document.addEventListener('click', event => {
+        const menu = document.querySelector<HTMLElement>('[data-user-menu]');
+        const panel = menu?.querySelector<HTMLElement>('.user-menu-panel');
+        if (!menu || !panel || panel.hidden || menu.contains(event.target as Node)) return;
+        panel.hidden = true;
+        menu.querySelector('.user-menu-button')?.setAttribute('aria-expanded', 'false');
+      });
 
       // A search / filter form (GET) navigates: show its button busy until the next page.
       document.addEventListener('submit', event => {

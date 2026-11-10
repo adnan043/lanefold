@@ -1,0 +1,9 @@
+/* Accessibility additions for the card modal. `:root` makes them beat cards.css whatever the order. */
+/* 24px minimum targets for the Close button and the done checkbox in the header. */
+:root .cd-head .cd-close {
+  min-inline-size: 24px;
+  min-block-size: 24px;
+}
+:root .cd-dialog :focus-visible {
+  outline-offset: 2px;
+}

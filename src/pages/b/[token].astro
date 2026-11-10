@@ -1,0 +1,120 @@
+---
+/**
+ * A shared board, read only (docs/product/public-board-design.md). Rendered per visit (the link can be revoked at
+ * any time), never prerendered, never indexed, never cached by shared caches. The token is the secret: no Referer
+ * leaves this page, the board name stays out of the social tags, and every miss looks the same (404).
+ * Descriptions are plain text paragraphs; colours are applied by a tiny script (CSP forbids style attributes).
+ */
+import NotFound from '../../components/NotFound.astro';
+import Base from '../../layouts/Base.astro';
+import '../../styles/public-board.css';
+import {formatDate} from '../../lib/format';
+import {backend} from '../../server/backend';
+import type {PublicBoard} from '../../server/routes/public-board';
+
+export const prerender = false;
+
+const token = Astro.params.token ?? '';
+const res = await backend(Astro.request)
+  .public.boards[':token'].$get(
+    {param: {token}},
+    // backend() does not forward the caller's address; the API's rate limit needs it (Cloudflare sets and overwrites it).
+    {headers: {'cf-connecting-ip': Astro.request.headers.get('cf-connecting-ip') ?? 'local'}},
+  )
+  .catch(() => null);
+let board: PublicBoard | null = null;
+if (res?.ok) board = ((await res.json()) as {board: PublicBoard}).board;
+
+Astro.response.headers.set('Cache-Control', 'private, no-cache');
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+const status = res?.status ?? 503;
+if (!board) {
+  Astro.response.status = status === 404 || status === 429 ? status : 503;
+  if (status === 429) Astro.response.headers.set('Retry-After', res?.headers.get('Retry-After') ?? '600');
+  if (Astro.response.status === 503) Astro.response.headers.set('Retry-After', '60');
+}
+const paragraphs = (text: string) => text.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+const site = null;
+const viewer = {state: 'guest'} as never;
+---
+
+{
+  board ? (
+    <Base
+      site={site}
+      viewer={viewer}
+      title="Shared board"
+      description="A board shared with Lanefold."
+      imageAlt="Lanefold"
+      noindex
+      secretInUrl
+    >
+      <main id="main" tabindex="-1" class="pub-board" data-pub-bg={board.bg.kind} data-c1={board.bg.color1 ?? ''} data-c2={board.bg.color2 ?? ''} data-angle={board.bg.angle}>
+        <header class="pub-head">
+          <p class="eyebrow">{board.workspaceName}</p>
+          <h1>{board.name}</h1>
+          <p class="muted">Read only. Shared with Lanefold.</p>
+        </header>
+        <div class="pub-lanes">
+          {board.lanes.map(lane => (
+            <section class="pub-lane" aria-label={lane.name}>
+              <h2 class="pub-lane-title"><span class="pub-dot" data-pub-color={lane.color ?? ''} aria-hidden="true"></span>{lane.name} <span class="muted">({lane.cardCount})</span></h2>
+              <ul class="pub-cards">
+                {lane.cards.map(card => (
+                  <li class="pub-card">
+                    <strong>{card.title}</strong>
+                    <p class="pub-meta">
+                      {card.labels.map(l => <span class="chip pub-chip"><span class="pub-dot" data-pub-color={l.color ?? ''} aria-hidden="true"></span>{l.name}</span>)}
+                      {card.priority !== 'none' && <span class="chip pub-chip">Priority: {card.priority}</span>}
+                      {card.dueDate && <span class="muted">Due {formatDate(card.dueDate)}</span>}
+                      {card.checklistTotal > 0 && <span class="muted">{card.checklistDone}/{card.checklistTotal} done</span>}
+                      {card.people.length > 0 && <span class="muted">{card.people.join(', ')}</span>}
+                    </p>
+                    {card.description && (
+                      <details>
+                        <summary>Description</summary>
+                        {paragraphs(card.description).map(p => <p>{p}</p>)}
+                      </details>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+        <p class="pub-foot muted"><a href="/">Shared with Lanefold</a></p>
+      </main>
+    </Base>
+  ) : status === 404 ? (
+    <Base site={site} viewer={viewer} title="Page not found" noindex secretInUrl>
+      <NotFound site={site} />
+    </Base>
+  ) : (
+    <Base site={site} viewer={viewer} title="Not available" noindex secretInUrl>
+      <main id="main" tabindex="-1" class="wrap narrow section center">
+        <h1>{status === 429 ? 'Too many requests' : 'Not available right now'}</h1>
+        <p class="lede">Please try again in a little while.</p>
+      </main>
+    </Base>
+  )
+}
+
+<script>
+  // Colours come from the server as validated #RRGGBB values; applied through the CSSOM (allowed by the CSP).
+  document.addEventListener('astro:page-load', () => {
+    const root = document.querySelector<HTMLElement>('.pub-board');
+    if (!root) return;
+    const hex = /^#[0-9a-f]{6}$/i;
+    const c1 = root.dataset.c1 ?? '';
+    const c2 = root.dataset.c2 ?? '';
+    if (hex.test(c1)) {
+      root.style.background =
+        root.dataset.pubBg === 'gradient' && hex.test(c2) ? `linear-gradient(${Number(root.dataset.angle) || 135}deg, ${c1}, ${c2})` : c1;
+    }
+    root.querySelectorAll<HTMLElement>('[data-pub-color]').forEach(el => {
+      const color = el.dataset.pubColor ?? '';
+      if (hex.test(color)) el.style.setProperty('--pub-accent', color);
+    });
+  });
+</script>

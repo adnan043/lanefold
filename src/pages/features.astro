@@ -1,0 +1,238 @@
+---
+/**
+ * Features. PRERENDERED (a file, no server work). Words in `FEATURES`, `src/content/site.ts`
+ * (only what is built). Shares the home page's hero glow, eyebrow, buttons and closing call to
+ * action (`home.css`, under `.home`); its own groups are in `features.css`.
+ */
+import '../styles/home.css';
+import '../styles/features.css';
+
+import FeatureArt from '../components/features/FeatureArt.astro';
+import Icon, {type IconName} from '../components/home/Icon.astro';
+import {FEATURES, withName} from '../content/site';
+import Base from '../layouts/Base.astro';
+import {staticContext} from '../server/page';
+
+export const prerender = true;
+
+const {site, viewer} = await staticContext(Astro.request);
+const name = site?.name ?? 'Lanefold';
+
+// The headline, split around the highlighted words (as on the home page).
+const {title, highlight} = FEATURES.hero;
+const at = highlight ? title.indexOf(highlight) : -1;
+const headline =
+  at < 0
+    ? {before: title, mark: '', after: ''}
+    : {before: title.slice(0, at), mark: highlight, after: title.slice(at + highlight.length)};
+---
+
+<Base site={site} viewer={viewer} isStatic title={FEATURES.title} description={withName(FEATURES.description, name)}>
+  <main id="main" tabindex="-1" class="home features">
+    <section class="home-hero features-hero">
+      <div class="home-hero-glow" aria-hidden="true"></div>
+      <div class="wrap home-hero-copy">
+        <p class="home-eyebrow">
+          <Icon name="sparkles" size={14} />
+          <span>{FEATURES.hero.eyebrow}</span>
+        </p>
+        <h1>
+          {headline.before}{headline.mark && <mark>{headline.mark}</mark>}{headline.after}
+        </h1>
+        <p class="home-lede">{FEATURES.hero.body}</p>
+        <div class="home-actions" data-guest-only>
+          <a class="button home-button-lg" href="/account/register/" data-astro-prefetch>
+            {FEATURES.hero.primary}
+            <Icon name="arrow-right" size={18} />
+          </a>
+          <a class="button ghost home-button-lg" href="/pricing/" data-astro-prefetch>{FEATURES.hero.secondary}</a>
+        </div>
+        <div class="home-actions" data-user-only hidden>
+          <a class="button home-button-lg" href={FEATURES.hero.user.href}>
+            {FEATURES.hero.user.primary}
+            <Icon name="arrow-right" size={18} />
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <div class="features-body">
+      <nav class="features-jump" aria-label="Feature groups" data-features-jump>
+        <div class="wrap">
+          <ul class="features-jump-list">
+            {
+              FEATURES.groups.map(group => (
+                <li>
+                  <a href={`#${group.id}`} class={`tone-${group.tone}`}>
+                    <Icon name={group.icon as IconName} size={15} />
+                    <span>{group.title}</span>
+                  </a>
+                </li>
+              ))
+            }
+          </ul>
+        </div>
+      </nav>
+
+      <div class="wrap features-groups">
+        {
+          FEATURES.groups.map((group, i) => (
+            <section class:list={['fg', `tone-${group.tone}`, {'fg-flip': i % 2 === 1}]} id={group.id} aria-labelledby={`${group.id}-title`}>
+              <div class="fg-bg" aria-hidden="true"></div>
+              <div class="fg-top">
+                <div class="fg-copy">
+                  <p class="fg-kicker">
+                    <span class="fg-icon">
+                      <Icon name={group.icon as IconName} size={20} />
+                    </span>
+                    <span class="fg-count">
+                      <span class="fg-num">{String(i + 1).padStart(2, '0')}</span>
+                      <span class="fg-of">/ {String(FEATURES.groups.length).padStart(2, '0')}</span>
+                    </span>
+                  </p>
+                  <h2 id={`${group.id}-title`}>{group.title}</h2>
+                  <p class="fg-body">{group.body}</p>
+                </div>
+                <div class="fg-art">
+                  <div class="fg-art-glow" aria-hidden="true"></div>
+                  <FeatureArt art={group.id} />
+                </div>
+              </div>
+              <ul class:list={['fg-cards', `fg-cards-${group.items.length}`]}>
+                {group.items.map(item => (
+                  <li class="fg-card">
+                    <span class="fg-tick" aria-hidden="true">
+                      <Icon name={item.icon as IconName} size={18} />
+                    </span>
+                    <h3>{item.title}</h3>
+                    <p>{item.body}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))
+        }
+      </div>
+    </div>
+
+    <section class="home-section home-section-last" aria-labelledby="features-cta">
+      <div class="wrap">
+        <div class="home-cta">
+          <div class="home-cta-glow" aria-hidden="true"></div>
+          <div class="home-cta-copy">
+            <span class="home-cta-eyebrow"><Icon name="sparkles" size={14} />{FEATURES.cta.eyebrow}</span>
+            <h2 id="features-cta">{FEATURES.cta.title}</h2>
+            <p>{FEATURES.cta.body}</p>
+            <ul class="home-cta-points">
+              {
+                FEATURES.cta.points.map(point => (
+                  <li>
+                    <span class="home-cta-tick"><Icon name="check" size={14} /></span>
+                    {point}
+                  </li>
+                ))
+              }
+            </ul>
+            <div class="home-cta-actions">
+              <a class="button home-button-lg home-cta-primary" href="/account/register/" data-astro-prefetch data-guest-only>
+                {FEATURES.cta.primary}
+                <Icon name="arrow-right" size={18} />
+              </a>
+              <a class="button home-button-lg home-cta-primary" href={FEATURES.cta.user.href} data-user-only hidden>
+                {FEATURES.cta.user.primary}
+                <Icon name="arrow-right" size={18} />
+              </a>
+              <a class="button home-button-lg home-cta-ghost" href="/pricing/" data-astro-prefetch>{FEATURES.cta.secondary}</a>
+            </div>
+          </div>
+          <div class="home-cta-art" aria-hidden="true">
+            <div class="cta-board">
+              <div class="cta-lane">
+                <span class="cta-lane-head">To do <i>3</i></span>
+                <span class="cta-card"><b class="cta-tag cta-tag-a"></b><s></s><s class="short"></s></span>
+                <span class="cta-card"><s></s><s class="short"></s></span>
+              </div>
+              <div class="cta-lane">
+                <span class="cta-lane-head">Doing <i>2</i></span>
+                <span class="cta-card cta-card-lift"><b class="cta-tag cta-tag-b"></b><s></s><s class="short"></s><em></em></span>
+                <span class="cta-card"><s></s><s class="short"></s></span>
+              </div>
+              <div class="cta-lane">
+                <span class="cta-lane-head">Done <i>5</i></span>
+                <span class="cta-card cta-card-done"><s></s><s class="short"></s></span>
+                <span class="cta-card cta-card-done"><s class="short"></s></span>
+              </div>
+            </div>
+            <div class="cta-chat">
+              <span class="cta-avatar"></span>
+              <span class="cta-bubble"><s></s><s class="short"></s></span>
+              <span class="cta-typing"><i></i><i></i><i></i></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>
+
+<script>
+  // The sticky group bar: marks the group being read (aria-current) and keeps its chip in view.
+  // Runs on every `astro:page-load` (ClientRouter); returns early on other pages.
+  document.addEventListener('astro:page-load', () => {
+    const nav = document.querySelector<HTMLElement>('[data-features-jump]');
+    if (!nav) return;
+    // Stick right under the site header, whatever its height (it wraps on phones).
+    const header = document.querySelector<HTMLElement>('.site-header');
+    const place = () => nav.style.setProperty('--features-jump-top', `${header?.offsetHeight ?? 0}px`);
+    place();
+    const resize = header && 'ResizeObserver' in window ? new ResizeObserver(place) : null;
+    if (header) resize?.observe(header);
+    const links = [...nav.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')];
+    const sections = links
+      .map(link => document.getElementById(link.hash.slice(1)))
+      .filter((el): el is HTMLElement => el !== null);
+    if (!sections.length || !('IntersectionObserver' in window)) {
+      resize?.disconnect();
+      return;
+    }
+
+    const visible = new Set<string>();
+    let current = '';
+    const mark = () => {
+      const id = sections.find(section => visible.has(section.id))?.id ?? '';
+      if (id === current) return;
+      current = id;
+      for (const link of links) {
+        const on = link.hash === `#${id}`;
+        if (on) {
+          link.setAttribute('aria-current', 'true');
+          const list = link.closest('ul');
+          if (list && list.scrollWidth > list.clientWidth) {
+            list.scrollTo({left: link.offsetLeft - (list.clientWidth - link.offsetWidth) / 2, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+          }
+        } else {
+          link.removeAttribute('aria-current');
+        }
+      }
+    };
+    const observer = new IntersectionObserver(
+      entries => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) visible.add(entry.target.id);
+          else visible.delete(entry.target.id);
+        }
+        mark();
+      },
+      {rootMargin: '-35% 0px -55% 0px'},
+    );
+    for (const section of sections) observer.observe(section);
+    document.addEventListener(
+      'astro:before-swap',
+      () => {
+        observer.disconnect();
+        resize?.disconnect();
+      },
+      {once: true},
+    );
+  });
+</script>

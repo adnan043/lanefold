@@ -16,7 +16,7 @@ import CheckoutAskForm from '../../components/payments/CheckoutAskForm.astro';
 import TestModeBadge from '../../components/payments/TestModeBadge.astro';
 import Base from '../../layouts/Base.astro';
 import {formatMoney} from '../../lib/format';
-import {allowEmbeddedCheckout, type EmbeddedCheckout as Embedded, type PaymentGateway} from '../../platform/payments';
+import {allowEmbeddedCheckout, isSitePath, type EmbeddedCheckout as Embedded, type PaymentGateway} from '../../platform/payments';
 import {backend, read} from '../../server/backend';
 import {pageContext} from '../../server/page';
 
@@ -56,8 +56,8 @@ const ask = askPrice
   ? {
       price: askPrice,
       quantity: q.get('quantity') ?? '1',
-      successPath: q.get('successPath') ?? '/thanks/',
-      cancelPath: q.get('cancelPath') ?? '/',
+      successPath: isSitePath(q.get('successPath')) ? q.get('successPath')! : '/thanks/',
+      cancelPath: isSitePath(q.get('cancelPath')) ? q.get('cancelPath')! : '/',
       email: q.get('email') ?? '',
       gateway: q.get('gateway') ?? '',
       trialUsed: q.get('trialUsed') === '1',
@@ -72,8 +72,8 @@ if (island) for (const g of gateways) allowEmbeddedCheckout(Astro.csp, g.slug);
 if (!embedded && !ask) Astro.response.status = error ? 422 : 404;
 
 const MESSAGES: Record<string, string> = {
-  e_payments_not_ready: 'This shop is not taking payments yet. Try again later.',
-  e_price_not_found: 'That item is no longer for sale.',
+  e_payments_not_ready: 'Payments are not open yet. Please try again later.',
+  e_price_not_found: 'That plan is no longer available.',
   e_quantity: 'Choose a quantity from 1 to 99.',
   e_site_payments_gateway_unavailable: 'That way to pay is not available right now. Choose another one.',
 };
@@ -107,7 +107,7 @@ const message = error ? (MESSAGES[error.toLowerCase()] ?? 'Checkout did not open
               cancelPath={ask.cancelPath}
             />
           )}
-          {ask.trialUsed && <p class="lede">You've already used the free trial for this. Continue to pay now without a trial.</p>}
+          {ask.trialUsed && <p class="lede">You’ve already used the free trial for this plan, so you can continue and pay now instead.</p>}
           {island ? (
             <noscript>
               <CheckoutAskForm ask={ask} gateways={choosing ? gateways : []} />
@@ -116,15 +116,16 @@ const message = error ? (MESSAGES[error.toLowerCase()] ?? 'Checkout did not open
             <CheckoutAskForm ask={ask} gateways={choosing ? gateways : []} />
           )}
           <p>
-            <a href={ask.cancelPath.startsWith('/') && !ask.cancelPath.startsWith('//') ? ask.cancelPath : '/'}>Go back</a>
+            <a href={ask.cancelPath}>Go back and keep browsing</a>
           </p>
         </>
       ) : (
         <>
           <h1>{message ? 'Checkout did not open' : 'This checkout has ended'}</h1>
-          <p class="lede">{message ?? 'It was finished or it expired. Start again from the page you were buying on.'}</p>
-          <p>
-            <a class="button" href="/">Back to home</a>
+          <p class="lede">{message ?? 'It was finished or it expired, and nothing was charged. Start again from the page you were buying on.'}</p>
+          <p class="actions">
+            <a class="button" href="/pricing/">See plans</a>
+            <a class="button ghost" href="/">Home</a>
           </p>
         </>
       )

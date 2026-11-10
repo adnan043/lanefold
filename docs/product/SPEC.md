@@ -145,6 +145,8 @@ Follow `files.md` exactly: `POST /site-api/uploads` (our route validates workspa
 
 ## 10. Billing mode and plans (admin switch)
 
+> Changed per HANDOFF §2: default billing mode is `PAID` (not `FREE_FOR_ALL`), sandbox payments only, flat per-workspace plans, built in Phase 0.7 (not Phase 9).
+
 - **Payments exist from day one, sandbox only** (no real gateway, no real money). `app_settings.billing_mode` is `PAID` (default) or `FREE_FOR_ALL`. A `/dashboard` screen with a Switch, confirm dialog and audit event, gated by `site:billing:manage`. Plan limits are editable on a second screen (`site:plans:manage`). All billing state lives in our own database (`plan_limits`, `workspaces.plan`, platform `orders` and `memberships`).
 - `getEntitlements(workspace)` in `src/server/entitlements.ts` is the **only** place limits are decided (one primary-key read, memoized per request). `PAID` (default): limits enforced by plan, upgrade prompts shown, existing over-limit workspaces get `grace_days` then become read-only. `FREE_FOR_ALL`: premium features unlocked, plan limits not enforced (only safety caps), pricing and upgrade UI hidden. **Nothing is ever deleted by a mode switch.**
 - Plans are **flat per workspace** (default guesses, editable): Free (10 members, 10 MB files, 1 GB), Pro (50 members, 100 MB, 20 GB), Team (100 members, 100 MB, 100 GB, audit log, roles). Storage quotas are bookkeeping; real space is the owner's storage pack.
@@ -204,7 +206,7 @@ Todoist task panel https://mobbin.com/screens/4b5c4312-15b3-46ad-a335-2229893e03
 - There is no typecheck script in the template. Do not add tooling without approval; ask the owner if `typescript` should be added to devDependencies.
 - Do not start a dev server yourself; the owner runs `npm run dev`. (AGENTS.md's machine-limit rules were written for the platform's editor sandbox.)
 
-## 15. Phases (each agent finishes its assigned work, summarizes, stops; see LANEFOLD_HANDOFF.md §3 for the parallel plan)
+## 15. Phases (each agent finishes its assigned work, summarizes, stops; see HANDOFF.md §3 for the parallel plan)
 
 - **Phase 0 Foundation:** read AGENTS.md and all `docs/agent/*`; local setup per README; `/app` host page and shell; auth settings; i18n scaffold; workspaces and members tables; `membership()` helper; codenames; `/dashboard` Billing mode screen with `app_settings` and `getEntitlements()`; tests.
 - **Phase 0.5 Theme engine:** tokens, derivation, contrast helpers and tests, Appearance screen, workspace brand and enforce.
@@ -223,6 +225,8 @@ Todoist task panel https://mobbin.com/screens/4b5c4312-15b3-46ad-a335-2229893e03
 - **Phase 10 Polish:** PWA (manifest, service worker in `public/`, CSP-safe), virtualization, accessibility audit, empty states, error boundaries.
 - **Phase 11 Invite emails:** send the existing invite link by email through a third-party mail API (owner secret), from a background job; one scheduled job sending bounded batches (never one job per email); templates localized in all launch languages; per-workspace send rate limit; delivery failure shown to the inviter; the link still works if email fails. Owner actions: mail account, verified sending domain (SPF, DKIM), API key.
 - **Phase 12 Notification emails (decide after the team has used the MVP):** per-user on/off and frequency settings, digest batching by one scheduled job with a cursor, unsubscribe, idempotent sends, localized. Build only the notification types the team actually misses.
+
+> Changed per HANDOFF §3/§5: Phase 0.7 (Billing, sandbox) added after 0.5; Phase 9 trimmed to pricing page, landing page and tests for both billing modes; the old "finish a phase and stop" rule is replaced by: each parallel agent stops when its ASSIGNED work is done and does not start another phase; one worktree, branch and Postgres database per agent; one branch merged at a time with `npm run build && npm test`.
 
 At the end of every phase output: what was built, how to run and test it, assumptions, owner actions needed, and what comes next.
 

@@ -37,7 +37,8 @@ describe.skipIf(!DATABASE_URL)('account security (integration, real Postgres)', 
       const browser = new Browser(app);
       const res = await browser.get(`/site-api/auth/owner?ticket=${TICKET}`);
       expect(res.status).toBe(303);
-      expect(res.headers.get('location')).toBe('/dashboard');
+      // No `next`: the owner lands on afterSignInPath (/app, the product); /dashboard stays reachable for admin.
+      expect(res.headers.get('location')).toBe('/app');
       expect(res.headers.get('referrer-policy')).toBe('no-referrer');
       const me = await browser.get('/site-api/auth/me');
       expect(me.json.roles).toContain('owner');

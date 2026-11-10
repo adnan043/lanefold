@@ -1,4 +1,13 @@
 import {type AuthSettings, DEFAULT_AUTH_SETTINGS} from '../platform/auth';
+import {config} from '../platform/config';
+
+/**
+ * ONLY `astro dev` on this machine (`SITE_PREVIEW=1`, a localhost address) with no Site Key cannot relay the
+ * confirmation email, so nobody could ever sign in. There, and only there, a password account works without
+ * confirming its email. `import.meta.env.DEV` is false in every build, so the live site always requires it.
+ */
+const localDevWithoutMail = () =>
+  import.meta.env.DEV === true && config.preview && /^https?:\/\/localhost(:\d+)?\/?$/.test(config.siteUrl ?? '') && !config.siteKey;
 
 /**
  * How sign-in works on THIS site (yours to edit; the auth core in
@@ -12,8 +21,12 @@ import {type AuthSettings, DEFAULT_AUTH_SETTINGS} from '../platform/auth';
  */
 export const authSettings: AuthSettings = {
   ...DEFAULT_AUTH_SETTINGS,
-  // registration: 'open',
-  // requireEmailVerification: true,
+  registration: 'open',
+  // true everywhere except `astro dev` on localhost without a Site Key (see `localDevWithoutMail`).
+  get requireEmailVerification() {
+    return !localDevWithoutMail();
+  },
   // ownerEmails: ['owner@example.com'],
-  // afterSignInPath: '/dashboard',
+  // Lanefold lives at /app (docs/product/SPEC.md §2); the owner's one-click "Open admin" lands there too; the dashboard stays at /dashboard.
+  afterSignInPath: '/app',
 };

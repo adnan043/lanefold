@@ -17,20 +17,27 @@ import type {Abilities} from '../lib/types';
 import {logout} from '../platform/browser';
 import {
   auditQuery,
+  billingSettingsQuery,
+  brandingQuery,
   firstAuditQuery,
-  firstJobsQuery,
   firstUsersQuery,
   healthQuery,
-  manageJobsQuery,
   meQuery,
+  myWorkspacesQuery,
+  overviewMyDayQuery,
+  overviewWorkspacesQuery,
   permissionsQuery,
+  planLimitsQuery,
   rolesQuery,
   sessionsQuery,
   siteQuery,
+  staffWorkspacesQuery,
   twoFactorQuery,
+  unreadCountQuery,
   usersQuery,
 } from './queries';
 import {useMe, useSite} from './shared';
+import {todayISO} from './ui/date';
 import {
   Avatar,
   Button,
@@ -40,7 +47,6 @@ import {
   Icon,
   IconButton,
   type IconName,
-  initials,
   LoadingBlock,
   Menu,
   ToastProvider,
@@ -69,6 +75,8 @@ declare module '@tanstack/react-router' {
   interface StaticDataRouteOption {
     /** The screen's name: the top bar's `<h1>` and the tab's title. */
     title?: string;
+    /** A panel over its parent screen (the card slide-over): the shell leaves focus to the panel instead of the `<h1>`. */
+    keepFocus?: boolean;
   }
 }
 
@@ -127,16 +135,20 @@ const NAV_GROUPS: {label: string; items: NavItem[]}[] = [
   {
     label: 'Manage',
     items: [
-      {to: '/jobs', label: 'Jobs', icon: 'briefcase', ability: 'manageJobs'},
       {to: '/users', label: 'Users', icon: 'users', ability: 'manageUsers'},
       {to: '/roles', label: 'Roles', icon: 'shield', ability: 'manageRoles'},
       {to: '/activity', label: 'Activity', icon: 'activity', ability: 'readAudit'},
     ],
   },
-  // Only in the Preview and `npm run dev` (never in a build): the UI kit, on screen.
-  ...(import.meta.env.DEV
-    ? [{label: 'Build', items: [{to: '/components', label: 'Components', icon: 'layers' as const}]}]
-    : []),
+  {
+    label: 'Business',
+    items: [
+      {to: '/billing', label: 'Billing', icon: 'credit-card', ability: 'manageBilling'},
+      {to: '/plans', label: 'Plan limits', icon: 'settings', ability: 'managePlans'},
+      {to: '/workspaces', label: 'Workspaces', icon: 'layout-kanban', ability: 'readWorkspaces'},
+      {to: '/branding', label: 'Branding', icon: 'palette', ability: 'manageBranding'},
+    ],
+  },
 ];
 
 /** The screen's title for the top bar and the tab: the deepest route's `staticData.title`. */
@@ -195,7 +207,10 @@ function useTheme() {
       // Storage blocked: the choice lasts until the tab closes.
     }
   }, [theme]);
-  return [theme, setTheme] as const;
+  // What the page shows now: the explicit choice, else the device's.
+  const shownTheme: 'light' | 'dark' =
+    theme === 'system' ? (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
+  return [theme, setTheme, shownTheme] as const;
 }
 
 /**
@@ -239,7 +254,7 @@ function Shell() {
   const siteName = site.data?.site?.name;
   const {heading, resolved} = useNavigationFocus(title, siteName);
   const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useTheme();
+  const [, setTheme, shownTheme] = useTheme();
   // `logout()` reloads the page when it is done, so pending never needs resetting.
   const [signingOut, setSigningOut] = useState(false);
   const viewer = me.data?.viewer;
@@ -268,7 +283,7 @@ function Shell() {
     <div className="app-shell" data-nav-open={open ? '' : undefined}>
       <aside className="app-sidebar" aria-label="Sidebar">
         <a className="app-brand" href="/">
-          <span className="app-brand-mark">{logo ? <img src={logo} alt="" /> : initials(name) || '·'}</span>
+          <span className="app-brand-mark">{logo ? <img src={logo} alt="" /> : <img className="app-brand-default" src="/logo.svg" alt="" />}</span>
           <span className="app-brand-name">{name}</span>
         </a>
         <nav className="app-nav" aria-label="Dashboard">
@@ -289,6 +304,10 @@ function Shell() {
           })}
         </nav>
         <div className="app-sidebar-foot">
+          <a className="app-nav-link" href="/app">
+            <Icon name="layout-kanban" size={18} />
+            Open your boards
+          </a>
           <a className="app-nav-link" href="/">
             <Icon name="arrow-left" size={18} />
             Back to the website
@@ -310,14 +329,10 @@ function Shell() {
             {title}
           </h1>
           <div className="app-topbar-actions">
-            <Menu
-              label={`Theme: ${theme}`}
-              trigger={<Icon name={theme === 'dark' ? 'moon' : theme === 'light' ? 'sun' : 'monitor'} size={18} />}
-              items={[
-                {label: 'Light', icon: 'sun', onSelect: () => setTheme('light')},
-                {label: 'Dark', icon: 'moon', onSelect: () => setTheme('dark')},
-                {label: 'Same as this device', icon: 'monitor', onSelect: () => setTheme('system')},
-              ]}
+            <IconButton
+              icon={shownTheme === 'dark' ? 'sun' : 'moon'}
+              label={shownTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              onClick={() => setTheme(shownTheme === 'dark' ? 'light' : 'dark')}
             />
             {viewer && (
               <Menu
@@ -331,6 +346,7 @@ function Shell() {
                 }
                 disabled={signingOut}
                 items={[
+                  {label: 'Open your boards', icon: 'layout-kanban', onSelect: () => window.location.assign('/app')},
                   {label: 'Your account', icon: 'user', onSelect: () => void navigate({to: '/account'})},
                   {label: 'Back to the website', icon: 'globe', onSelect: () => window.location.assign('/')},
                   'separator',
@@ -347,7 +363,7 @@ function Shell() {
             )}
           </div>
         </header>
-        <main className="app-content" id="main">
+        <main className="app-content app-content-wide lf-content" id="main">
           <Outlet />
         </main>
       </div>
@@ -363,11 +379,17 @@ const overviewRoute = createRoute({
   staticData: {title: 'Overview'},
   loader: async ({context: {queryClient}}) => {
     // The tiles the visitor may see, as the screen's `enabled` flags decide.
-    const [me] = await Promise.all([queryClient.ensureQueryData(meQuery).catch(() => null), warm(queryClient.ensureQueryData(healthQuery), queryClient.ensureQueryData(twoFactorQuery), queryClient.ensureQueryData(siteQuery))]);
+    const [me] = await Promise.all([queryClient.ensureQueryData(meQuery).catch(() => null), warm(
+        queryClient.ensureQueryData(healthQuery),
+        queryClient.ensureQueryData(twoFactorQuery),
+        queryClient.ensureQueryData(siteQuery),
+        queryClient.ensureQueryData(overviewMyDayQuery(todayISO())),
+        queryClient.ensureQueryData(overviewWorkspacesQuery),
+        queryClient.ensureQueryData(unreadCountQuery)
+      )]);
     const can = me?.abilities;
     await warm(
       ...(can?.manageUsers ? [queryClient.ensureQueryData(firstUsersQuery)] : []),
-      ...(can?.manageJobs ? [queryClient.ensureQueryData(firstJobsQuery)] : []),
       ...(can?.readAudit ? [queryClient.ensureQueryData(firstAuditQuery)] : [])
     );
   },
@@ -387,13 +409,6 @@ const accountRoute = createRoute({
       queryClient.ensureQueryData(sessionsQuery)
     ),
   component: lazyRouteComponent(() => import('./screens/account'), 'Account'),
-});
-const jobsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/jobs',
-  staticData: {title: 'Jobs'},
-  loader: ({context: {queryClient}}) => warm(queryClient.ensureInfiniteQueryData(manageJobsQuery)),
-  component: lazyRouteComponent(() => import('./screens/jobs'), 'Jobs'),
 });
 const usersRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -418,6 +433,36 @@ const activityRoute = createRoute({
   component: lazyRouteComponent(() => import('./screens/activity'), 'Activity'),
 });
 
+const billingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/billing',
+  staticData: {title: 'Billing'},
+  loader: ({context: {queryClient}}) => warm(queryClient.ensureQueryData(billingSettingsQuery), queryClient.ensureQueryData(myWorkspacesQuery)),
+  component: lazyRouteComponent(() => import('./screens/billing'), 'Billing'),
+});
+const plansRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/plans',
+  staticData: {title: 'Plan limits'},
+  loader: ({context: {queryClient}}) => warm(queryClient.ensureQueryData(planLimitsQuery)),
+  component: lazyRouteComponent(() => import('./screens/plans'), 'PlanLimits'),
+});
+const workspacesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/workspaces',
+  staticData: {title: 'Workspaces'},
+  loader: ({context: {queryClient}}) => warm(queryClient.ensureInfiniteQueryData(staffWorkspacesQuery)),
+  component: lazyRouteComponent(() => import('./screens/workspaces'), 'Workspaces'),
+});
+
+const brandingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/branding',
+  staticData: {title: 'Branding'},
+  loader: ({context: {queryClient}}) => warm(queryClient.ensureQueryData(brandingQuery)),
+  component: lazyRouteComponent(() => import('./screens/branding'), 'Branding'),
+});
+
 // The UI kit on screen, for the owner and their agent. Dev only: the whole route (and its
 // chunk) is left out of a build, because `import.meta.env.DEV` is `false` there.
 const devRoutes = import.meta.env.DEV
@@ -434,9 +479,12 @@ const devRoutes = import.meta.env.DEV
 export const routeTree = rootRoute.addChildren([
   overviewRoute,
   accountRoute,
-  jobsRoute,
   usersRoute,
   rolesRoute,
   activityRoute,
+  billingRoute,
+  plansRoute,
+  workspacesRoute,
+  brandingRoute,
   ...devRoutes,
 ]);

@@ -15,7 +15,7 @@ const LIMIT = 20;
 
 export const GET: APIRoute = async ({request}) => {
   const [{site}, all] = await Promise.all([staticContext(request), publishedPosts()]);
-  const name = site?.name ?? 'My site';
+  const name = site?.name ?? 'Lanefold';
   const posts = all.slice(0, LIMIT);
   // Feed readers need absolute links; without a known address (dev, Preview) they stay site-relative.
   const link = (path: string) => absoluteUrl(path) ?? path;
@@ -37,9 +37,9 @@ export const GET: APIRoute = async ({request}) => {
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
     '  <channel>',
-    `    <title>${escape(name)}</title>`,
+    `    <title>${escape(`${name} blog`)}</title>`,
     `    <link>${escape(link('/blog/'))}</link>`,
-    `    <description>${escape(withName(SITE.description, name))}</description>`,
+    `    <description>${escape(`News and guides from ${name}. ` + withName(SITE.description, name))}</description>`,
     `    <language>${escape(SITE.lang)}</language>`,
     ...(self ? [`    <atom:link href="${escape(self)}" rel="self" type="application/rss+xml" />`] : []),
     ...(posts[0] ? [`    <lastBuildDate>${posts[0].data.publishedAt.toUTCString()}</lastBuildDate>`] : []),

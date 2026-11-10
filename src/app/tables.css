@@ -1,0 +1,21 @@
+/* Tables in /app on phones. The portal kit already stacks each row as a labelled card
+   (data-label from the translated column header). Here: no sideways scroll, long values wrap. */
+@media (max-width: 560px) {
+  .table-wrap {
+    overflow-x: visible;
+  }
+
+  .data-table td {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .lf-archive-row {
+    flex-wrap: wrap;
+  }
+
+  .lf-archive-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}

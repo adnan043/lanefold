@@ -1,0 +1,190 @@
+/*
+ * Responsive and safe-area fixes (docs/product/reviews/responsive-audit.md). Every override below is prefixed with `:root` (one extra specificity step) so it beats app.css, cards.css and chat.css
+ * whatever order the bundler loads them in (the lazy card-panel and conversation-view chunks load after this file).
+ * Logical properties only (RTL). No hex, no inline styles.
+ */
+
+/* z-index order: dock 20 = board filter bar 20 < top bar 25 < nav scrim 30 < failure bar 31 < undo bar 32 < sidebar 40 < popovers 55 < select lists 56. The card modal is in the top layer (no z-index); its undo and failure bars render inside it. */
+:root .lf-failure-region {
+  z-index: 31;
+}
+:root .lf-undo-region {
+  z-index: 32;
+}
+
+/* Lanes: rem width, snap with padding so the next lane peeks. */
+.lf-lanes {
+  scroll-padding-inline: 1rem;
+}
+:root .lf-lane,
+:root .lf-add-lane {
+  flex-basis: 18rem;
+  inline-size: 18rem;
+}
+:root .lf-add-lane {
+  inline-size: auto;
+}
+
+/* Long unbroken words, URLs and emoji strings wrap instead of overflowing. */
+.lf-card,
+.lf-lane-name,
+.chat-msg-body,
+.cd-title {
+  overflow-wrap: anywhere;
+}
+
+/* Drag: panning stays possible on the grip and cards until a drag really starts. */
+:root .lf-grip {
+  touch-action: manipulation;
+}
+.lf-card,
+:root .lf-grip {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.lf-card[data-dragging],
+.lf-lane[data-dragging] .lf-grip,
+.lf-lane[data-dragging] {
+  touch-action: none;
+}
+
+@media (max-width: 960px) {
+  :root .lf-lane {
+    flex-basis: min(85vw, 20rem);
+    inline-size: min(85vw, 20rem);
+  }
+  :root .lf-board {
+    padding-block-end: calc(6rem + env(safe-area-inset-bottom));
+  }
+  :root .lf-dock {
+    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  }
+  :root .lf-dock-link {
+    flex: 1;
+    min-inline-size: 0;
+    padding-inline: 0.25rem;
+    font-size: 0.6875rem;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+  :root .lf-undo-region {
+    /* Above the mobile dock AND the board toolbar that floats over it. */
+    bottom: calc(8.5rem + env(safe-area-inset-bottom));
+  }
+  :root .lf-failure-region {
+    bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+  :root .chat-layout {
+    padding-block-end: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* Members and other tables: the focusable scroll wrapper is in the kit; keep it visibly focusable. */
+.table-wrap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Touch targets: 44 px under a coarse pointer for the app's own controls (the kit's buttons are covered in styles/a11y.css). */
+@media (pointer: coarse) {
+  :root .app-shell .app-nav-link,
+  :root .app-shell .app-rail-toggle,
+  :root .lf-fb-opt,
+  :root .lane-menu .lm-item,
+  :root .lane-menu .lm-section,
+  :root .cd-head .cd-close,
+  :root .cd-editor-bar .icon-button,
+  :root .cd-editor-bar .menu-trigger,
+  :root .chat-msg-actions .icon-button {
+    min-inline-size: 44px;
+    min-block-size: 44px;
+  }
+  :root .app-shell .app-nav-link,
+  :root .lf-fb-opt,
+  :root .lane-menu .lm-item,
+  :root .lane-menu .lm-section {
+    min-inline-size: 0;
+  }
+}
+
+/* ---------- Phones and tablets, browser-checked at 360, 390, 768 and 1024 px wide ---------- */
+
+/* Tablets and phones (the dock is shown): the board's floating toolbar sits above the dock instead of behind it,
+   the lanes stop above both, and the filter panel ends above the dock. */
+@media (max-width: 960px) {
+  :root .app-shell .lf-board-head {
+    inset-block-end: calc(4.75rem + env(safe-area-inset-bottom));
+    max-inline-size: calc(100% - 1.5rem);
+  }
+  :root .app-shell .lf-board {
+    padding-block-end: calc(8.5rem + env(safe-area-inset-bottom));
+  }
+  :root .lf-fp {
+    max-block-size: calc(100dvh - 17rem - env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 560px) {
+  /* Top bar: the screen title needs the room. Light/dark stays one tap away in Settings > Appearance. */
+  :root .app-topbar .lf-theme-toggle,
+  :root .app-topbar .app-viewer-chevron {
+    display: none;
+  }
+  :root .app-shell .app-topbar {
+    gap: 0.25rem;
+    padding-inline: 0.5rem;
+  }
+
+  /* Board toolbar: icons only, so every action fits on one row (the words stay for screen readers). */
+  :root .app-shell .lf-board-head .lf-head-label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  :root .app-shell .lf-board-head {
+    gap: 0.125rem;
+    padding: 0.25rem;
+  }
+  :root .app-shell .lf-board-head :is(.button, .lf-view-btn) {
+    min-inline-size: 44px;
+    justify-content: center;
+    padding-inline: 0.625rem;
+  }
+
+  /* My Day: the title gets the full row; priority and due date move under it. */
+  :root .lf-day-row {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+  }
+  :root .lf-day-main {
+    flex-basis: calc(100% - 3.5rem);
+  }
+  :root .lf-day-main + .badge {
+    margin-inline-start: 3rem;
+  }
+}
+
+/* Card sheet header on small phones: the list chip shrinks (its name ellipsizes) so the close button always fits. */
+@media (max-width: 400px) {
+  :root .cd-dialog .cd-top-bar {
+    gap: 0.125rem;
+    padding-inline: 0.5rem;
+  }
+  :root .cd-dialog .cd-lane-chip {
+    min-inline-size: 0;
+    flex-shrink: 1;
+  }
+}
+
+/* Lane menu with the dock and board toolbar showing: it ends above the toolbar and scrolls inside. */
+@media (max-width: 960px) {
+  :root .popover.lane-menu {
+    /* It opens about 15.5rem down (top bar, filter bar, lane head); the toolbar and dock take the bottom 8rem. */
+    max-block-size: max(12rem, calc(100dvh - 24rem - env(safe-area-inset-bottom)));
+    overflow-y: auto;
+  }
+}

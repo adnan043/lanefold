@@ -10,6 +10,11 @@
  * shell (sidebar, top bar). The ONLY `.astro` file of the app: never add one
  * per screen.
  */
+// The same look as `/app` (Lanefold's design layer), so the admin dashboard and the product feel like one app.
+import '../../app/app.css';
+import '../../app/tables.css';
+import '../../app/design.css';
+
 import App from '../../layouts/App.astro';
 import {config} from '../../platform/config';
 import PortalApp from '../../portal/PortalApp';

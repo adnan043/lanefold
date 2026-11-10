@@ -34,7 +34,7 @@ describe('input', () => {
   });
 
   it('only follows same-site paths after sign-in (no open redirect)', () => {
-    expect(safeNext('/dashboard/jobs?x=1', '/dashboard')).toBe('/dashboard/jobs?x=1');
+    expect(safeNext('/dashboard/users?x=1', '/dashboard')).toBe('/dashboard/users?x=1');
     for (const bad of ['https://evil.example', '//evil.example', '/\\evil.example', 'javascript:alert(1)', '/a\nb', '', 7]) {
       expect(safeNext(bad, '/dashboard')).toBe('/dashboard');
     }

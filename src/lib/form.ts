@@ -35,6 +35,15 @@ type Control = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 const describedBy = (input: Control, id: string) => [id, input.dataset.describedby].filter(Boolean).join(' ');
 
+/**
+ * A blur counts as "the visitor touched this field" only after the visitor acted inside the
+ * form (pointer, key or typing). A blur caused by the page itself (a programmatic focus, a page
+ * swap by ClientRouter, autofill) must never show an error before any interaction.
+ */
+export function blurCounts(interacted: boolean, submitted: boolean): boolean {
+  return interacted || submitted;
+}
+
 export function bindForm(form: HTMLFormElement, options: Options): void {
   form.noValidate = true;
   const status = form.querySelector<HTMLElement>('[data-form-status]');
@@ -43,6 +52,11 @@ export function bindForm(form: HTMLFormElement, options: Options): void {
   const touched = new Set<string>();
   const serverErrors = new Map<string, string>();
   let submitted = false;
+  let interacted = false;
+  const markInteracted = () => {
+    interacted = true;
+  };
+  for (const type of ['pointerdown', 'keydown', 'input']) form.addEventListener(type, markInteracted, true);
 
   const control = (name: string) => form.elements.namedItem(name) as Control | null;
 
@@ -105,6 +119,7 @@ export function bindForm(form: HTMLFormElement, options: Options): void {
     const input = control(name);
     if (!input) continue;
     input.addEventListener('blur', () => {
+      if (!blurCounts(interacted, submitted)) return;
       touched.add(name);
       show(name, check(name));
     });

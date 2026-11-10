@@ -1,4 +1,4 @@
-import type {ButtonHTMLAttributes, ReactNode} from 'react';
+import type {ButtonHTMLAttributes, ReactNode, Ref} from 'react';
 
 import {Icon, type IconName} from './icon';
 
@@ -35,6 +35,8 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   pending?: boolean;
   /** What the button says while pending ("Saving…"). Defaults to its label. */
   pendingLabel?: ReactNode;
+  /** React 19 passes `ref` as a prop; it reaches the `<button>` through `...rest`. */
+  ref?: Ref<HTMLButtonElement>;
 };
 
 /**
@@ -92,6 +94,7 @@ export function IconButton({
   variant?: Exclude<ButtonVariant, 'link'>;
   size?: ButtonSize;
   pending?: boolean;
+  ref?: Ref<HTMLButtonElement>;
 }) {
   return (
     <button

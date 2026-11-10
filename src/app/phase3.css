@@ -1,0 +1,423 @@
+/* My Day and Inbox (src/app/my-day, src/app/inbox). Tokens only; logical properties so RTL works. */
+.lf-day {
+  display: grid;
+  gap: 1rem;
+}
+.lf-day-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.lf-day-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-block-size: 48px;
+  padding-block: 0.375rem;
+  border-block-end: 1px solid var(--line);
+}
+.lf-day-row:last-child {
+  border-block-end: 0;
+}
+.lf-day-main {
+  flex: 1;
+  min-inline-size: 0;
+  display: grid;
+  gap: 0.125rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+a.lf-day-main:hover .lf-day-title {
+  text-decoration: underline;
+}
+a.lf-day-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.lf-day-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.lf-day-meta {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.lf-day-more {
+  display: flex;
+  justify-content: center;
+  padding-block-start: 0.75rem;
+}
+.lf-capture {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-block-end: 1rem;
+  max-inline-size: 640px;
+}
+.lf-capture .field {
+  flex: 1;
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .lf-capture {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lf-day-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* Shortcuts, onboarding steps, setup checklist, starter templates. */
+.lf-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink);
+}
+.lf-kbd-hint { display: none; }
+@media (min-width: 900px) { .lf-kbd-hint { display: inline-flex; } }
+.lf-shortcuts { display: grid; gap: 1.5rem; }
+.lf-shortcuts-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--subtle);
+}
+.lf-shortcuts-list {
+  margin: 0;
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.lf-shortcuts-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.9375rem;
+  color: var(--ink);
+}
+.lf-shortcuts-row + .lf-shortcuts-row { border-top: 1px solid var(--line); }
+.lf-shortcuts-row dt, .lf-shortcuts-row dd { margin: 0; padding: 0; }
+.lf-shortcuts-row dd { display: flex; align-items: center; gap: 0.375rem; flex-shrink: 0; }
+.lf-shortcuts-then { color: var(--subtle); font-size: 0.75rem; }
+.lf-steps { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.875rem; }
+.lf-step-title { margin: 0; font-size: 1.0625rem; }
+.lf-setup-count { margin: 0 0 0.5rem; }
+.lf-setup-list { list-style: none; margin: 0.75rem 0 0; padding: 0; display: grid; gap: 0.25rem; }
+.lf-setup-row { display: flex; align-items: center; gap: 0.625rem; min-height: 2.25rem; }
+.lf-setup-row[data-done] { color: var(--muted); }
+.lf-setup-row[data-done] .lf-setup-label { text-decoration: line-through; }
+.lf-setup-row[data-done] .icon { color: var(--success, var(--accent)); }
+.lf-setup-label { flex: 1; }
+.lf-setup-ring { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line-strong); flex: none; }
+.lf-templates { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.lf-templates-title { margin: 0 0 0.5rem; font-size: 0.8125rem; color: var(--muted); font-weight: 600; }
+.lf-templates-row { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+.lf-template {
+  display: grid; gap: 0.125rem; text-align: start; padding: 0.625rem 0.75rem;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: inherit; cursor: pointer;
+}
+.lf-template:hover:not(:disabled) { border-color: var(--accent); }
+.lf-template:disabled { cursor: not-allowed; opacity: 0.6; }
+.lf-template-title { font-weight: 600; }
+.lf-template-desc { font-size: 0.8125rem; color: var(--muted); }
+
+/* Inbox (src/app/inbox/inbox.tsx): one capture bar, then cards to sort grouped Today / Earlier.
+   Row actions rest quiet and show on hover or keyboard focus; on touch they are always shown. */
+.lf-inbox-capture {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.375rem;
+  max-inline-size: 760px;
+  margin-block-end: 2rem;
+}
+.lf-inbox-capture-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.lf-inbox-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-block-size: 56px;
+  padding-block: 0.375rem;
+  padding-inline: 1rem 0.5rem;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  color: var(--subtle);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.lf-inbox-bar:hover {
+  border-color: var(--muted);
+}
+.lf-inbox-bar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-sm);
+  color: var(--accent-text);
+}
+.lf-inbox-bar[data-invalid] {
+  border-color: var(--danger);
+}
+.lf-inbox-bar input {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+}
+.lf-inbox-bar input:focus-visible {
+  outline: 2px solid transparent; /* forced colors; the bar's ring shows focus */
+}
+.lf-inbox-bar input::placeholder {
+  color: var(--subtle);
+}
+
+.lf-inbox-list {
+  display: grid;
+  gap: 1.5rem;
+  max-inline-size: 960px;
+}
+.lf-inbox-list-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lf-inbox-list-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.lf-inbox-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding-inline: 0.5rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.lf-inbox-group {
+  display: grid;
+  gap: 0.5rem;
+}
+.lf-inbox-group-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.lf-inbox-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.lf-inbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-block-size: 60px;
+  padding-block: 0.5rem;
+  padding-inline: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.lf-inbox-row:hover,
+.lf-inbox-row:focus-within {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-sm);
+}
+.lf-inbox-check {
+  color: var(--subtle);
+  border-radius: 999px;
+}
+.lf-inbox-check:hover:not(:disabled) {
+  color: var(--success);
+  background: var(--success-soft);
+}
+.lf-inbox-main {
+  flex: 1;
+  min-inline-size: 0;
+  display: grid;
+  gap: 0.2rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+a.lf-inbox-main:hover .lf-inbox-title {
+  color: var(--accent-text);
+}
+a.lf-inbox-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.lf-inbox-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  transition: color 0.15s ease;
+}
+.lf-inbox-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.lf-inbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: opacity 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lf-inbox-actions {
+    opacity: 0;
+  }
+  .lf-inbox-row:hover .lf-inbox-actions,
+  .lf-inbox-row:focus-within .lf-inbox-actions,
+  .lf-inbox-row[data-busy] .lf-inbox-actions {
+    opacity: 1;
+  }
+}
+@media (max-width: 560px) {
+  .lf-inbox-row {
+    flex-wrap: wrap;
+  }
+  .lf-inbox-actions {
+    inline-size: 100%;
+    justify-content: flex-end;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lf-inbox-bar,
+  .lf-inbox-row,
+  .lf-inbox-actions,
+  .lf-inbox-title {
+    transition: none;
+  }
+}
+
+/* Inbox layout: the list and a guide side by side on wide screens, the guide under the list on narrow ones. */
+.lf-inbox-layout {
+  display: grid;
+  /* One shrinkable column: the capture bar's input must never widen the page on phones. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+.lf-inbox-col {
+  min-inline-size: 0;
+}
+.lf-inbox-layout .lf-inbox-capture,
+.lf-inbox-layout .lf-inbox-list {
+  max-inline-size: none;
+}
+@media (min-width: 1100px) {
+  .lf-inbox-layout {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+  .lf-inbox-guide {
+    position: sticky;
+    inset-block-start: 1.5rem;
+  }
+}
+.lf-inbox-guide-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.lf-inbox-guide-goal {
+  margin: 0.25rem 0 1.25rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.lf-inbox-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.lf-inbox-step {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.lf-inbox-step-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.lf-inbox-step-text {
+  display: grid;
+  gap: 0.125rem;
+}
+.lf-inbox-step-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.lf-inbox-step-body {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.lf-inbox-tip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 1.25rem 0 0;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--line);
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.lf-inbox-keys {
+  display: inline-flex;
+  gap: 0.25rem;
+}

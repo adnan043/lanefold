@@ -1,7 +1,10 @@
-import type {ReactNode} from 'react';
+import {useVirtualizer} from '@tanstack/react-virtual';
+import {type ReactNode, useRef} from 'react';
 
 import {Button} from './button';
 import {ErrorNote, Skeleton} from './display';
+import {useUiLabels} from './labels';
+import {VIRTUAL_MIN_ROWS, spacerSizes} from './virtual-rows';
 
 export type Column<Row> = {
   /** Unique per table. */
@@ -37,6 +40,7 @@ export function DataTable<Row>({
   error,
   empty,
   busyKey,
+  virtualize,
 }: {
   columns: Column<Row>[];
   rows: Row[] | undefined;
@@ -47,11 +51,25 @@ export function DataTable<Row>({
   error?: Error | null;
   empty?: ReactNode;
   busyKey?: string | number | null;
+  /** Long lists only (at least `VIRTUAL_MIN_ROWS` rows): draws just the rows in view inside a scrolling region. `estimate` is a row's height in px. */
+  virtualize?: {estimate: number};
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const windowed = Boolean(virtualize) && (rows?.length ?? 0) >= VIRTUAL_MIN_ROWS;
+  const virtualizer = useVirtualizer({
+    count: windowed ? rows!.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => virtualize?.estimate ?? 48,
+    overscan: 8,
+    getItemKey: index => (rows ? rowKey(rows[index]!) : index),
+  });
+  const items = windowed ? virtualizer.getVirtualItems() : [];
+  const spacer = spacerSizes(items, virtualizer.getTotalSize());
+  const shown = windowed ? items.map(item => rows![item.index]!) : rows;
   if (error && !rows?.length) return <ErrorNote error={error} />;
   if (!loading && rows && rows.length === 0) return <>{empty}</>;
   return (
-    <div className="table-wrap">
+    <div className={windowed ? 'table-wrap table-wrap-virtual' : 'table-wrap'} ref={scrollRef} tabIndex={0} role="region" aria-label={caption}>
       <table className="data-table">
         <caption className="visually-hidden">{caption}</caption>
         <thead>
@@ -78,10 +96,16 @@ export function DataTable<Row>({
                   ))}
                 </tr>
               ))
-            : rows?.map(row => {
+            : [
+                windowed ? <SpacerRow key="spacer-top" size={spacer.top} cols={columns.length} /> : null,
+                ...(shown ?? []).map((row, i) => {
                 const key = rowKey(row);
                 return (
-                  <tr key={key} aria-busy={busyKey === key || undefined}>
+                  <tr
+                    key={key}
+                    ref={windowed ? virtualizer.measureElement : undefined}
+                    data-index={windowed ? items[i]!.index : undefined}
+                    aria-busy={busyKey === key || undefined}>
                     {columns.map(column => (
                       <td
                         key={column.key}
@@ -92,10 +116,21 @@ export function DataTable<Row>({
                     ))}
                   </tr>
                 );
-              })}
+              }),
+                windowed ? <SpacerRow key="spacer-bottom" size={spacer.bottom} cols={columns.length} /> : null,
+              ]}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** An empty row standing in for the rows above or below the window. Height set through the DOM (CSP: no style attribute). */
+function SpacerRow({size, cols}: {size: number; cols: number}) {
+  return (
+    <tr aria-hidden="true" className="table-spacer">
+      <td colSpan={cols} ref={el => { if (el) el.style.height = `${size}px`; }} />
+    </tr>
   );
 }
 
@@ -118,10 +153,11 @@ export function LoadMore({
 }: {
   query: {hasNextPage: boolean; isFetchingNextPage: boolean; fetchNextPage: () => unknown};
 }) {
+  const labels = useUiLabels();
   if (!query.hasNextPage) return null;
   return (
     <div className="load-more">
-      <Button variant="secondary" pending={query.isFetchingNextPage} pendingLabel="Loading…" onClick={() => void query.fetchNextPage()}>
+      <Button variant="secondary" pending={query.isFetchingNextPage} pendingLabel={labels.loading} onClick={() => void query.fetchNextPage()}>
         Load more
       </Button>
     </div>

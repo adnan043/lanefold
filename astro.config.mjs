@@ -49,6 +49,8 @@ export default defineConfig({
   // them on, any `Astro.session` call would fail at request time. Sign-in is
   // the site's own (src/platform/auth), on cookies.
   session: false,
+  // The dev toolbar is an editor-only overlay (it never ships); it floats over the chat composer.
+  devToolbar: {enabled: false},
   redirects: {'/account': '/account/login/'},
   // No Markdown code blocks here; Shiki's inline styles would break the CSP.
   markdown: {syntaxHighlight: false},

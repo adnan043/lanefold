@@ -50,7 +50,7 @@ describe.skipIf(!DATABASE_URL)('code sign-in and the admin (integration, real Po
       const browser = new Browser(app);
       const res = await codeSignIn(browser, 'boss@example.test');
       expect(res.status).toBe(200);
-      expect(res.json.next).toBe('/dashboard');
+      expect(res.json.next).toBe('/app'); // afterSignInPath; /dashboard stays reachable
       expect((await browser.get('/site-api/auth/me')).json.roles).toContain('owner');
 
       // Both listed addresses exist and hold owner; neither has a password.

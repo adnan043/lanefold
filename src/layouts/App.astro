@@ -8,9 +8,14 @@
  * Signed out / no access: pass the prompt as the slot; it renders
  * centered on the same full-height canvas.
  */
+import '@fontsource-variable/inter';
 import '../styles/global.css';
 import '../styles/app.css';
+import '../styles/a11y.css';
+import '../styles/forced-colors.css';
 
+import {dirOf, langClass} from '../i18n/locales';
+import {parseAcceptLanguage, readLocaleCookie, resolveLocale} from '../i18n/resolve';
 import type {Site, Viewer} from '../lib/types';
 
 interface Props {
@@ -22,17 +27,36 @@ interface Props {
 
 const {site, viewer, title} = Astro.props;
 const name = site?.name ?? 'My site';
+// The language and direction before any script runs (no flash): the `lf_locale` cookie the app sets on a choice, else Accept-Language
+// limited to the supported languages, else English. The app re-applies the profile's language in the browser (`applyDocumentLocale`).
+const locale = resolveLocale({
+  cookie: readLocaleCookie(Astro.request.headers.get('cookie') ?? ''),
+  languages: parseAcceptLanguage(Astro.request.headers.get('accept-language')),
+});
+
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={locale} dir={dirOf(locale)} class={langClass(locale)}>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{`${title} · ${name}`}</title>
     <!-- Signed-in screens are never search results. -->
     <meta name="robots" content="noindex" />
     {site?.favIcon ? <link rel="icon" href={site.favIcon} /> : <link rel="icon" href="/favicon.svg" type="image/svg+xml" />}
+    {/* The admin's brand colour (/dashboard Branding, src/server/routes/branding.ts); empty when none is set. */}
+    <link rel="stylesheet" href="/site-api/brand.css" />
+    {
+      Astro.url.pathname.startsWith('/app') && (
+        <>
+          <link rel="manifest" href="/manifest.webmanifest" />
+          <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+          <meta name="theme-color" content="#0d1110" media="(prefers-color-scheme: dark)" />
+          <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        </>
+      )
+    }
   </head>
   <body class="app-body" data-viewer={viewer.state}>
     <slot />

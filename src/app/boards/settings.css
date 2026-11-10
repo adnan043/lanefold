@@ -1,0 +1,271 @@
+/* Board settings drawer, archive lists and boards-list extras. Tokens only. */
+.lf-settings {
+  display: grid;
+  gap: 1rem;
+}
+.lf-settings-group {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.lf-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.lf-settings-group legend {
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+.lf-settings-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.lf-swatch-preview {
+  height: 56px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+.lf-swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.lf-swatch-row .lf-swatch {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  cursor: pointer;
+  padding: 0;
+}
+.lf-swatch-row .lf-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lf-swatch-row .lf-swatch[aria-pressed='true'] {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.lf-archive-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.lf-archive-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.lf-archive-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.125rem;
+}
+.lf-archive-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.lf-archive-meta {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.lf-archive-swatch {
+  width: 48px;
+  height: 36px;
+  flex: none;
+}
+.lf-list-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.lf-list-section {
+  margin-bottom: 1.5rem;
+}
+.lf-list-section > h2 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+.lf-tpl-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+.lf-tpl-card {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  text-align: start;
+  padding: 0.75rem;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+.lf-tpl-card:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-sm);
+}
+.lf-tpl-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lf-tpl-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.lf-tpl-card[aria-busy='true'] {
+  cursor: progress;
+}
+.lf-tpl-title {
+  font-weight: 600;
+}
+.lf-photo-row {
+  align-items: center;
+}
+
+/* Background picker: two big tiles (Photos / Colors), then the chosen half's options. */
+.lf-bg-kinds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.lf-bg-kind {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-align: center;
+}
+.lf-bg-kind-art {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  overflow: hidden;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.lf-bg-kind:hover .lf-bg-kind-art {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+.lf-bg-kind-photos {
+  background: var(--surface);
+  color: var(--muted);
+}
+.lf-bg-kind-colors {
+  background: var(--surface);
+  align-content: center;
+  gap: 0.5rem;
+  padding: 0 14%;
+}
+.lf-bg-kind-colors .lf-bg-kind-bar {
+  justify-self: stretch;
+  height: 22%;
+  min-height: 14px;
+  border-radius: var(--radius-sm);
+}
+.lf-bg-kind[aria-pressed='true'] {
+  color: var(--ink);
+  font-weight: 600;
+}
+.lf-bg-kind[aria-pressed='true'] .lf-bg-kind-art {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.lf-bg-kind:focus-visible {
+  outline: none;
+}
+.lf-bg-kind:focus-visible .lf-bg-kind-art {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lf-bg-panel {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+.lf-bg-photos {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+.lf-bg-photo {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  padding: 0;
+  cursor: pointer;
+}
+.lf-bg-photo[aria-pressed='true'] {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.lf-bg-photo:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lf-bg-photo:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.lf-bg-check {
+  position: absolute;
+  inset-block-start: 0.375rem;
+  inset-inline-end: 0.375rem;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.lf-bg-upload {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.25rem;
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+.lf-bg-upload:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+.lf-share-link {
+  min-width: 0;
+}
+.lf-share-link input {
+  min-width: 0;
+  text-overflow: ellipsis;
+}

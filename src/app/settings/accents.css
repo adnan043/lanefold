@@ -1,0 +1,353 @@
+/*
+ * Accent presets, high contrast and text size for Settings > Appearance. Tokens only; loaded after global.css.
+ * Every preset is checked for contrast in light and dark (tests/contrast.test.ts): the accent is >= 4.5:1 on
+ * every surface (it is used as text and as the focus ring), its ink >= 4.5:1 on it, its text on its soft tint too.
+ * No data-accent = the site's brand colour (/site-api/brand.css), else global.css's green; 'green' is explicit.
+ * Dark values apply under data-theme='dark', or when the device is dark and the mode is not forced light / contrast.
+ */
+
+/* teal */
+:root[data-accent='teal'] {
+  --accent: #097167;
+  --accent-hover: #07554d;
+  --accent-ink: #ffffff;
+  --accent-soft: #def7f4;
+  --accent-text: #064b45;
+}
+:root[data-theme='dark'][data-accent='teal'] {
+  --accent: #42f0de;
+  --accent-hover: #68f3e5;
+  --accent-ink: #07100c;
+  --accent-soft: #163b37;
+  --accent-text: #7cded5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='contrast'])[data-accent='teal'] {
+    --accent: #42f0de;
+    --accent-hover: #68f3e5;
+    --accent-ink: #07100c;
+    --accent-soft: #163b37;
+    --accent-text: #7cded5;
+  }
+}
+
+/* blue */
+:root[data-accent='blue'] {
+  --accent: #1763cf;
+  --accent-hover: #1456b3;
+  --accent-ink: #ffffff;
+  --accent-soft: #dee9f7;
+  --accent-text: #1352aa;
+}
+:root[data-theme='dark'][data-accent='blue'] {
+  --accent: #5191ec;
+  --accent-hover: #75a8f0;
+  --accent-ink: #07100c;
+  --accent-soft: #16263b;
+  --accent-text: #85abe0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='contrast'])[data-accent='blue'] {
+    --accent: #5191ec;
+    --accent-hover: #75a8f0;
+    --accent-ink: #07100c;
+    --accent-soft: #16263b;
+    --accent-text: #85abe0;
+  }
+}
+
+/* indigo */
+:root[data-accent='indigo'] {
+  --accent: #2626d9;
+  --accent-hover: #2222bf;
+  --accent-ink: #ffffff;
+  --accent-soft: #dedef7;
+  --accent-text: #2020b6;
+}
+:root[data-theme='dark'][data-accent='indigo'] {
+  --accent: #8686ea;
+  --accent-hover: #a8a8f0;
+  --accent-ink: #07100c;
+  --accent-soft: #16163b;
+  --accent-text: #adadeb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='contrast'])[data-accent='indigo'] {
+    --accent: #8686ea;
+    --accent-hover: #a8a8f0;
+    --accent-ink: #07100c;
+    --accent-soft: #16163b;
+    --accent-text: #adadeb;
+  }
+}
+
+/* purple */
+:root[data-accent='purple'] {
+  --accent: #8033cc;
+  --accent-hover: #702db4;
+  --accent-ink: #ffffff;
+  --accent-soft: #ebdef7;
+  --accent-text: #6b2bab;
+}
+:root[data-theme='dark'][data-accent='purple'] {
+  --accent: #ad7cde;
+  --accent-hover: #c29de7;
+  --accent-ink: #07100c;
+  --accent-soft: #29163b;
+  --accent-text: #c29de7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='contrast'])[data-accent='purple'] {
+    --accent: #ad7cde;
+    --accent-hover: #c29de7;
+    --accent-ink: #07100c;
+    --accent-soft: #29163b;
+    --accent-text: #c29de7;
+  }
+}
+
+/* rose */
+:root[data-accent='rose'] {
+  --accent: #c91d48;
+  --accent-hover: #ae193e;
+  --accent-ink: #ffffff;
+  --accent-soft: #f7dee4;
+  --accent-text: #a5183b;
+}
+:root[data-theme='dark'][data-accent='rose'] {
+  --accent: #e96384;
+  --accent-hover: #ee87a0;
+  --accent-ink: #07100c;
+  --accent-soft: #3b1620;
+  --accent-text: #e391a5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='contrast'])[data-accent='rose'] {
+    --accent: #e96384;
+    --accent-hover: #ee87a0;
+    --accent-ink: #07100c;
+    --accent-soft: #3b1620;
+    --accent-text: #e391a5;
+  }
+}
+
+/* orange */
+:root[data-accent='orange'] {
+  --accent: #b34209;
+  --accent-hover: #963708;
+  --accent-ink: #ffffff;
+  --accent-soft: #f7e7de;
+  --accent-text: #8d3407;
+}
+:root[data-theme='dark'][data-accent='orange'] {
+  --accent: #f57a3d;
+  --accent-hover: #f79564;
+  --accent-ink: #07100c;
+  --accent-soft: #3b2316;
+  --accent-text: #de9d7c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='contrast'])[data-accent='orange'] {
+    --accent: #f57a3d;
+    --accent-hover: #f79564;
+    --accent-ink: #07100c;
+    --accent-soft: #3b2316;
+    --accent-text: #de9d7c;
+  }
+}
+
+/* slate */
+:root[data-accent='slate'] {
+  --accent: #566881;
+  --accent-hover: #49596e;
+  --accent-ink: #ffffff;
+  --accent-soft: #e7eaef;
+  --accent-text: #455468;
+}
+:root[data-theme='dark'][data-accent='slate'] {
+  --accent: #8596ad;
+  --accent-hover: #9dabbe;
+  --accent-ink: #07100c;
+  --accent-soft: #212731;
+  --accent-text: #9dabbe;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='contrast'])[data-accent='slate'] {
+    --accent: #8596ad;
+    --accent-hover: #9dabbe;
+    --accent-ink: #07100c;
+    --accent-soft: #212731;
+    --accent-text: #9dabbe;
+  }
+}
+
+/* green: the same values as global.css's default, as an explicit choice now that the default is the brand colour */
+:root[data-accent='green'] {
+  --accent: #0f6b4f;
+  --accent-hover: #0b5640;
+  --accent-ink: #ffffff;
+  --accent-soft: #d6ebdd;
+  --accent-text: #0b5640;
+}
+:root[data-theme='dark'][data-accent='green'] {
+  --accent: #4cc08f;
+  --accent-hover: #6bd0a5;
+  --accent-ink: #04140d;
+  --accent-soft: #163a2c;
+  --accent-text: #7fd1ae;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='contrast'])[data-accent='green'] {
+    --accent: #4cc08f;
+    --accent-hover: #6bd0a5;
+    --accent-ink: #04140d;
+    --accent-soft: #163a2c;
+    --accent-text: #7fd1ae;
+  }
+}
+
+/* High contrast: black on white, solid borders, one strong blue accent. Wins over any accent preset. */
+html:root[data-theme='contrast'],
+html:root[data-theme='contrast'][data-accent] {
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --card: #ffffff;
+  --ink: #000000;
+  --muted: #1f1f1f;
+  --subtle: #2b2b2b;
+  --control-border: #000000;
+  --control-border-hover: #000000;
+  --line: #4d4d4d;
+  --line-strong: #000000;
+  --hover: #e6e6e6;
+
+  --accent: #0033cc;
+  --accent-hover: #00269e;
+  --accent-ink: #ffffff;
+  --accent-soft: #dbe4ff;
+  --accent-text: #00269e;
+
+  --success: #0b5a2b;
+  --warning: #6b4500;
+  --danger: #a30000;
+  --danger-hover: #7a0000;
+  --info: #0033cc;
+}
+html:root[data-theme='contrast'] :focus-visible {
+  outline-width: 3px;
+}
+
+/* Text size: rem-based type scales with the root; the body is set in rem too. */
+html[data-font='112'] {
+  font-size: 112.5%;
+}
+html[data-font='125'] {
+  font-size: 125%;
+}
+html[data-font='150'] {
+  font-size: 150%;
+}
+html[data-font] body {
+  font-size: 1rem;
+}
+
+/* Corner radius: sharp or round; soft is the default in global.css. Only tokens change. */
+html[data-radius='sharp'] {
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+  --radius-card: 4px;
+  --radius-lane: 6px;
+}
+html[data-radius='round'] {
+  --radius-sm: 12px;
+  --radius: 18px;
+  --radius-lg: 24px;
+  --radius-card: 16px;
+  --radius-lane: 20px;
+}
+
+/* Settings: accent swatches. */
+.lf-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.lf-swatches .lf-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.25rem;
+  padding-inline: 0.375rem 0.75rem;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+.lf-swatches .lf-swatch:hover {
+  background: var(--hover);
+}
+.lf-swatches .lf-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lf-swatches .lf-swatch[aria-checked='true'] {
+  border-color: var(--accent);
+  border-width: 2px;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.lf-swatch-dot {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  border-radius: 50%;
+  background: var(--swatch-bg);
+  color: var(--swatch-check, #ffffff);
+  border: 1px solid var(--ink);
+}
+
+.lf-swatch[data-accent='teal'] { --swatch-bg: #097167; }
+.lf-swatch[data-accent='blue'] { --swatch-bg: #1763cf; }
+.lf-swatch[data-accent='indigo'] { --swatch-bg: #2626d9; }
+.lf-swatch[data-accent='purple'] { --swatch-bg: #8033cc; }
+.lf-swatch[data-accent='rose'] { --swatch-bg: #c91d48; }
+.lf-swatch[data-accent='orange'] { --swatch-bg: #b34209; }
+.lf-swatch[data-accent='slate'] { --swatch-bg: #566881; }
+.lf-swatch[data-accent='green'] { --swatch-bg: #0f6b4f; }
+/* The site's brand colour (/site-api/brand.css sets --brand-swatch; none set = the default green). */
+.lf-swatch[data-accent='brand'] { --swatch-bg: var(--brand-swatch, #0f6b4f); }
+
+/* Settings: the person's own accent colour, the last pill of the row (prefs.ts applyCustomAccent). */
+.lf-swatches-group {
+  display: contents;
+}
+.lf-swatches .lf-swatch-custom {
+  position: relative;
+}
+.lf-swatches .lf-swatch-custom[data-checked] {
+  border-color: var(--accent);
+  border-width: 2px;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.lf-swatches .lf-swatch-custom:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* The swatch shows the saved colour; a colour wheel until one is picked. */
+.lf-swatch[data-accent='custom'] { --swatch-bg: var(--custom-swatch, conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)); }
+/* The native colour input covers the whole pill (click anywhere opens the plate) but stays invisible. */
+.lf-swatch-input {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+}

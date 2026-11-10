@@ -1,0 +1,31 @@
+# Accessibility audit (WCAG 2.2 AA, from code)
+
+Scope: `src/app/**`, `src/portal/ui/**`. Static read only; nothing was run in a browser or screen reader.
+
+## Top findings
+1. **No focus return when the card panel closes** (2.4.3, 3.2.1; High). `src/app/cards/card-panel.tsx:273` `close()` only navigates, and `:281-283` steals focus on open. No opener is recorded (only composers.tsx:26,124 do this). Fix: store `document.activeElement` (the card button) on open and refocus it, or the card by `data-card-id`, on close. The shell's `<h1>` focus move (shell.tsx:31) must not run on the panel route.
+2. **Non-modal dialog semantics are inconsistent** (4.1.2, 2.4.3; Med). `card-panel.tsx:319-321` is `role="dialog" aria-modal="false"` with no Tab order into or out of it and no way back to the board by keyboard apart from Esc. Fix: use `role="complementary"` or `region` with a label, keep Esc, and add a visible "Close" button first in tab order.
+3. **`role="combobox"` on a `<textarea>`** (4.1.2; Med). `src/app/chat/composer.tsx:132`. ARIA in HTML does not allow combobox on textarea, and AT support is poor. Fix: keep textarea semantics, add `aria-controls`/`aria-expanded` only, or move the suggestions to a `listbox` announced via a polite live region ("3 people, use arrow keys"). Also `aria-controls` points to `${id}-people` even for the cards list (:175 vs :197, same id) and the element is absent when closed (:137).
+4. **Chat log announces too much** (4.1.3; Med). `conversation-view.tsx:113-116`: `role="log"` plus `aria-live="polite"` plus `tabIndex=0`; `log` already implies polite, and a long history load or the user's own sends get read out. Fix: drop the explicit `aria-live`, announce only incoming messages from others through a separate visually hidden status ("2 new messages").
+5. **Toasts: errors are polite and vanish in 5 s** (4.1.3, 2.2.1; Med). `src/portal/ui/overlay.tsx:257,265`. Danger toasts need `role="alert"`; a toast with no action should not auto-dismiss under 5 s without pause on hover or focus (2.2.1 and 1.4.13). Fix: tone `danger` goes in an `aria-live="assertive"` region, pause the timer on hover or focus, and extend the time.
+6. **Small targets** (2.5.8; Med). `src/app/app.css:44-45` (28px switcher mark; fine if it is not interactive), `app.css:391-392` (20px priority chip), `polish.css:84` (14px), `phase3.css:101` (18px ring). Anything clickable needs 24x24 CSS px or equivalent spacing. Fix: min-height/min-width 24px with padding for the controls that are buttons, and check card grip and the row menus on touch.
+7. **Physical `text-align: left`** (1.3.2 layout, RTL; Low). `src/app/chat/chat.css:556`. Elsewhere logical properties are used (about 29 uses of `inline-start` and similar versus 1 physical). Fix: `text-align: start`. Also check `translateX` use for drawers and drag overlays under `dir=rtl`.
+8. **`outline: 0` and `none` on inputs** (2.4.7, 2.4.11; Med if no replacement). `chat.css:386` (composer textarea) and `cards.css:67`, `global.css:196,202,1528`, `app.css (styles):229,1383,1955,2696,2879`. Acceptable only if a wrapper shows `:focus-within` with 3:1 contrast. Verify each, especially the composer box and the card title input.
+9. **Drag-and-drop keyboard path is on the grip only** (2.1.1, 2.5.7; Med). `canvas.tsx:35-36,63,172,221` gives KeyboardSensor, announcements and instructions, which is good. 2.5.7 also needs a single-pointer alternative: confirm the card menu has "Move to lane / position" for touch and switch users; if not, add one.
+10. **Colour-only state** (1.4.1; Low-Med). `lane.tsx:105` WIP `meter` is `aria-hidden` (state shown by colour and count?). Lane tint dot (`lane.tsx:100`) and the priority classes (`card.tsx:11,44`, `lf-pri-*`) rely on colour plus an icon with only a `title` (not reliably announced or keyboard available). Fix: add visible text or `aria-label` for priority, and a "over limit" text when WIP is exceeded.
+
+## Already good
+- Native `<dialog>` + `showModal()` for dialogs and the palette: trap, Esc, focus return (overlay.tsx:21, command.tsx:46).
+- Command palette has proper combobox + listbox + `aria-activedescendant`, an empty state with `role="status"` (command.tsx:128-169).
+- Menus have arrow, Home/End, focus return to the trigger (overlay.tsx:325-402); popovers return focus (popover.tsx:64-84); date grid is a real `grid` with `aria-selected` and keyboard navigation.
+- One `<h1>` per shell (shell.tsx:194; portal routes.tsx:321), focus moved to it after navigation, tab title updated.
+- Form errors: `role="alert"`, `aria-invalid`, `aria-describedby` (card-panel 57-72, 218-228, composers 99); visible labels (composer uses a hidden label).
+- Drag and drop: dnd-kit announcements and localised instructions.
+- Reduced motion handled in 8 stylesheets; logical CSS properties mostly used; resize handle is a keyboard `separator` with `aria-value*` (card-panel.tsx:352); external links have `rel="noopener noreferrer"`; mention and card lists have labelled listboxes.
+
+## Not verifiable from code
+Contrast of tokens (light and dark), 320 px reflow and 400% zoom (no `min-width` on lanes was found beyond 64px at app.css:489, but the board scrolls horizontally by design, which is acceptable for 2D content under 1.4.10), screen reader output. Recommend a manual pass with keyboard only, NVDA/VoiceOver, 320 px and `dir=rtl`.
+
+## Code re-check 2026-11-03 (static; browser still needed)
+Confirmed fixed in code: 1 focus return `src/app/cards/card-panel.tsx` (opener ref) + `src/app/shell.tsx` (`keepFocus`); 2 card panel is a native modal dialog with a Close button (`card-panel.tsx`, `cards/a11y.css`); 3 no combobox on textarea (`chat/composer.tsx`); 4 log without explicit aria-live, hidden status (`chat/conversation-view.tsx`); 5 toasts split by tone, sticky danger, pause (`src/portal/ui/overlay.tsx`); 6 24 px and 44 px coarse targets (`styles/a11y.css`, `app/boards/a11y.css`); 7 no physical text-align left; 8 outlines now ring or transparent (`boards/polish.css`, `cards/a11y.css`); 9 "Move" in the card menu (`boards/card.tsx`, `move-card.tsx`); 10 priority `aria-label`, WIP over text (`boards/card.tsx`, `lane.tsx`).
+Needs browser: contrast and 320 px reflow, screen reader output, drag by touch.

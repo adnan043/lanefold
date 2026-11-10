@@ -102,6 +102,8 @@ export function Stat({
   hint,
   trend,
   to,
+  href,
+  tone,
   children,
 }: {
   label: ReactNode;
@@ -112,6 +114,10 @@ export function Stat({
   trend?: {label: string; direction: 'up' | 'down'; good?: boolean};
   /** A portal path: the whole tile links there. */
   to?: string;
+  /** A page outside the portal (`/app/my-day`): the whole tile is a plain link. */
+  href?: string;
+  /** `danger` when the number needs attention (an overdue count). */
+  tone?: 'danger';
   /** A small chart under the number (`<Sparkline>`). */
   children?: ReactNode;
 }) {
@@ -141,11 +147,17 @@ export function Stat({
     </>
   );
   return to ? (
-    <Link className="stat stat-link" to={to}>
+    <Link className="stat stat-link" to={to} data-tone={tone}>
       {body}
     </Link>
+  ) : href ? (
+    <a className="stat stat-link" href={href} data-tone={tone}>
+      {body}
+    </a>
   ) : (
-    <div className="stat">{body}</div>
+    <div className="stat" data-tone={tone}>
+      {body}
+    </div>
   );
 }
 
@@ -204,7 +216,7 @@ export function Person({name, detail, src}: {name: string; detail?: ReactNode; s
     <span className="person">
       <Avatar name={name} src={src} size="sm" />
       <span className="person-text">
-        <span className="person-name">{name}</span>
+        <span className="person-name" dir="auto">{name}</span>
         {detail && <span className="person-detail">{detail}</span>}
       </span>
     </span>
@@ -385,9 +397,9 @@ export function ProgressBar({value, max = 100, label}: {value: number; max?: num
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={max}
-      aria-valuenow={value}>
-      <rect className="progress-track" width="100" height="6" rx="3" />
-      <rect className="progress-fill" width={pct} height="6" rx="3" />
+      aria-valuenow={Math.round(value)}>
+      <rect className="progress-track" width="100" height="6" />
+      <rect className="progress-fill" width={pct} height="6" />
     </svg>
   );
 }

@@ -17,14 +17,17 @@
   color-scheme: light;
 
   --bg: #ffffff;
-  --surface: #f5f3ef;
+  --surface: #f6f7f9;
   --card: #ffffff;
-  --ink: #0e0f0f;
-  --muted: #545b57;
-  --subtle: #6b726e;
-  --line: #e3e1da;
-  --line-strong: #cfccc3;
-  --hover: #f0eee8;
+  --ink: #0f1419;
+  --muted: #4a5360;
+  --subtle: #5b6573;
+  --control-h: 40px; /* ONE height for every input, select and picker; 44px under a coarse pointer (a11y.css) */
+  --control-border: color-mix(in oklab, var(--accent) 40%, white); /* light mode: an accent tint, never grey or black */
+  --control-border-hover: var(--accent); /* hover: the full accent colour, every field */
+  --line: #e4e7ec;
+  --line-strong: #d0d5dd;
+  --hover: #eff1f5;
 
   --accent: #0f6b4f;
   --accent-hover: #0b5640;
@@ -39,6 +42,8 @@
   --danger: #b42318;
   --danger-hover: #912018;
   --danger-soft: #fde4e1;
+  --danger-solid: #b42318;
+  --danger-solid-hover: #912018;
   --info: #1d5fa8;
   --info-soft: #dfeafa;
 
@@ -50,8 +55,10 @@
   --radius-sm: 8px;
   --radius: 12px;
   --radius-lg: 16px;
+  --radius-card: 10px;
+  --radius-lane: 14px;
 
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-display: var(--font-sans);
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 }
@@ -64,7 +71,9 @@
   --card: #171d1b;
   --ink: #eceeed;
   --muted: #a3ada8;
-  --subtle: #8b9590;
+  --subtle: #939d98;
+  --control-border: #6c7973;
+  --control-border-hover: var(--accent); /* hover: the full accent colour, every field */
   --line: #27302d;
   --line-strong: #3a4541;
   --hover: #1e2623;
@@ -82,6 +91,8 @@
   --danger: #ff8a80;
   --danger-hover: #ffaaa3;
   --danger-soft: #3d1a18;
+  --danger-solid: #d92d20;
+  --danger-solid-hover: #b42318;
   --info: #7db4f2;
   --info-soft: #172b44;
 
@@ -100,7 +111,9 @@
     --card: #171d1b;
     --ink: #eceeed;
     --muted: #a3ada8;
-    --subtle: #8b9590;
+    --subtle: #939d98;
+    --control-border: #6c7973;
+    --control-border-hover: var(--accent); /* hover: the full accent colour, every field */
     --line: #27302d;
     --line-strong: #3a4541;
     --hover: #1e2623;
@@ -118,6 +131,8 @@
     --danger: #ff8a80;
     --danger-hover: #ffaaa3;
     --danger-soft: #3d1a18;
+    --danger-solid: #d92d20;
+    --danger-solid-hover: #b42318;
     --info: #7db4f2;
     --info-soft: #172b44;
 
@@ -142,6 +157,63 @@ html,
 body {
   margin: 0;
   padding: 0;
+}
+
+/*
+ * Scrollbars: one slim, rounded look on every scroller of the site and app.
+ * Colours come from two inherited tokens, so a dark surface (the board's
+ * lanes) only swaps the colours: `--sb-thumb` / `--sb-thumb-hover`.
+ * Chromium and Safari get the floating pill (::-webkit-scrollbar); Firefox,
+ * which has no such pseudo-elements, gets the standard thin bar. The standard
+ * properties stay out of Chromium on purpose: setting them there switches the
+ * pill styles off.
+ */
+:root {
+  --sb-size: 10px;
+  --sb-thumb: color-mix(in srgb, var(--ink) 22%, transparent);
+  --sb-thumb-hover: color-mix(in srgb, var(--ink) 40%, transparent);
+  --sb-track: transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+::-webkit-scrollbar {
+  inline-size: var(--sb-size);
+  block-size: var(--sb-size);
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: var(--sb-track);
+}
+::-webkit-scrollbar-thumb {
+  /* The transparent border insets the pill so it floats off the edge. */
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: var(--sb-thumb);
+  background-clip: padding-box;
+  min-block-size: 32px;
+  min-inline-size: 32px;
+}
+::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background-color: var(--sb-thumb-hover);
+}
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--sb-thumb-hover);
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sb-thumb) var(--sb-track);
+  }
 }
 
 body {
@@ -176,11 +248,11 @@ a:focus-visible {
 /* "Skip to content" (layouts/Base.astro): hidden until focused; it moves focus to <main id="main">. */
 .skip-link {
   position: absolute;
-  left: -9999px;
+  inset-inline-start: -9999px;
 }
 
 .skip-link:focus {
-  left: 16px;
+  inset-inline-start: 16px;
   top: 16px;
   z-index: 100;
   padding: 8px 16px;
@@ -190,13 +262,13 @@ a:focus-visible {
 }
 
 main:focus {
-  outline: none;
+  outline: 2px solid transparent; /* a focus target, not a control */
 }
 
 /* The portal moves focus to the screen title after each navigation
    (src/portal/routes.tsx): a place to start reading, not a control. */
 .app-title:focus {
-  outline: none;
+  outline: 2px solid transparent;
 }
 
 /* Page to page on the public site: a short cross-fade instead of a white
@@ -275,8 +347,7 @@ hr {
 }
 
 .center .lede {
-  margin-left: auto;
-  margin-right: auto;
+  margin-inline: auto;
 }
 
 .eyebrow {
@@ -384,7 +455,7 @@ hr {
   align-items: center;
   gap: 4px;
   font-size: 15px;
-  margin-right: auto;
+  margin-inline-end: auto;
 }
 
 .site-nav a {
@@ -461,10 +532,12 @@ hr {
 }
 
 .site-footer-bottom {
-  padding-top: 20px;
-  padding-bottom: 28px;
+  padding-top: 18px;
+  padding-bottom: 18px;
   border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 94%, var(--ink));
   font-size: 13px;
+  text-align: center;
 }
 
 @media (max-width: 720px) {
@@ -564,13 +637,13 @@ hr {
 
 .button.danger,
 .button.button-danger {
-  background: var(--danger);
+  background: var(--danger-solid);
   color: #ffffff;
 }
 
 .button.danger:hover,
 .button.button-danger:hover {
-  background: var(--danger-hover);
+  background: var(--danger-solid-hover);
 }
 
 .button.small-button,
@@ -581,7 +654,7 @@ hr {
 }
 
 .button.link.small-button {
-  min-height: 0;
+  min-height: 24px; /* WCAG 2.5.8 */
   padding: 2px 4px;
 }
 
@@ -811,8 +884,26 @@ hr {
 
 .prose table {
   display: block;
+  max-width: 100%;
   overflow-x: auto;
   border-collapse: collapse;
+}
+
+.prose th,
+.prose td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: start;
+  vertical-align: top;
+}
+
+.prose th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.prose :is(th, td):first-child {
+  padding-inline-start: 0;
 }
 
 .terms {
@@ -981,7 +1072,7 @@ hr {
 
 .form .hp {
   position: absolute;
-  left: -10000px;
+  inset-inline-start: -10000px;
   width: 1px;
   height: 1px;
   overflow: hidden;
@@ -1225,7 +1316,7 @@ hr {
 
 .byline span + span::before {
   content: '·';
-  margin-right: 10px;
+  margin-inline-end: 10px;
 }
 
 .article header {
@@ -1296,77 +1387,6 @@ hr {
   margin-top: 32px;
 }
 
-/* ----------------------------------------------------------- job board -- */
-
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  margin: 8px 0 24px;
-}
-
-.filters input[type='search'] {
-  flex: 2 1 220px;
-}
-
-.filters select {
-  flex: 1 1 140px;
-}
-
-.check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 500;
-}
-
-.job-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 10px;
-}
-
-.job-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--card);
-  text-decoration: none;
-  color: inherit;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.2s ease;
-}
-
-.job-row:hover {
-  border-color: var(--line-strong);
-  box-shadow: var(--shadow-sm);
-}
-
-.job-row .job-title {
-  margin: 0 0 4px;
-  font-size: 18px;
-}
-
-.job-row p {
-  margin: 0;
-}
-
-.job-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
 /* ---------------------------------------------------------------- home -- */
 
 .quote {
@@ -1404,7 +1424,7 @@ hr {
 }
 
 .row-actions {
-  margin-left: auto;
+  margin-inline-start: auto;
   display: flex;
   flex-wrap: wrap;
 }
@@ -1481,6 +1501,7 @@ hr {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+  align-items: start;
 }
 
 .form-grid .full {
@@ -1502,9 +1523,9 @@ hr {
 .field select,
 .field textarea {
   width: 100%;
-  min-height: 40px;
+  min-height: var(--control-h);
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   background: var(--card);
   color: var(--ink);
@@ -1513,16 +1534,23 @@ hr {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Single-line controls: `font: inherit` brings the page's 1.6 line height, which with the padding grows the box past
+   --control-h (42px, not 40). A tight line height keeps every input exactly the token's height. */
+.field input,
+.field select {
+  line-height: 1.25;
+}
+
 .field input:hover,
 .field select:hover,
 .field textarea:hover {
-  border-color: var(--muted);
+  border-color: var(--control-border-hover);
 }
 
 .field input:focus-visible,
 .field select:focus-visible,
 .field textarea:focus-visible {
-  outline: none;
+  outline: 2px solid transparent; /* shows in forced-colors; the accent border is the ring */
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
@@ -1530,6 +1558,33 @@ hr {
 .field input::placeholder,
 .field textarea::placeholder {
   color: var(--subtle);
+}
+
+/* Browser autofill paints its own tinted background; keep autofilled fields
+   looking exactly like the others (white in light mode, same border). */
+.field input:-webkit-autofill,
+.field input:-webkit-autofill:hover,
+.field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  caret-color: var(--ink);
+  box-shadow: 0 0 0 1000px var(--card) inset;
+  border: 1px solid var(--control-border);
+  transition: background-color 9999s ease-out 0s;
+}
+
+.field input:-webkit-autofill:focus-visible {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1000px var(--card) inset,
+    0 0 0 3px var(--accent-soft);
+}
+
+.field input:autofill {
+  background-color: var(--card);
+}
+
+.field input[aria-invalid='true']:-webkit-autofill {
+  border-color: var(--danger);
 }
 
 .field [aria-invalid='true'],
@@ -1769,4 +1824,328 @@ hr {
   gap: 1rem;
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--line);
+}
+
+/* ------------------------------------------------- focused (bare) pages -- */
+/* `<Base bare>` (sign in, sign up, forgot password): the brand and a way back, no nav, no footer. */
+.site-header-bare {
+  position: absolute;
+  inset-inline: 0;
+  border-bottom: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Beside the brand panel (account.css, wide screens) the bar covers only the form's half. */
+@media (min-width: 961px) {
+  .site-header-bare .site-header-inner {
+    inline-size: 50%;
+    max-inline-size: none;
+    margin-inline: 0;
+    padding-inline: 32px;
+  }
+}
+
+.bare-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--card) 80%, transparent);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.bare-back:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.bare-back svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.bare-back svg:dir(rtl) {
+  scale: -1 1;
+}
+
+/* ------------------------------------------------ light marketing tints -- */
+/* Soft pastel fills for the public pages (home, pricing, sign-in), mixed from the theme's own
+   colours, so a rebrand of `--accent` and dark mode follow. Never red, never a dark block. */
+:root {
+  --tint-mint: color-mix(in oklab, var(--accent) 13%, var(--bg));
+  --tint-sky: color-mix(in oklab, var(--info) 12%, var(--bg));
+  --tint-peach: color-mix(in oklab, var(--warning) 12%, var(--bg));
+  --tint-leaf: color-mix(in oklab, var(--success) 11%, var(--bg));
+  --tint-line: color-mix(in oklab, var(--accent) 18%, var(--line));
+  --head-ink: color-mix(in oklab, var(--ink) 80%, var(--accent));
+}
+
+/* ------------------------------------------------- header: centred menu -- */
+/* Brand on the start, the menu in the true centre, the visitor on the end. */
+.site-header:not(.site-header-bare) .site-header-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.site-header:not(.site-header-bare) .site-header-inner .brand {
+  justify-self: start;
+}
+
+.site-header .site-nav {
+  justify-self: center;
+  gap: 8px;
+  margin-inline: 0;
+}
+
+.site-header .site-nav a {
+  padding: 6px 10px;
+  background: none;
+}
+
+.site-header .site-nav a:hover,
+.site-header .site-nav a.active {
+  background: none;
+  color: var(--ink);
+}
+
+.site-header .session {
+  justify-self: end;
+}
+
+.button.header-cta {
+  border-radius: 999px;
+  padding-inline: 16px;
+}
+
+@media (max-width: 860px) {
+  .site-header:not(.site-header-bare) .site-header-inner {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-bottom: 10px;
+  }
+
+  .site-header .site-nav {
+    grid-column: 1 / -1;
+    width: auto;
+    margin: 4px 0 0;
+    padding: 0;
+    overflow: visible;
+  }
+}
+
+/* Small phones: tighter gaps so the site name is shown whole next to Sign in and Create account. */
+@media (max-width: 420px) {
+  .site-header:not(.site-header-bare) .site-header-inner {
+    column-gap: 10px;
+  }
+
+  .button.header-cta {
+    padding-inline: 12px;
+  }
+}
+
+@media (max-width: 359px) {
+  .site-header .site-header-inner {
+    padding-inline: 12px;
+  }
+
+  .site-header .session {
+    gap: 4px;
+  }
+
+  .button.header-cta {
+    padding-inline: 8px;
+  }
+
+  .site-header .brand {
+    gap: 6px;
+    font-size: 16px;
+  }
+}
+
+/* ---------------------------------------------- the visitor's avatar menu -- */
+.user-menu {
+  position: relative;
+}
+
+.user-menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  padding-inline-end: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.user-menu-button:hover,
+.user-menu-button[aria-expanded='true'] {
+  border-color: var(--tint-line);
+  box-shadow: 0 0 0 3px var(--tint-mint);
+}
+
+.user-menu-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.user-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  inline-size: 32px;
+  block-size: 32px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--tint-mint), var(--accent-soft) 55%, var(--tint-sky));
+  box-shadow: inset 0 0 0 1px var(--tint-line);
+  color: var(--accent-text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.user-avatar-lg {
+  inline-size: 40px;
+  block-size: 40px;
+  font-size: 15px;
+}
+
+.user-menu-caret {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s ease;
+}
+
+.user-menu-button[aria-expanded='true'] .user-menu-caret {
+  transform: rotate(180deg);
+}
+
+.user-menu-panel {
+  position: absolute;
+  inset-block-start: calc(100% + 8px);
+  inset-inline-end: 0;
+  z-index: 60;
+  display: grid;
+  gap: 2px;
+  inline-size: 248px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: var(--shadow-lg);
+}
+
+.user-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.user-menu-who {
+  display: grid;
+  min-inline-size: 0;
+  line-height: 1.3;
+}
+
+.user-menu-who strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-who span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  inline-size: 100%;
+  min-block-size: 40px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.user-menu-item svg {
+  flex: none;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.user-menu-item:hover,
+.user-menu-item:focus-visible {
+  background: var(--tint-mint);
+  color: var(--accent-text);
+  outline: none;
+}
+
+.user-menu-item:hover svg,
+.user-menu-item:focus-visible svg {
+  stroke: currentColor;
+}
+
+.user-menu-sep {
+  block-size: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+
+.user-menu-out:hover,
+.user-menu-out:focus-visible {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.user-menu-out[aria-busy='true'] {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+@media (forced-colors: active) {
+  .user-menu-item:focus-visible {
+    outline: 2px solid CanvasText;
+  }
+}
+
+.brand-logo-default {
+  border-radius: 23%;
 }

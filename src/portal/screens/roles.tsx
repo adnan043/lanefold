@@ -252,7 +252,10 @@ function RoleForm({
       await queryClient.invalidateQueries({queryKey: ['roles']});
       onSaved(values.name.trim());
     },
-    onError: err => err instanceof ApiError && form.setServerErrors(err.fields),
+    onError: err => {
+      form.noteError(err);
+      if (err instanceof ApiError) form.setServerErrors(err.fields);
+    },
   });
   const groups = [...new Set(catalogue.map(p => p.group))];
   const fieldErrors = save.error instanceof ApiError ? save.error.fields : {};
@@ -271,7 +274,7 @@ function RoleForm({
           <Button variant="secondary" onClick={onClose} disabled={save.isPending}>
             Cancel
           </Button>
-          <Button type="submit" pending={save.isPending} pendingLabel="Saving…">
+          <Button type="submit" pending={save.isPending} pendingLabel="Saving…" disabled={form.blocked}>
             {role ? 'Save changes' : 'Create role'}
           </Button>
         </>
@@ -283,18 +286,18 @@ function RoleForm({
             label="Id"
             hint="Lowercase, used in code, like “editor”. It cannot change later."
             error={form.error('slug')}>
-            <input {...form.field('slug')} autoComplete="off" maxLength={48} />
+            <input {...form.field('slug')} autoComplete="off" maxLength={48} placeholder="e.g. support-agent" />
           </Field>
         )}
         <Field id="f-name" label="Name" error={form.error('name')}>
-          <input {...form.field('name')} autoComplete="off" maxLength={80} />
+          <input {...form.field('name')} autoComplete="off" maxLength={80} placeholder="e.g. Support agent" />
         </Field>
         <Field
           id="f-description"
           label="Description"
           optional
           error={form.error('description')}>
-          <textarea {...form.field('description')} rows={2} maxLength={255} />
+          <textarea {...form.field('description')} rows={2} maxLength={255} placeholder="What people with this role can do" />
         </Field>
 
         {catalogueError && <ErrorNote error={catalogueError} />}

@@ -1,0 +1,151 @@
+/* The lane actions popover: one panel, sections divided by hairlines, colour swatches in a 5 x 2 grid. */
+.popover.lane-menu {
+  inline-size: 20rem;
+  padding: 0;
+}
+
+.lane-menu .lm-head {
+  display: grid;
+  grid-template-columns: 2rem 1fr 2rem;
+  align-items: center;
+  padding: 0.5rem 0.5rem 0.25rem;
+}
+
+.lane-menu .lm-title {
+  margin: 0;
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.lane-menu .lm-body {
+  display: grid;
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+
+.lane-menu .lm-group {
+  display: grid;
+  gap: 1px;
+}
+
+.lane-menu .lm-rule {
+  block-size: 1px;
+  margin: 0.5rem -0.5rem;
+  background: var(--line);
+}
+
+.lane-menu .lm-item,
+.lane-menu .lm-section,
+.lane-menu .lm-remove {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  inline-size: 100%;
+  min-block-size: 36px;
+  padding-inline: 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: start;
+  cursor: pointer;
+}
+
+.lane-menu .lm-item .icon {
+  color: var(--muted);
+}
+
+.lane-menu .lm-item-label {
+  flex: 1;
+}
+
+.lane-menu .lm-item:hover,
+.lane-menu .lm-section:hover,
+.lane-menu .lm-remove:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.lane-menu .lm-item:focus-visible,
+.lane-menu .lm-section:focus-visible,
+.lane-menu .lm-remove:focus-visible,
+.lane-menu .lm-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.lane-menu .lm-item:disabled,
+.lane-menu .lm-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lane-menu .lm-item[aria-pressed='true'] .icon:first-child {
+  color: var(--accent-text);
+}
+
+.lane-menu .lm-item-danger,
+.lane-menu .lm-item-danger .icon {
+  color: var(--danger);
+}
+
+.lane-menu .lm-item-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+/* A section heading is a toggle: small, muted, with its chevron at the end. */
+.lane-menu .lm-section {
+  justify-content: space-between;
+  min-block-size: 32px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.lane-menu .lm-swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+
+.lane-menu .lm-swatch {
+  display: grid;
+  place-items: center;
+  block-size: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--sw);
+  color: #fff;
+  cursor: pointer;
+}
+
+.lane-menu .lm-swatch:hover {
+  filter: brightness(1.1);
+}
+
+.lane-menu .lm-swatch[aria-pressed='true'] {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.lane-menu .lm-remove {
+  justify-content: center;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.lane-menu .lm-form {
+  gap: 0.75rem;
+  padding-block-start: 0.5rem;
+}
+
+/* A lane the person pinned shows first on their board (canvas.tsx); a small mark in its header says why. It is never
+   sticky: a lane floating over the others hid their cards. */
+.lf-lane-flag {
+  display: inline-flex;
+  color: var(--muted);
+}

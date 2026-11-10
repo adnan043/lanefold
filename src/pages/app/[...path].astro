@@ -1,0 +1,50 @@
+---
+/**
+ * Every `/app/*` URL renders this page; the TanStack Router app inside it (`src/app/`) picks the screen in
+ * the browser. Signed-in users only: this page checks the visitor's own session first and everyone else gets
+ * a sign-in prompt (the Site API checks again on every call; this page is not the guard). The APP layout,
+ * not the website's. The ONLY `.astro` file of the product: never add one per screen.
+ */
+import '../../app/app.css';
+import '../../app/responsive.css';
+import '../../app/tables.css';
+import '../../app/design.css';
+
+import AppRoot from '../../app/AppRoot';
+import App from '../../layouts/App.astro';
+import {config} from '../../platform/config';
+import {pageContext} from '../../server/page';
+
+export const prerender = false;
+
+const {site, viewer} = await pageContext(Astro.request, Astro.response);
+const back = encodeURIComponent(`${Astro.url.pathname}${Astro.url.search}`);
+// The editor Preview's gateway drops cookies, so this page never sees the session there: the app starts
+// anyway and asks `/site-api/me` itself (its shell sends a signed-out visitor to sign in).
+const open = viewer.state === 'user' || config.preview;
+---
+
+<App site={site} viewer={viewer} title="App">
+  {
+    open ? (
+      <>
+        <AppRoot client:only="react" />
+        <noscript>
+          <p class="app-gate">This app needs JavaScript.</p>
+        </noscript>
+      </>
+    ) : (
+      <main class="app-gate">
+        <div class="card center">
+          <h1>Sign in to continue</h1>
+          <p class="lede">Sign in to {site?.name ?? 'this site'} to open your boards.</p>
+          <div class="actions">
+            <a class="button" href={`/account/login/?next=${back}`}>Sign in</a>
+            <a class="button ghost" href={`/account/register/?next=${back}`}>Create an account</a>
+            <a class="button link" href="/">Back to the website</a>
+          </div>
+        </div>
+      </main>
+    )
+  }
+</App>
