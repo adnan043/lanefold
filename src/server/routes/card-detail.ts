@@ -13,6 +13,7 @@ import {addWatcher, notifyWatchers} from '../card-watch';
 import {scheduleTimedReminder, scheduleItemReminder} from '../jobs/due-reminders';
 import {FIELD_LIMITS, FIELD_ORDER, fieldCols, fieldShape, valueCols, valueMap} from '../field-shapes';
 import {boardAccess, notFound, boardReachable} from '../workspaces';
+import {isEmoji} from './chat';
 import {HEX_RE, idOf, intField, invalid, likeEscape, objectOf, textField, type FieldError} from '../validation';
 
 /**
@@ -420,6 +421,12 @@ const mentionIds = (v: unknown): Parsed<number[]> => {
   return {ok: true, value: [...new Set(v as number[])]};
 };
 
+const emojiBody = validator('json', (value, c) => {
+  const v = objectOf(value);
+  if (!isEmoji(v?.emoji)) return invalid(c, {emoji: {code: 'invalid', message: 'Choose an emoji.'}});
+  return {emoji: v!.emoji as string};
+});
+
 const commentBody = body(v => {
   const text = textField(v.body, 1, 5000);
   if (!text.ok) return errAt('body', text.error);
@@ -549,7 +556,34 @@ const commentCols = {
   mentions: {select: {userId: true}, take: LIMITS.mentions},
 } as const;
 type CommentRow = Prisma.CommentGetPayload<{select: typeof commentCols}>;
-const commentShape = (r: CommentRow, names: Map<number, string>, me: number) => ({
+type ReactionGroup = {emoji: string; count: number; mine: boolean};
+/** Different emoji one comment may carry (the same cap as a chat message). */
+const MAX_EMOJI_PER_COMMENT = 20;
+
+/**
+ * Reaction groups for a page of comments in ONE grouped query (bounded to these ids, 20 emoji each). The caller has
+ * already proved the visitor reaches these comments' card: only counts and "mine" travel, never who reacted.
+ */
+async function commentReactions(db: PrismaClient, commentIds: number[], me: number): Promise<Map<number, ReactionGroup[]>> {
+  const out = new Map<number, ReactionGroup[]>();
+  const ids = commentIds.slice(0, 100);
+  if (ids.length === 0) return out;
+  const rows = await db.$queryRaw<{comment_id: number; emoji: string; n: number; mine: boolean}[]>`
+    SELECT comment_id, emoji, count(*)::int AS n, bool_or(user_id = ${me}) AS mine
+    FROM comment_reactions
+    WHERE comment_id = ANY(${ids}::int[])
+    GROUP BY comment_id, emoji
+    ORDER BY comment_id ASC, min(created_at) ASC, emoji ASC
+    LIMIT ${ids.length * MAX_EMOJI_PER_COMMENT}`;
+  for (const r of rows) {
+    const groups = out.get(r.comment_id) ?? [];
+    groups.push({emoji: r.emoji, count: r.n, mine: r.mine});
+    out.set(r.comment_id, groups);
+  }
+  return out;
+}
+
+const commentShape = (r: CommentRow, names: Map<number, string>, me: number, reactions: ReactionGroup[] = []) => ({
   id: r.id,
   authorId: r.authorId,
   authorName: r.authorId === null ? null : (names.get(r.authorId) ?? null),
@@ -558,6 +592,7 @@ const commentShape = (r: CommentRow, names: Map<number, string>, me: number) => 
   createdAt: r.createdAt.toISOString(),
   mine: r.authorId === me,
   mentions: r.mentions.flatMap(m => (names.has(m.userId) ? [{id: m.userId, name: names.get(m.userId)!}] : [])),
+  reactions,
 });
 
 export const send = (c: {json: (b: unknown, s: 404 | 403 | 409 | 429) => Response}, r: Refusal) => c.json(r.body, r.status);
@@ -608,13 +643,16 @@ export const cardDetailRoutes = new Hono()
       db.cardWatcher.findUnique({where: {cardId_userId: {cardId, userId}}, select: {userId: true}}),
     ]);
     if (!card) return notFound(c, 'card');
-    const names = await namesOf(db, [
-      ...members.map(m => m.userId),
-      ...comments.flatMap(m => [m.authorId, ...m.mentions.map(x => x.userId)]),
-      ...attachments.map(a => a.uploadedBy),
-      ...checklists.flatMap(l => l.items.map(i => i.assigneeId)),
-    ]);
     const page = comments.slice(0, LIMITS.comments);
+    const [names, reactions] = await Promise.all([
+      namesOf(db, [
+        ...members.map(m => m.userId),
+        ...comments.flatMap(m => [m.authorId, ...m.mentions.map(x => x.userId)]),
+        ...attachments.map(a => a.uploadedBy),
+        ...checklists.flatMap(l => l.items.map(i => i.assigneeId)),
+      ]),
+      commentReactions(db, page.map(r => r.id), userId),
+    ]);
     const cover = card.coverFileId ? attachments.find(a => a.fileId === card.coverFileId) : undefined;
     return c.json({
       card: {
@@ -639,7 +677,7 @@ export const cardDetailRoutes = new Hono()
       members: members.flatMap(m => (names.has(m.userId) ? [{id: m.userId, name: names.get(m.userId)!}] : [{id: m.userId, name: ''}])),
       checklists: checklists.map(l => ({id: l.id, title: l.title, items: l.items.map(i => itemShape(i, names))})),
       attachments: attachments.map(a => attachmentShape(a, names, card.coverFileId, userId)),
-      comments: {items: page.map(r => commentShape(r, names, userId)), next: comments.length > LIMITS.comments ? page[page.length - 1]!.id : null},
+      comments: {items: page.map(r => commentShape(r, names, userId, reactions.get(r.id))), next: comments.length > LIMITS.comments ? page[page.length - 1]!.id : null},
     });
   })
 
@@ -1003,8 +1041,11 @@ export const cardDetailRoutes = new Hono()
       select: commentCols,
     });
     const page = rows.slice(0, LIMITS.comments);
-    const names = await namesOf(db, page.flatMap(r => [r.authorId, ...r.mentions.map(m => m.userId)]));
-    return c.json({items: page.map(r => commentShape(r, names, userId)), next: rows.length > LIMITS.comments ? page[page.length - 1]!.id : null});
+    const [names, reactions] = await Promise.all([
+      namesOf(db, page.flatMap(r => [r.authorId, ...r.mentions.map(m => m.userId)])),
+      commentReactions(db, page.map(r => r.id), userId),
+    ]);
+    return c.json({items: page.map(r => commentShape(r, names, userId, reactions.get(r.id))), next: rows.length > LIMITS.comments ? page[page.length - 1]!.id : null});
   })
 
   .post('/cards/:id/comments', commentBody, withViewer, requireAuth, withDb, noStore, async c => {
@@ -1077,8 +1118,8 @@ export const cardDetailRoutes = new Hono()
     });
     if (!out?.comment) return notFound(c, 'comment');
     await notify(db, out.fresh, {workspaceId: ctx.workspaceId, actorId: userId, boardId: ctx.boardId, cardId: ctx.cardId, kind: 'mentioned'});
-    const names = await namesOf(db, [userId, ...wanted]);
-    return c.json({card: out.card, rev: out.rev, comment: commentShape(out.comment, names, userId)});
+    const [names, reactions] = await Promise.all([namesOf(db, [userId, ...wanted]), commentReactions(db, [row.id], userId)]);
+    return c.json({card: out.card, rev: out.rev, comment: commentShape(out.comment, names, userId, reactions.get(row.id))});
   })
 
   .delete('/comments/:id', withViewer, requireAuth, withDb, noStore, async c => {
@@ -1097,6 +1138,36 @@ export const cardDetailRoutes = new Hono()
       return finish(tx, ctx, userId, rev, 'comment.deleted', {commentId: row.id}, {commentCount: {decrement: 1}});
     });
     return out ? c.json(out) : notFound(c, 'comment');
+  })
+
+  /* ---- comment reactions (👍 = "seen"): no activity row, no notification ---- */
+  .put('/comments/:id/reactions', emojiBody, withViewer, requireAuth, withDb, noStore, async c => {
+    const db = c.var.db;
+    const userId = c.var.viewer.id!;
+    const row = await commentRow(db, userId, c.req.param('id'));
+    if (!row) return notFound(c, 'comment');
+    // Board access first (404 for no seat on a private board), then the write rules (viewer 403, read-only 409).
+    const ctx = await viaCard(db, userId, row.cardId, row.workspaceId, 'write');
+    if (refused(ctx)) return send(c, ctx);
+    const {emoji} = c.req.valid('json');
+    const kinds = await db.commentReaction.findMany({where: {commentId: row.id}, select: {emoji: true}, distinct: ['emoji'], take: MAX_EMOJI_PER_COMMENT + 1});
+    if (kinds.length >= MAX_EMOJI_PER_COMMENT && !kinds.some(k => k.emoji === emoji)) {
+      return c.json(problem('limit_reached', 'That comment has enough different reactions.'), 409);
+    }
+    await db.commentReaction.createMany({data: [{commentId: row.id, userId, emoji}], skipDuplicates: true});
+    return c.json({reactions: (await commentReactions(db, [row.id], userId)).get(row.id) ?? []});
+  })
+
+  .delete('/comments/:id/reactions', emojiBody, withViewer, requireAuth, withDb, noStore, async c => {
+    const db = c.var.db;
+    const userId = c.var.viewer.id!;
+    const row = await commentRow(db, userId, c.req.param('id'));
+    if (!row) return notFound(c, 'comment');
+    // Taking your own reaction back frees space: allowed in a read-only workspace, like deleting your comment.
+    const ctx = await viaCard(db, userId, row.cardId, row.workspaceId, 'remove');
+    if (refused(ctx)) return send(c, ctx);
+    await db.commentReaction.deleteMany({where: {commentId: row.id, userId, emoji: c.req.valid('json').emoji}});
+    return c.json({reactions: (await commentReactions(db, [row.id], userId)).get(row.id) ?? []});
   })
 
   /* ---- attachments: links, then real files (docs/agent/files.md) ---- */

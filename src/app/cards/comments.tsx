@@ -1,7 +1,9 @@
 import {type ReactNode, useEffect, useId, useRef, useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
-import {Avatar, Button, Menu, useConfirm} from '../../portal/ui';
+import {Avatar, Button, Icon, Menu, useConfirm, useToast} from '../../portal/ui';
+import {Popover} from '../../portal/ui/popover';
+import {QUICK_EMOJI} from '../emoji';
 import {useDraft, usePeekDraft} from '../use-draft';
 import {useWriteCooldown} from '../write-cooldown';
 import {MdView} from './description';
@@ -140,6 +142,69 @@ function Composer({
   );
 }
 
+/** The reaction chips under a comment and the 😊 button that adds one (👍 is the usual "seen"). */
+function useReact(comment: CommentT, actions: CardActions) {
+  const {errorMessage} = useI18n();
+  const toast = useToast();
+  const [pending, setPending] = useState(false);
+  const react = async (emoji: string, on: boolean) => {
+    if (pending) return;
+    setPending(true);
+    try {
+      await actions.reactComment(comment.id, emoji, on);
+    } catch (error) {
+      toast.danger(errorMessage(error));
+    } finally {
+      setPending(false);
+    }
+  };
+  return {pending, react};
+}
+
+function ReactButton({comment, pending, react}: {comment: CommentT; pending: boolean; react: (emoji: string, on: boolean) => void}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        className="button button-ghost button-sm icon-button"
+        aria-label={t('chat.react')}
+        title={t('chat.react')}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-busy={pending || undefined}
+        disabled={pending}
+        onClick={() => setOpen(v => !v)}>
+        {pending ? <span className="spinner" aria-hidden="true" /> : <Icon name="smile" size={16} />}
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={button} label={t('chat.react')} align="end">
+        <div className="cd-emoji-grid">
+          {QUICK_EMOJI.map(emoji => {
+            const mine = comment.reactions.find(r => r.emoji === emoji)?.mine ?? false;
+            return (
+              <button
+                key={emoji}
+                type="button"
+                className="cd-emoji"
+                aria-pressed={mine}
+                aria-label={emoji}
+                onClick={() => {
+                  setOpen(false);
+                  react(emoji, !mine);
+                }}>
+                {emoji}
+              </button>
+            );
+          })}
+        </div>
+      </Popover>
+    </>
+  );
+}
+
 function CommentRow({comment, detail, actions, busy, run}: {comment: CommentT; detail: DetailT; actions: CardActions; busy: string | null; run: ReturnType<typeof useAction>['run']}) {
   const t = useT();
   const {formatRelative, formatDateTime} = useI18n();
@@ -148,6 +213,7 @@ function CommentRow({comment, detail, actions, busy, run}: {comment: CommentT; d
   const name = comment.authorName ?? t('cd.deletedUser');
   const canEdit = comment.mine && detail.canWrite;
   const canDelete = detail.canWrite && (comment.mine || detail.canAdmin);
+  const {pending: reacting, react} = useReact(comment, actions);
   return (
     <li className="cd-comment">
       <Avatar name={name} size="sm" />
@@ -159,6 +225,7 @@ function CommentRow({comment, detail, actions, busy, run}: {comment: CommentT; d
           </time>
           {comment.edited && <span className="cd-none">{t('cd.commentEdited')}</span>}
           <span className="cd-spacer" />
+          {detail.canWrite && !editing && <ReactButton comment={comment} pending={reacting} react={(emoji, on) => void react(emoji, on)} />}
           {(canEdit || canDelete) && !editing && (
             <Menu
               label={t('cd.commentMenu')}
@@ -185,6 +252,22 @@ function CommentRow({comment, detail, actions, busy, run}: {comment: CommentT; d
           )}
         </div>
         {!editing && <Body body={comment.body} mentions={comment.mentions} />}
+        {!editing && comment.reactions.length > 0 && (
+          <div className="cd-reactions" role="group" aria-label={t('chat.reactions')}>
+            {comment.reactions.map(r => (
+              <button
+                key={r.emoji}
+                type="button"
+                className="cd-reaction"
+                aria-pressed={r.mine}
+                aria-label={t('chat.reactionLabel', {emoji: r.emoji, n: r.count})}
+                disabled={!detail.canWrite || reacting}
+                onClick={() => void react(r.emoji, !r.mine)}>
+                <span aria-hidden="true">{r.emoji}</span> {r.count}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {editing && (
         <Composer

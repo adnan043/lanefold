@@ -532,8 +532,60 @@ html.cd-locked body {
   gap: 0.5rem;
   font-size: 0.85rem;
 }
+.cd-comment-head strong {
+  font-weight: 500;
+}
 .cd-comment-head time {
   color: var(--muted);
+}
+.cd-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.cd-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.cd-reaction[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.cd-reaction:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.cd-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 2.25rem);
+  gap: 0.25rem;
+  padding: 0.25rem;
+}
+.cd-emoji {
+  height: 2.25rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+.cd-emoji:hover,
+.cd-emoji[aria-pressed='true'] {
+  background: var(--accent-soft);
+}
+.cd-reaction:focus-visible,
+.cd-emoji:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .cd-activity li {
   display: flex;

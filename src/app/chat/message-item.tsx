@@ -13,7 +13,9 @@ import {displayName, type MemberT, type MessageT, type ReactionT} from './api';
 import {MAX_BODY, mentionedIds, segments} from './mentions';
 import type {PendingMessage} from './use-message-feed';
 
-export const QUICK_EMOJI = ['👍', '❤️', '😂', '🎉', '😮', '🙏', '👎', '👏', '🔥', '🚀', '✅', '👀', '😀', '😍', '🤔', '😅', '😢', '😡', '💯', '💡', '⭐', '🙌', '🤝', '🐛'];
+import {QUICK_EMOJI} from '../emoji';
+
+export {QUICK_EMOJI};
 
 export function Body({message, people}: {message: Pick<MessageT, 'body' | 'mentions' | 'numberRefs'>; people: ReadonlyMap<number, MemberT>}) {
   const t = useT();

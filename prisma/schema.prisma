@@ -888,12 +888,28 @@ model Comment {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  card     Card             @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  mentions CommentMention[]
+  card      Card              @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  mentions  CommentMention[]
+  reactions CommentReaction[]
 
   @@index([workspaceId, cardId, id])
   @@index([authorId, createdAt])
   @@map("comments")
+}
+
+/// An emoji reaction on a card comment (👍 = "seen"). One row per person per emoji; at most 20 kinds per comment.
+/// user_id: foreign key to users ON DELETE CASCADE (SQL in its migration, like message_reactions).
+model CommentReaction {
+  commentId Int      @map("comment_id")
+  userId    Int      @map("user_id")
+  emoji     String   @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([commentId, userId, emoji])
+  @@index([userId])
+  @@map("comment_reactions")
 }
 
 model CommentMention {

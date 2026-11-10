@@ -206,6 +206,8 @@ const TABLE: Row[] = [
   row('POST /cards/:id/comments', 'resource', {path: r => `/cards/${r.card}/comments`, body: () => ({body: 'x'}), min: 'member', priv: true}),
   row('PATCH /comments/:id', 'resource', {path: r => `/comments/${r.comment}`, body: () => ({body: 'x'}), min: 'member', priv: true, below: [403, 404]}),
   row('DELETE /comments/:id', 'resource', {path: r => `/comments/${r.comment}`, min: 'member', priv: true, below: [403, 404]}),
+  row('PUT /comments/:id/reactions', 'resource', {path: r => `/comments/${r.comment}/reactions`, body: () => ({emoji: '👍'}), min: 'member', priv: true, below: [403, 404]}),
+  row('DELETE /comments/:id/reactions', 'resource', {path: r => `/comments/${r.comment}/reactions`, body: () => ({emoji: '👍'}), min: 'member', priv: true, below: [403, 404]}),
   row('POST /cards/:id/attachments/link', 'resource', {path: r => `/cards/${r.card}/attachments/link`, body: () => ({url: 'https://example.test/x'}), min: 'member', priv: true}),
   row('POST /cards/:id/attachments/upload', 'resource', {
     path: r => `/cards/${r.card}/attachments/upload`,

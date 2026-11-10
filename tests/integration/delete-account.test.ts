@@ -550,7 +550,7 @@ describe.skipIf(!DATABASE_URL)('delete account cleanup (integration, real Postgr
     expect(Number((await db.workspace.findUniqueOrThrow({where: {id: ws.id}})).storageUsedBytes)).toBe(0);
   });
 
-  it('the 25 foreign keys to users and the triggers exist in the database', async () => {
+  it('the 26 foreign keys to users and the triggers exist in the database', async () => {
     const expected = [
       'activity_actor_id_fkey',
       'attachments_uploaded_by_fkey',
@@ -561,6 +561,7 @@ describe.skipIf(!DATABASE_URL)('delete account cleanup (integration, real Postgr
       'card_watchers_user_id_fkey',
       'cards_created_by_fkey',
       'comment_mentions_user_id_fkey',
+      'comment_reactions_user_id_fkey',
       'comments_author_id_fkey',
       'conversation_members_user_id_fkey',
       'conversations_created_by_fkey',
@@ -581,7 +582,7 @@ describe.skipIf(!DATABASE_URL)('delete account cleanup (integration, real Postgr
     const fks = await db.$queryRaw<{conname: string; convalidated: boolean}[]>`
       SELECT conname, convalidated FROM pg_constraint WHERE contype = 'f' AND confrelid = 'users'::regclass`;
     const ours = fks.filter(f => expected.includes(f.conname));
-    expect(ours).toHaveLength(25);
+    expect(ours).toHaveLength(26);
     expect(ours.every(f => f.convalidated)).toBe(true);
     const triggers = (
       await db.$queryRaw<{tgname: string}[]>`SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE 'lanefold\_%' ESCAPE '\'`

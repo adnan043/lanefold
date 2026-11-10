@@ -4,6 +4,7 @@ import {useMemo} from 'react';
 import {putFile} from '../../platform/files-browser';
 import {ApiError, type BoardData, call, type CardT} from '../api';
 import {patchCard} from '../board-state';
+import type {ReactionT} from '../emoji';
 import {tracked} from '../use-board-sync';
 
 /** Wire shapes of `src/server/routes/card-detail.ts`. */
@@ -39,7 +40,7 @@ export type FieldOptionT = {id: number; name: string; colorHex: string};
 export type FieldT = {id: number; name: string; type: FieldType; options: FieldOptionT[]};
 /** text → string, number → number, date → 'YYYY-MM-DD', checkbox → boolean, dropdown → option id; no key = no value. */
 export type FieldValueT = string | number | boolean;
-export type CommentT = {id: number; authorId: number | null; authorName: string | null; body: string; edited: boolean; createdAt: string; mine: boolean; mentions: PersonT[]};
+export type CommentT = {id: number; authorId: number | null; authorName: string | null; body: string; edited: boolean; createdAt: string; mine: boolean; mentions: PersonT[]; reactions: ReactionT[]};
 export type CardDetailT = CardT & {
   boardId: number;
   descriptionMd: string;
@@ -257,6 +258,11 @@ export function useCardActions(boardId: number, cardId: number) {
       await send('DELETE', `/comments/${id}`);
       set(d => ({...d, comments: {...d.comments, items: d.comments.items.filter(c => c.id !== id)}}));
     };
+    /** Add (`on`) or take back my reaction; the answer is the comment's new reaction groups. */
+    const reactComment = async (id: number, emoji: string, on: boolean) => {
+      const res = await tracked(() => call<{reactions: ReactionT[]}>(on ? 'PUT' : 'DELETE', `/comments/${id}/reactions`, {emoji}));
+      set(d => ({...d, comments: {...d.comments, items: d.comments.items.map(c => (c.id === id ? {...c, reactions: res.reactions} : c))}}));
+    };
     const moreComments = async () => {
       const next = get()?.comments.next;
       if (!next) return;
@@ -382,7 +388,7 @@ export function useCardActions(boardId: number, cardId: number) {
       setWatching, setFieldValue, createField, renameField, deleteField, reorderFields, addOption, deleteOption, copyCard,
       patchDetails, setLabel, createLabel, updateLabel, deleteLabel, setMember,
       addChecklist, renameChecklist, deleteChecklist, addItems, toggleItem, editItem, deleteItem, setItemAssignee, setItemDue, setItemDueTime,
-      addComment, editComment, deleteComment, moreComments,
+      addComment, editComment, deleteComment, moreComments, reactComment,
       addLink, upload, renameAttachment, removeAttachment, setCover,
     };
   }, [qc, boardId, cardId]);
