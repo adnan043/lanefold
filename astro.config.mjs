@@ -19,7 +19,7 @@ export default defineConfig({
   // on hover or focus (`hover`), the header nav as soon as it is on screen
   // (`data-astro-prefetch="viewport"` in Base.astro: phones have no hover).
   // OPT-IN, not `prefetchAll`: only links to PRERENDERED pages are marked.
-  // Per-visit pages (`/jobs/*`, `/dashboard`) answer `no-store`, so a prefetch of
+  // Per-visit pages (`/jobs/<slug>/`, `/dashboard`) answer `no-store`, so a prefetch of
   // them would be thrown away (a wasted Worker request), and the portal
   // preloads its own screens (TanStack Router). Skipped on slow connections
   // and with Data Saver. The script is a small deferred module from 'self'.

@@ -1,0 +1,24 @@
+# A Postgres for building this site on your own computer: `docker compose up -d db`.
+# It matches DATABASE_URL=postgresql://postgres:dev@localhost:5432/site (what `npm run setup` writes).
+# Your machine only: the platform runs the real database for a hosted site.
+# Start over with an empty database: `docker compose down -v`.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: site
+    ports:
+      # Port 5432 already taken on your computer? Set DB_PORT=5433 in .env (README "Troubleshooting").
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - site-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d site"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  site-db:

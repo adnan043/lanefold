@@ -1,4 +1,6 @@
 import {SiteKeyMissing, siteKeyPost} from '../api';
+import {config} from '../config';
+import {localDevEmailLines} from '../local-dev';
 
 /**
  * Account emails, RELAYED by the platform (its sender, its templates, no
@@ -25,7 +27,12 @@ export type SiteEmailKind =
   | 'account_exists'
   | 'confirm_email_change'
   | 'email_changed'
-  | 'sign_in_code';
+  | 'sign_in_code'
+  | 'sign_up_code'
+  | 'email_change_requested'
+  | 'two_factor_on'
+  | 'two_factor_off'
+  | 'recovery_codes_new';
 
 export interface SiteEmail {
   kind: SiteEmailKind;
@@ -33,7 +40,7 @@ export interface SiteEmail {
   /** Site-relative link (`/account/…`), or omitted for a notice. */
   path?: string;
   expiresInMinutes?: number;
-  /** `sign_in_code` only: the 6 digits the email shows (never a link). */
+  /** `sign_in_code` and `sign_up_code`: the 6 digits the email shows. */
   code?: string;
 }
 
@@ -48,6 +55,11 @@ export async function sendSiteEmail(requestUrl: string | URL, email: SiteEmail):
     return true;
   } catch (err) {
     if (err instanceof SiteKeyMissing) {
+      if (config.localDev) {
+        // Your own machine only (local-dev.ts): the code and link go to this terminal instead.
+        console.log(localDevEmailLines(email, new URL(requestUrl).origin).join('\n'));
+        return true;
+      }
       console.warn(`site email ${email.kind}: no Site Key here, not sent`);
       return false;
     }

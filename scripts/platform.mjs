@@ -5,7 +5,9 @@
  * plus `tar` and `git` on the PATH. No dependencies.
  *
  *   npm run platform -- docs [--site URL]   live platform docs → .platform/docs/ (git-ignored)
- *   npm run platform -- check [--from DIR]  is a newer template release out?
+ *   npm run platform -- check [--from DIR]  the template's own files untouched (scripts/managed-files.json),
+ *                                            a store listing's sample data, and is a newer release out?
+ *                                            Exit 1: something to fix; 10: a newer release; 0: all good.
  *   npm run platform -- upgrade [--to vX.Y.Z] [--from DIR] [--base DIR] [--dry-run]
  *   npm run platform -- jobs                 check background.json and its handlers (no network)
  *   npm run platform -- prices               the payments catalogue (sandbox in the editor)
@@ -17,6 +19,13 @@
  *   npm run platform -- plans [--write]      the owner's real client plans (owner's own website only);
  *                                            --write saves them to src/content/plans.json
  *                                            (docs/agent/plans-catalogue.md). Same SITE_KEY + SITE_URL.
+ *   npm run platform -- setup                your own computer: checks Node and packages, makes .env (a new
+ *                                            JWT_SECRET), checks the database, runs the migrations (`npm run setup`)
+ *   npm run platform -- dev-admin <email>    LOCAL DEVELOPMENT ONLY: gives a user you signed up on your
+ *                                            own machine the `admin` role, in a LOCAL database. Refused
+ *                                            with a SITE_KEY, SITE_PREVIEW or NODE_ENV=production, and when
+ *                                            DATABASE_URL is not local. Never makes an owner
+ *                                            (docs/agent/auth.md "On your own machine").
  *
  * WHERE RELEASES COME FROM: `template.json` `repo`.
  *   - `file:<path>` (today: the platform's templates are not published yet) — a
@@ -28,9 +37,14 @@
  *     `--base DIR` gives a copy of the OLD version; without it, files you
  *     changed are left as they are and listed for you to compare.
  *   - `owner/name` — a GitHub repository with `vX.Y.Z` tags (later).
+ *   In the editor, the platform provides the newest template as a folder: `upgrade --from <it>`
+ *   (docs/agent/upgrade.md). A clone of the template's repository on a developer's own computer
+ *   takes releases with git instead (`git fetch upstream --tags`, then `git merge v<newest>`); `check`
+ *   reads the `upstream` remote's tags. Files that a `--from` folder's `.gitignore` names one by
+ *   one (files that came with it, not the template) are never copied in.
  *
  * UPGRADE, file by file, from the version in `template.json` to the target:
- *   - MANAGED paths (`src/platform/**`, `docs/agent/**`, this script,
+ *   - MANAGED paths (`src/platform/**`, `docs/agent/**`, this script, its `managed-files.json`,
  *     `CHANGELOG.md`) are the template's own: replaced wholesale. Do not edit them; extend them from
  *     your own code instead.
  *   - Everything else is a 3-way merge (`git merge-file`): base = the old
@@ -42,13 +56,21 @@
  * the listed conflicts, run `npm install`, `npm run build`.
  */
 import {execFileSync} from 'node:child_process';
+import {createHash, randomBytes} from 'node:crypto';
 import {existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
+import {createRequire} from 'node:module';
 import {dirname, isAbsolute, join, relative, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 const ROOT = process.cwd();
 const MANIFEST = join(ROOT, 'template.json');
-const MANAGED = [/^src\/platform\//, /^docs\/agent\//, /^scripts\/platform\.mjs$/, /^CHANGELOG\.md$/];
+const MANAGED = [/^src\/platform\//, /^docs\/agent\//, /^scripts\/platform\.mjs$/, /^scripts\/managed-files\.json$/, /^CHANGELOG\.md$/];
+/** This release's managed files and their sha256 (`check` compares them; never edit it). */
+const MANAGED_LIST_REL = 'scripts/managed-files.json';
+const MANAGED_LIST = join(ROOT, MANAGED_LIST_REL);
+/** A store listing of this template must ship sample data (prisma/seed.sql). */
+const SEED_REQUIRED = true;
 const NEVER = [/^\.git\//, /^node_modules\//, /^dist\//, /^\.astro\//, /^\.wrangler\//, /^\.platform\//, /(^|\/)\.DS_Store$/, /^src\/generated\//, /^template\.json$/, /^\.env$/, /^\.dev\.vars/];
 const SKIP_IN_MERGE = [/^package-lock\.json$/];
 
@@ -89,10 +111,20 @@ function localSource(repo) {
   return resolve(process.env.SITE_DIR || ROOT, path);
 }
 
+const DOWNLOADED_COPY_HELP = [
+  'This copy has no newer template next to it to compare with.',
+  'A clone of the template\'s repository: keep it as the "upstream" remote (git remote -v), then',
+  '  git fetch upstream --tags',
+  '  git merge "$(git describe --tags --abbrev=0 upstream/main)"',
+  'In the editor, the platform provides the newest template: follow docs/agent/upgrade.md (it passes --from).',
+  'In a platform checkout, set SITE_DIR to its root.',
+].join('\n');
+
 function localVersion(dir) {
   const file = join(dir, 'template.json');
   if (!existsSync(file)) {
-    throw new Error(`no template.json in ${dir}: pass --from <template folder> or set SITE_DIR.`);
+    if (!option('--from') && !process.env.SITE_DIR) throw new Error(`no template folder at ${dir}.\n${DOWNLOADED_COPY_HELP}`);
+    throw new Error(`no template.json in ${dir}: pass --from <the unzipped template folder> or set SITE_DIR.`);
   }
   const {version} = JSON.parse(readFileSync(file, 'utf8'));
   if (!/^\d+\.\d+\.\d+$/.test(version ?? '')) throw new Error(`${file} has no X.Y.Z version.`);
@@ -128,6 +160,20 @@ function listFiles(dir, base = dir, out = []) {
     else out.push(rel);
   }
   return out;
+}
+
+/**
+ * Files a downloaded copy carries that are not the template's: its `.gitignore` names them one by
+ * one (a plain file name on its own line, no wildcard). They are never copied into the project.
+ */
+function downloadOnlyFiles(dir) {
+  const file = join(dir, '.gitignore');
+  if (!existsSync(file)) return new Set();
+  const names = readFileSync(file, 'utf8')
+    .split(/\r?\n/)
+    .map(line => line.trim().replace(/^\//, ''))
+    .filter(line => line && !line.startsWith('#') && !line.startsWith('!') && !/[*?[\]\/]/.test(line) && /\.[A-Za-z0-9]+$/.test(line));
+  return new Set(names.filter(name => existsSync(join(dir, name)) && statSync(join(dir, name)).isFile()));
 }
 
 const read = path => (existsSync(path) ? readFileSync(path) : null);
@@ -166,16 +212,139 @@ async function docs() {
   console.log(`saved ${saved} docs (platform rules v${version}) to .platform/docs/ — start with core.md.`);
 }
 
+/**
+ * The template's own files (`scripts/managed-files.json`, this release's list: path → sha256),
+ * compared byte for byte with this project. Changed, missing and (under its folders) added files,
+ * with the git command that puts the template's copies back.
+ */
+function managedProblems(manifest) {
+  const restoreHint = rels => `put back the template's copies: git checkout v${manifest.version} -- ${rels.join(' ')}`;
+  if (!existsSync(MANAGED_LIST)) return {problems: [`${MANAGED_LIST_REL}: missing`], restore: [MANAGED_LIST_REL], restoreHint};
+  let list;
+  try {
+    list = JSON.parse(readFileSync(MANAGED_LIST, 'utf8'));
+  } catch {
+    return {problems: [`${MANAGED_LIST_REL}: not valid JSON`], restore: [MANAGED_LIST_REL], restoreHint};
+  }
+  if (list.version !== manifest.version) {
+    return {
+      problems: [`template.json says ${manifest.version}, but ${MANAGED_LIST_REL} (like the rest of the template's files) is for ${list.version}: a merge was left half done, or template.json was edited`],
+      restore: ['template.json'],
+      // The release the other files are on: managed-files.json comes with them, template.json is one small file.
+      restoreHint: rels => `finish the merge (git merge v${list.version}), or put back the template's copy: git checkout v${list.version} -- ${rels.join(' ')}`,
+    };
+  }
+  const problems = [];
+  const restore = [];
+  const hash = buf => createHash('sha256').update(buf).digest('hex');
+  for (const [rel, want] of Object.entries(list.files ?? {})) {
+    const got = read(join(ROOT, rel));
+    if (got === null) {
+      problems.push(`${rel}: missing`);
+      restore.push(rel);
+    } else if (hash(got) !== want) {
+      const crlf = got.includes(13) && hash(Buffer.from(got.toString('utf8').replace(/\r\n/g, '\n'))) === want;
+      problems.push(`${rel}: ${crlf ? 'Windows line endings (CRLF); the template uses LF (git add --renormalize .)' : 'changed'}`);
+      restore.push(rel);
+    }
+  }
+  for (const dir of list.dirs ?? []) {
+    const full = join(ROOT, dir);
+    if (!existsSync(full)) continue;
+    for (const rel of listFiles(full, ROOT)) if (!(rel in (list.files ?? {}))) problems.push(`${rel}: added (move your code out of ${dir}, then git rm it)`);
+  }
+  return {problems, restore, restoreHint, list};
+}
+
+/** A store listing (this project holds the store's own check, store-check.mjs) of a web app ships sample data. */
+function seedProblems(list) {
+  if (!SEED_REQUIRED || !existsSync(join(ROOT, 'store-check.mjs'))) return {problems: [], notes: []};
+  const seed = read(join(ROOT, 'prisma', 'seed.sql'));
+  const text = seed ? seed.toString('utf8').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ').trim() : '';
+  if (!text) return {problems: ['prisma/seed.sql: missing or empty (seed_missing). Add sample data so the store preview shows a working app.'], notes: []};
+  if (!/\binsert\s+into\b/i.test(text)) return {problems: ['prisma/seed.sql: adds no rows (seed_empty). Give it at least one INSERT of sample data.'], notes: []};
+  const example = list?.exampleSeed;
+  if (example && createHash('sha256').update(seed).digest('hex') === example) {
+    return {problems: [], notes: ['prisma/seed.sql is still the template\'s example data: replace it with sample data for your app.']};
+  }
+  return {problems: [], notes: []};
+}
+
+/** The newest `vX.Y.Z` tag of the `upstream` git remote: {tag}, {error}, or null without that remote. */
+function upstreamLatest() {
+  let remotes = '';
+  try {
+    remotes = execFileSync('git', ['remote'], {cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']});
+  } catch {
+    return null;
+  }
+  if (!remotes.split('\n').includes('upstream')) return null;
+  try {
+    const out = execFileSync('git', ['ls-remote', '--tags', '--refs', 'upstream'], {cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20000});
+    const tags = out.split('\n').map(line => line.trim().split(/\s+/)[1]?.replace('refs/tags/', '')).filter(t => /^v\d+\.\d+\.\d+$/.test(t ?? ''));
+    if (!tags.length) return {error: 'the upstream remote has no release tags'};
+    return {tag: tags.reduce((best, t) => (newer(t, best) ? t : best))};
+  } catch {
+    return {error: 'the upstream remote did not answer (offline?)'};
+  }
+}
+
 async function check() {
   const manifest = readManifest();
-  const latest = await latestTag(manifest.repo);
   const current = `v${manifest.version}`;
-  if (newer(latest, current)) {
-    console.log(`template ${current} → ${latest} is available. Read its CHANGELOG, then: npm run platform -- upgrade`);
-    process.exitCode = 10;
+  let failed = false;
+
+  // 1. The template's own files: untouched (a store listing is refused otherwise).
+  const managed = managedProblems(manifest);
+  // A site's own rules may follow the template's at the end of AGENTS.md (upgrade.md); a store
+  // listing (it holds store-check.mjs) keeps AGENTS.md, CLAUDE.md and GEMINI.md exactly.
+  const store = existsSync(join(ROOT, 'store-check.mjs'));
+  const ownRules = rel => !store && /^(AGENTS|CLAUDE|GEMINI)\.md$/.test(rel);
+  const soft = managed.problems.filter(p => ownRules(p.split(':')[0]));
+  const hard = managed.problems.filter(p => !soft.includes(p));
+  const restore = managed.restore.filter(rel => !ownRules(rel));
+  for (const line of soft) console.log(`note: ${line} (fine if this site added its own rules at its end; the template's part stays as it is)`);
+  if (hard.length) {
+    failed = true;
+    console.log(`template files changed (never edit them):\n  ${hard.join('\n  ')}`);
+    if (restore.length) console.log(`fix: ${managed.restoreHint(restore)}`);
+  } else if (soft.length) {
+    console.log(`template files: the rest untouched (release ${manifest.version}).`);
   } else {
+    console.log(`template files: untouched (${Object.keys(managed.list?.files ?? {}).length} files, release ${manifest.version}).`);
+  }
+
+  // 2. A store listing's sample data.
+  const seed = seedProblems(managed.list);
+  for (const line of seed.problems) console.log(line);
+  for (const line of seed.notes) console.log(`note: ${line}`);
+  if (seed.problems.length) failed = true;
+
+  // 3. Is a newer release out? The upstream remote (a clone of the template's repository), else
+  //    the folder holding the newest template (`--from`, a `file:` repo, the editor's copy).
+  let latest = null;
+  const upstream = option('--from') ? null : upstreamLatest();
+  if (upstream?.tag) latest = upstream.tag;
+  else if (upstream?.error) console.log(`note: couldn't check for a newer release: ${upstream.error}.`);
+  else {
+    try {
+      latest = await latestTag(manifest.repo);
+    } catch (error) {
+      if (option('--from') || process.env.SITE_DIR) throw error;
+      console.log(`note: couldn't check for a newer release.\n${DOWNLOADED_COPY_HELP}`);
+    }
+  }
+  if (latest && newer(latest, current)) {
+    console.log(
+      upstream?.tag
+        ? `Your template is ${manifest.version}; the current one is ${latest.replace(/^v/, '')}. Merge it before you submit: git fetch upstream --tags, then git merge ${latest}, then npm install, npm run check and node store-check.mjs.`
+        : `template ${current} → ${latest} is available. Read its CHANGELOG, then: npm run platform -- upgrade`
+    );
+    if (!failed) process.exitCode = 10;
+  } else if (latest) {
     console.log(`up to date (template ${current}).`);
   }
+  if (failed) process.exitCode = 1;
 }
 
 async function upgrade() {
@@ -210,7 +379,8 @@ async function upgrade() {
         fetchTemplate(manifest.repo, to, work),
       ]);
     }
-    const files = new Set([...(oldDir ? listFiles(oldDir) : []), ...listFiles(newDir)]);
+    const extras = downloadOnlyFiles(newDir);
+    const files = new Set([...(oldDir ? listFiles(oldDir) : []), ...listFiles(newDir)].filter(rel => !extras.has(rel)));
     const report = {replaced: [], merged: [], added: [], removed: [], conflicts: [], kept: []};
 
     for (const rel of [...files].sort()) {
@@ -468,10 +638,220 @@ async function plans() {
   }
 }
 
-const commands = {docs, check, upgrade, jobs, prices, plans};
-if (!commands[command]) {
-  console.log('usage: npm run platform -- docs [--site URL] | check [--from DIR] | upgrade [--to vX.Y.Z] [--from DIR] [--base DIR] [--dry-run] [--force] | jobs | prices [add --key … --name … --amount-cents … --currency … --interval …] | plans [--write]');
-} else {
+/*
+ * `dev-admin <email>`: LOCAL DEVELOPMENT ONLY (docs/agent/auth.md "On your own machine"). On your
+ * computer nobody can press "View as admin", so this gives a user you signed up locally the
+ * `admin` role. It never makes an `owner`: the owner comes only from the dashboard.
+ *
+ * Refused, before any connection, unless ALL hold:
+ *   - no SITE_KEY (every hosted site, its Preview and staging have one), no SITE_PREVIEW, and
+ *     NODE_ENV is not `production`;
+ *   - DATABASE_URL is a plain `postgres://` / `postgresql://` URL whose host is THIS computer
+ *     (`localhost`, `*.localhost`, `127.x.x.x`, `::1`) or a name with no dot in it (a
+ *     docker compose service such as `postgres` or `db`), with no `host=` / `hostaddr=` override.
+ *     A Prisma Postgres URL, an IP address elsewhere or any dotted host name is refused.
+ */
+const LOCAL_HOST = /^(localhost|[a-z0-9-]+\.localhost|127(?:\.\d{1,3}){3}|::1|\[::1\])$/i;
+const SERVICE_NAME = /^[a-z0-9][a-z0-9_-]{0,62}$/i;
+
+/** Why `url` is not a database on this computer, or null when it is. */
+export function localDatabaseProblem(url) {
+  if (!url) return 'DATABASE_URL is empty: set it in .env to your local Postgres.';
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'DATABASE_URL is not a URL.';
+  }
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+    return `DATABASE_URL is a ${parsed.protocol.replace(/:$/, '')} URL, not a local Postgres (postgresql://…@localhost…).`;
+  }
+  for (const key of parsed.searchParams.keys()) {
+    if (/^(host|hostaddr)$/i.test(key)) return `DATABASE_URL sets "${key}=": only a plain local host is accepted.`;
+  }
+  const host = decodeURIComponent(parsed.hostname);
+  if (!host) return 'DATABASE_URL has no host: write it as postgresql://user:password@localhost:5432/name.';
+  if (LOCAL_HOST.test(host)) return null;
+  // A docker compose service name: one label, not only digits.
+  if (SERVICE_NAME.test(host) && !/^\d+$/.test(host)) return null;
+  return `DATABASE_URL points at "${host}", which is not this computer: dev-admin only changes a local database.`;
+}
+
+/** Why local development mode is off here, or null when it is on. */
+export function localDevProblem(environment) {
+  if (environment.SITE_KEY) return 'SITE_KEY is set: this copy talks to the platform, where the owner comes from "View as admin".';
+  if (environment.SITE_PREVIEW) return 'SITE_PREVIEW is set: this is the editor Preview, where the owner comes from "View as admin".';
+  if ((environment.NODE_ENV ?? '').trim().toLowerCase() === 'production') return 'NODE_ENV is production.';
+  return null;
+}
+
+async function devAdmin() {
+  // The same `.env` the dev server and the Prisma CLI read; a variable already set wins.
+  if (existsSync(join(ROOT, '.env'))) process.loadEnvFile(join(ROOT, '.env'));
+  const email = (args[0] ?? '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+$/.test(email)) throw new Error('usage: npm run dev-admin -- <email of a user you signed up locally>');
+  const refused = localDevProblem(process.env) ?? localDatabaseProblem(process.env.DATABASE_URL ?? '');
+  if (refused) throw new Error(`refused (local development only): ${refused}`);
+
+  let pg;
+  try {
+    pg = createRequire(join(ROOT, 'package.json'))('pg');
+  } catch {
+    throw new Error('the pg package is missing: run npm install first.');
+  }
+  const client = new pg.Client({connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 5000});
+  await client.connect();
+  try {
+    await client.query('BEGIN');
+    const {rows: users} = await client.query(
+      'SELECT "id", "status", "platform_owner_id" FROM "users" WHERE "email" = $1 LIMIT 1',
+      [email]
+    );
+    const user = users[0];
+    if (!user) {
+      throw new Error(
+        `no account for ${email} in this database. Sign up first at http://localhost:4321/account/register/ ` +
+          '(the code is printed where npm run dev runs), then run this again.'
+      );
+    }
+    if (user.platform_owner_id) {
+      await client.query('ROLLBACK');
+      console.log(`${email} is the owner account here already. Nothing changed.`);
+      return;
+    }
+    const {rows: roles} = await client.query(`SELECT "id" FROM "roles" WHERE "slug" = 'admin' LIMIT 1`);
+    if (!roles.length) throw new Error('this database has no admin role: run npm run db:migrate first.');
+    const {rowCount} = await client.query(
+      'INSERT INTO "user_roles" ("user_id", "role_id") VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [user.id, roles[0].id]
+    );
+    if (rowCount) {
+      await client.query(
+        `INSERT INTO "audit_events" ("actor_user_id", "action", "target_type", "target_id", "meta")
+         VALUES (NULL, 'user_roles_changed', 'user', $1, $2)`,
+        [String(user.id), JSON.stringify({added: ['admin'], removed: [], via: 'local dev-admin'})]
+      );
+    }
+    await client.query('COMMIT');
+    console.log(
+      `${email} ${rowCount ? 'is now an admin' : 'was an admin already'} in this LOCAL database (local development only).` +
+        `${user.status === 'active' ? '' : ` Its status is "${user.status}": it can't sign in until it is active.`}\n` +
+        'Sign in at http://localhost:4321/account/login/ and open /dashboard. The owner role is never given here: on a hosted site the owner opens the admin with "View as admin".'
+    );
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+/*
+ * `setup` (`npm run setup`): gets a copy running on your own computer, step by step, and says
+ * what to do next. Safe to run again: it never overwrites a value you set.
+ *   1. Node.js 22.12+ and installed packages;
+ *   2. `.env` from `.env.example` if missing; an empty JWT_SECRET gets 48 random bytes; an empty
+ *      DATABASE_URL gets the local database of `docker-compose.yml`;
+ *   3. the database answers (or how to start it);
+ *   4. `prisma migrate deploy`.
+ */
+const LOCAL_DATABASE_URL = 'postgresql://postgres:dev@localhost:5432/site';
+
+function setEnvValue(text, name, value) {
+  const line = new RegExp(`^${name}=.*$`, 'm');
+  return line.test(text) ? text.replace(line, `${name}=${value}`) : `${text.replace(/\n*$/, '\n')}${name}=${value}\n`;
+}
+
+function envValue(text, name) {
+  const match = new RegExp(`^${name}=(.*)$`, 'm').exec(text);
+  return match ? match[1].trim().replace(/^(['"])(.*)\1$/, '$2') : '';
+}
+
+async function setup() {
+  const step = (n, text) => console.log(`\n${n}. ${text}`);
+  step(1, 'Node.js and packages');
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  if (major < 22 || (major === 22 && minor < 12)) {
+    throw new Error(`Node.js ${process.versions.node} is too old: install 22.12 or later (\`nvm use\` reads .nvmrc), then run npm run setup again.`);
+  }
+  let pg;
+  try {
+    pg = createRequire(join(ROOT, 'package.json'))('pg');
+  } catch {
+    throw new Error('packages are not installed: run npm install, then npm run setup again.');
+  }
+  console.log(`   Node.js ${process.versions.node}, packages installed.`);
+
+  step(2, 'Settings (.env)');
+  const envFile = join(ROOT, '.env');
+  let text;
+  if (existsSync(envFile)) {
+    text = readFileSync(envFile, 'utf8');
+    console.log('   .env is there: only empty values are filled in.');
+  } else {
+    text = existsSync(join(ROOT, '.env.example')) ? readFileSync(join(ROOT, '.env.example'), 'utf8') : '';
+    console.log('   .env made from .env.example (it stays on your computer: git ignores it).');
+  }
+  if (envValue(text, 'JWT_SECRET').length < 32) {
+    text = setEnvValue(text, 'JWT_SECRET', randomBytes(48).toString('base64'));
+    console.log('   JWT_SECRET: made a new random one.');
+  } else {
+    console.log('   JWT_SECRET: kept yours.');
+  }
+  if (!envValue(text, 'DATABASE_URL')) {
+    const port = envValue(text, 'DB_PORT') || '5432';
+    text = setEnvValue(text, 'DATABASE_URL', LOCAL_DATABASE_URL.replace(':5432/', `:${port}/`));
+    console.log('   DATABASE_URL: the local database from docker-compose.yml.');
+  } else {
+    console.log('   DATABASE_URL: kept yours.');
+  }
+  writeFileSync(envFile, text);
+  if (envValue(text, 'SITE_KEY')) console.log('   SITE_KEY is set, so local development mode is off (emails go through the platform).');
+
+  step(3, 'The database');
+  const url = process.env.DATABASE_URL || envValue(text, 'DATABASE_URL');
+  let where = 'the database';
+  try {
+    const parsed = new URL(url);
+    where = `${parsed.hostname}:${parsed.port || 5432}`;
+  } catch {
+    throw new Error('DATABASE_URL in .env is not a postgresql:// address.');
+  }
+  const client = new pg.Client({connectionString: url, connectionTimeoutMillis: 5000});
+  try {
+    await client.connect();
+    await client.query('SELECT 1');
+  } catch (error) {
+    const code = error?.code ?? '';
+    if (code === 'ECONNREFUSED' || code === 'ETIMEDOUT' || code === 'ENOTFOUND' || /timeout/i.test(error?.message ?? '')) {
+      throw new Error(`no database answers at ${where}. Start the local one with \`docker compose up -d --wait db\` (Docker must be running), then run npm run setup again.`);
+    }
+    if (code === '28P01') throw new Error(`the database at ${where} refused the user name or password in DATABASE_URL.`);
+    if (code === '3D000') throw new Error(`the database named in DATABASE_URL doesn't exist at ${where}. Create it, or use the one docker-compose.yml makes (${LOCAL_DATABASE_URL}).`);
+    throw new Error(`can't reach the database at ${where}: ${error?.message ?? error}`);
+  } finally {
+    await client.end().catch(() => {});
+  }
+  console.log(`   ${where} answers.`);
+
+  step(4, 'Tables (migrations)');
+  execFileSync('npx', ['prisma', 'migrate', 'deploy'], {cwd: ROOT, stdio: 'inherit', env: {...process.env, DATABASE_URL: url}});
+
+  console.log(`
+Ready. Next:
+  npm run dev                              start it: http://localhost:4321
+  npm run db:seed                          optional: the sample data (prisma/seed.sql)
+Then create your admin account (README "Create your admin account"):
+  sign up at http://localhost:4321/account/register/ (the code is printed where npm run dev runs)
+  npm run dev-admin -- you@example.com`);
+}
+
+const commands = {docs, check, upgrade, jobs, prices, plans, setup, 'dev-admin': devAdmin};
+// Run as a command (`npm run platform -- …`), not when a test imports the helpers above.
+const isMain = Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain && !commands[command]) {
+  console.log('usage: npm run platform -- docs [--site URL] | check [--from DIR] | upgrade [--to vX.Y.Z] [--from DIR] [--base DIR] [--dry-run] [--force] | jobs | prices [add --key … --name … --amount-cents … --currency … --interval …] | plans [--write] | setup | dev-admin <email>');
+} else if (isMain) {
   commands[command]().catch(error => {
     console.error(`platform ${command}: ${error.message}`);
     process.exitCode = 1;

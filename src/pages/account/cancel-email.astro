@@ -1,0 +1,58 @@
+---
+/**
+ * Stop a change of email address while it is still waiting, from the notice mailed to the OLD address
+ * (`?token=`). PRERENDERED. A button press, not the page load, uses the token: email scanners
+ * open links too.
+ */
+import Base from '../../layouts/Base.astro';
+import {staticContext} from '../../server/page';
+
+export const prerender = true;
+
+const {site, viewer} = await staticContext(Astro.request);
+---
+
+<Base site={site} viewer={viewer} isStatic noindex secretInUrl title="Cancel the email change">
+  <main id="main" tabindex="-1" class="wrap auth-wrap section">
+    <div class="card auth-card">
+      <h1>Cancel the email change</h1>
+      <form id="cancel-form" class="auth-form" novalidate>
+        <p class="muted">Your account keeps signing in with this address.</p>
+        <p class="notice" data-form-status hidden></p>
+        <button class="button" type="submit">Cancel the change</button>
+      </form>
+    </div>
+  </main>
+</Base>
+
+<script>
+  import {replaceWithMessage} from '../../lib/account';
+  import {bindForm, postJson} from '../../lib/form';
+  import {siteFetch} from '../../platform/browser';
+
+  // Client navigation (ClientRouter): a bundled script runs once, so this page's code runs on
+  // every `astro:page-load` (the first load, each navigation, back/forward) while it is this page.
+  document.addEventListener('astro:page-load', () => {
+    if (!document.querySelector('#cancel-form')) return;
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get('token');
+    if (token) {
+      url.searchParams.delete('token');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
+    }
+    const form = document.querySelector<HTMLFormElement>('#cancel-form')!;
+    if (!token) {
+      replaceWithMessage(form, 'This link is not complete. Open it from the email again.');
+      return;
+    }
+    bindForm(form, {
+      rules: {},
+      pendingLabel: 'Cancelling…',
+      async submit() {
+        const {result} = await postJson(siteFetch, '/site-api/auth/email/cancel', {token});
+        if (result.ok) replaceWithMessage(form, result.message ?? 'The change is cancelled.');
+        return result;
+      },
+    });
+  });
+</script>

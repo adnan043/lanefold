@@ -23,6 +23,8 @@
  * platform confirms every payment with the payment provider.
  */
 
+import {attemptKey, forgetAttempt, forgetAttempts} from './idempotency';
+
 /* --------------------------------- types --------------------------------- */
 
 /** What the provider's popup needs (`kind: 'popup'`), prepared by the platform. Never edit it. */
@@ -64,6 +66,8 @@ export interface CheckoutRequest {
   email?: string;
   /** Charge now, without the price's free trial (after `trial_used`). */
   noTrial?: boolean;
+  /** This purchase attempt: the same key again is the same checkout, never a second one. */
+  idempotencyKey?: string;
 }
 
 /** A refusal from the platform, with its code (`E_SITE_PAYMENTS_TRIAL_USED`…) and a message for people. */
@@ -71,7 +75,9 @@ export class CheckoutError extends Error {
   constructor(
     message: string,
     readonly code: string = 'checkout_failed',
-    readonly status: number = 0
+    readonly status: number = 0,
+    /** `ALREADY_PAID_CODE`: the checkout this attempt already paid. */
+    readonly checkoutId?: string
   ) {
     super(message);
     this.name = 'CheckoutError';
@@ -105,6 +111,9 @@ export interface CheckoutState {
 }
 
 export const TRIAL_USED_CODE = 'E_SITE_PAYMENTS_TRIAL_USED';
+/** This attempt has already been paid: the buyer goes to the thanks page, nothing is charged. */
+export const ALREADY_PAID_CODE = 'already_paid';
+const IN_PROGRESS_CODE = 'E_SITE_PAYMENTS_IN_PROGRESS';
 export const TRIAL_USED_MESSAGE = "You've already used the free trial for this. Continue to pay now without a trial.";
 export const NOT_LOADED = 'The payment window could not be loaded. Check your connection or turn off any content blocker, then try again.';
 
@@ -306,6 +315,7 @@ export function watchPaymentWindow(
  * page checks the checkout's status and goes on.
  */
 export function notifyPaymentOpener(): void {
+  if (new URLSearchParams(window.location.search).has('checkout')) forgetAttempts();
   if (window.name !== PAYMENT_WINDOW || !window.opener) return;
   if (!new URLSearchParams(window.location.search).has('checkout')) return;
   try {
@@ -407,6 +417,7 @@ export class CheckoutSession {
     let result = this.state.result;
     if (!result) {
       this.patch({status: 'submitting', error: null, closed: null});
+      const attempt = [this.init.price, this.init.quantity ?? 1, selectedGateway, this.state.trialUsed];
       try {
         result = await this.transport.createCheckout({
           price: this.init.price,
@@ -415,9 +426,21 @@ export class CheckoutSession {
           cancelPath: this.init.cancelPath,
           ...(selectedGateway ? {gateway: selectedGateway} : {}),
           ...(this.state.trialUsed ? {noTrial: true} : {}),
+          idempotencyKey: attemptKey(attempt),
         });
       } catch (err) {
         const error = asError(err);
+        // Lost on the way (no answer) or a server error: the same key again is safe. Refused: a new one.
+        const refused = error.status >= 400 && error.status < 500;
+        if (error.code === ALREADY_PAID_CODE || (refused && error.code.toUpperCase() !== IN_PROGRESS_CODE)) {
+          forgetAttempt(attempt);
+        }
+        if (error.code === ALREADY_PAID_CODE && error.checkoutId) {
+          this.patch({status: 'redirecting', error: null});
+          const sep = this.init.successPath.includes('?') ? '&' : '?';
+          window.location.assign(`${this.init.successPath}${sep}checkout=${encodeURIComponent(error.checkoutId)}`);
+          throw error;
+        }
         if (error.code === TRIAL_USED_CODE) {
           this.patch({status: 'ready', trialUsed: true, error: new CheckoutError(TRIAL_USED_MESSAGE, TRIAL_USED_CODE, error.status)});
         } else this.patch({status: 'error', error});

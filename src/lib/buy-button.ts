@@ -1,5 +1,7 @@
 import {siteFetch} from '../platform/browser';
 
+import {attemptKey, forgetAttempt} from './idempotency';
+
 /**
  * BROWSER: makes every `<BuyButton>` form (`form[data-buy]`) start its checkout with a fetch, so
  * the button shows "Opening checkout…" and an error stays next to it. Without JavaScript the same
@@ -43,18 +45,26 @@ export function bindBuyButtons(): void {
       setPending(true);
       const values = Object.fromEntries(new FormData(form)) as Record<string, string>;
       delete values.csrf;
+      // Never a second checkout from a double click, a retry or a reload (src/lib/idempotency.ts).
+      const attempt = [values.price, Number(values.quantity || 1), values.gateway ?? null, values.noTrial ?? false];
       try {
         const res = await siteFetch(form.action, {
           method: 'POST',
           headers: {'content-type': 'application/json', accept: 'application/json'},
-          body: JSON.stringify({...values, quantity: Number(values.quantity || 1)}),
+          body: JSON.stringify({...values, quantity: Number(values.quantity || 1), idempotencyKey: attemptKey(attempt)}),
         });
-        const answer = (await res.json().catch(() => null)) as {redirectUrl?: string; message?: string} | null;
+        const answer = (await res.json().catch(() => null)) as {redirectUrl?: string; message?: string; paid?: boolean; error?: string} | null;
+        if (answer?.paid && answer.redirectUrl?.startsWith('/')) {
+          forgetAttempt(attempt);
+          window.location.assign(answer.redirectUrl);
+          return;
+        }
         // The checkout page (to pay, to choose how, or to continue without a used trial).
         if ((res.ok || res.status === 409) && answer?.redirectUrl?.startsWith('/checkout/')) {
           window.location.assign(answer.redirectUrl);
           return;
         }
+        if (res.status >= 400 && res.status < 500 && answer?.error !== 'e_site_payments_in_progress') forgetAttempt(attempt);
         fail(answer?.message ?? 'Checkout did not open. Try again.');
       } catch {
         fail('Checkout did not open. Check your connection and try again.');

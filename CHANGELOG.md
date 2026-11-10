@@ -4,6 +4,156 @@ Template releases. `npm run platform -- check` says when a newer one is out;
 `npm run platform -- upgrade` applies it (see `scripts/platform.mjs`).
 Managed by the template: replaced on upgrade.
 
+## 0.10.21
+
+**Required upgrade.** A list in raw SQL works on the live database:
+- `src/platform/db-socket.ts`: a JS array bound as one raw-SQL parameter (`unnest(${ids}::text[])`, `= ANY(${ids})`) is sent as a
+  Postgres array literal. Before, Prisma's conversion sent it as `a,b` and the live database refused it (`22P02 malformed array literal`),
+  while local Postgres accepted it, so it passed every local test and failed only once deployed. `tests/db-socket.test.ts` covers it.
+- `docs/agent/database.md`: don't read a page of ids and then the rows for them; read them in one statement.
+
+## 0.10.20
+
+**Required upgrade.** Clearer steps on a developer's own computer:
+- `scripts/platform.mjs`: `check` on a `template.json` left on another version than the rest says to finish the merge, or to put
+  back only `template.json` from the release the other files are on (`git checkout v<that version> -- template.json`).
+- `AGENTS.md`, `README.md`, `docs/agent/upgrade.md`: the merge command names no version
+  (`git merge "$(git describe --tags --abbrev=0 upstream/main)"` takes the newest release); one command per line, so they also run in
+  Windows PowerShell; a `package-lock.json` conflict: `git checkout --theirs package-lock.json`, then `npm install`; the template's own
+  files keep no changes of yours (describe your project in `README.md`).
+- `AGENTS.md`: a placeholder still in double braces is not filled in (a copy outside the editor): never open it as a URL or path;
+  read `docs/agent/` in the project instead. `npm run platform -- docs` names its `--site`.
+- `docs/agent/roles-and-permissions.md`, `AGENTS.md`, `src/server/permissions.ts`: a new permission also gets its line in
+  `tests/permissions.test.ts`, which lists every codename and ability on purpose.
+- `docs/agent/database.md`: `npm run db:seed` loads the sample data on your own computer (run it twice: both must pass).
+- `README.md`: what `npm run setup` does and doesn't, and why a repeat sign-up prints no new code.
+- `tests/integration/account-security.test.ts`: the two-step sign-in test no longer fails when it runs across a 30-second code window.
+
+Steps for an existing site: `docs/agent/upgrade.md` step 8.
+
+## 0.10.19
+
+Required upgrade. The template's own files are checked:
+- `scripts/managed-files.json`: this release's list of the template's own files (`src/platform/`, `docs/agent/`, `AGENTS.md`,
+  `CLAUDE.md`, `GEMINI.md`, `template.json`, `CHANGELOG.md`, `scripts/platform.mjs`) with their sha256. Never edit it.
+- `npm run platform -- check` compares them byte for byte and says how to put one back (`git checkout v<version> -- <file>`); on a
+  clone of the template's repository it reads the `upstream` remote's release tags; a store listing (with `store-check.mjs`) is also
+  checked for its sample data, `prisma/seed.sql`, which a web app listing must have. Exit 1 when something is to fix.
+- `.gitattributes`: every text file is LF, also on a Windows checkout.
+- `AGENTS.md`, `README.md` and `docs/agent/upgrade.md`: the template's own files listed, releases by `git merge` only (no download).
+
+## 0.10.18
+
+Required upgrade. Ready for building on your own computer:
+- **Local development mode** (`src/platform/local-dev.ts`): with no `SITE_KEY`, in `npm run dev` only, sign-up and sign-in codes and
+  account links are printed in the terminal instead of emailed, and `npm run platform -- dev-admin <email>` gives a local user the
+  `admin` role in a local database. Off with any Site Key, in the Preview, with `NODE_ENV=production` and in every build. Never an owner.
+- `npm run platform -- check` / `upgrade` on a downloaded copy say how to upgrade it (`--from` an unzipped newer template); files a
+  download adds beside the template are never copied in.
+- `prisma/seed.sql` follows the seed rules: `BEGIN;` … `COMMIT;`, stops on a job board in use, safe twice (`database.md`).
+- `npm run setup` (Node and packages, `.env` with a new `JWT_SECRET`, a database check, the migrations), `docker-compose.yml` for a
+  local Postgres, `.nvmrc`, `.editorconfig`, and the scripts `check`, `db:migrate`, `db:seed`, `dev-admin`.
+- README rewritten as a full guide for your own computer (quick start, settings, admin account, updates by `git merge` of a release
+  tag, troubleshooting, FAQ); every variable in `.env.example` explained.
+- `AGENTS.md`: on a developer's own computer, read `DEVELOPERS.md` when there is one, and take releases from an `upstream` remote by merge.
+- Old entries below no longer name the old prefixed variables and paths.
+Steps for an existing site: `docs/agent/upgrade.md` step 6.
+
+## 0.10.17
+
+Security release, required. No code change: dependencies with published advisories are updated: `undici` (4 high: 7.30.1 and 8.12.4), `fast-uri`, `seroval`, the Cloudflare dev tooling (`wrangler`, `miniflare`, `@cloudflare/vite-plugin`) and `vitest` 4.1.12. `npm audit` reports 0. Steps for an existing site: `docs/agent/upgrade.md` step 3.
+
+## 0.10.16
+
+- **Required upgrade.** The platform now puts the template in the editor for every site, so upgrading downloads nothing. `upgrade.md` tells the AI never to ask the owner to find a file.
+
+## 0.10.15
+
+Security release, required. New migrations: `pending_sign_ups`, `sign_up_by_address`, `no_email_change_undo`. Steps for an existing site: `docs/agent/upgrade.md`.
+
+- **No account exists until the inbox is proven.** Sign-up keeps a pending row for that browser and emails a 6-digit code and a
+  link; either one, in that browser, creates the account. A stranger signing up with someone's address can't get in.
+  `requireEmailVerification` no longer does anything: confirming is always on.
+- **Limits a stranger can spend are gone where they can be.** An address gets one email with a way in per 15 minutes, whoever
+  asks, and it stays good for longer than that, so a stranger asking still leaves a working code or link in the inbox. Wrong
+  guesses no longer spend a code. **What remains:** typing a 6-digit code has a total per address (10 in 15 minutes, 50 a day),
+  because it can be guessed, and a stranger can use that up. So can 20 wrong passwords. The person then uses a link, which has
+  no such limit: the sign-up email's, in the same browser, or a reset link, which clears those failures. Every sign-in code email
+  carries a reset link, so a stranger's requests can't leave the inbox without one. A browser that has
+  signed in to the address has its own budget.
+- **Accounts never confirmed:** the first proof of the inbox (a code or an old link) drops the password, sessions, two-step
+  sign-in and open links, unless that same browser knows the password and has the code.
+- **Every security event ends every way back in** (`end-access.ts`): password reset and change, new email, sign out
+  everywhere, suspension. A waiting email change, an old reset link, or a sign-in running at that moment can't outlive them.
+- **Email changes:** need the password and the new inbox, and stand once confirmed. One waiting link per account; the old address
+  hears at once and can cancel while it waits (`/account/cancel-email/`), then gets a plain notice.
+- **Rate limits** are counted by the database, so logging in to your own account can't hide failed guesses. A whole IPv6 /56
+  counts as one address. Fewer locks and at most 4 tries each.
+- **Notices:** two-step on or off, new recovery codes. Password sign-ins and failed ones are in the audit log.
+- **A site changing hands:** a former owner's admin ends within 10 minutes (the platform is asked at each refresh). Admins they
+  made stay until the new owner clicks in or the next Deploy.
+- `AGENTS.md`, `review.md`: a full security check, run when the owner asks or first goes live. `auth.md`: how to build an admin changing a user's email; `endAccess` and `sendSiteEmail` are exported for it.
+- Recovery codes are unbiased and stored keyed (older ones keep working). Common passwords are refused behind numbers, swapped
+  letters or repeats. A session can't survive a password change in a refresh race.
+
+## 0.10.14
+
+- **Required upgrade.** The required version is now this one, so a site below it upgrades first, without asking. `upgrade.md` has a step for
+  the list page files an upgrade leaves alone (`Base.astro`, `global.css`, `/jobs/`).
+
+## 0.10.13
+
+- **List pages: a static shell, with rows as JSON.** New `src/lib/list-page.ts`: skeleton, filters in the URL, load more,
+  empty, no match and error. A filter, a search or "load more" fetches only the data. `/jobs/` is built this way.
+- `AGENTS.md`, `performance.md`, `seo.md`: which kind of page to build, including when a short list stays server-rendered.
+- **The AI can see what the live database has applied.** A file in the editor, written by the platform on each editor
+  Open and after each publish: names and statuses, no rows and no credentials. `database.md` says how to fix a failed migration with it.
+- `data-ability` on a prerendered page shows an element to people with that ability, once the browser knows who they are.
+
+## 0.10.12
+
+- **A progress bar at the top of every page while the next one loads,** in the site's own `--accent` colour, on public pages and in the dashboard. It stays hidden on a page that loads fast. New `src/lib/page-progress.ts`.
+- `docs/agent/payments.md`: the checkout endpoint lists `idempotencyKey`.
+- `AGENTS.md`: on a site below the required version, the AI upgrades as its first step without asking, then does the owner's task. Nothing reaches visitors until they publish.
+
+## 0.10.11
+
+**Required security upgrade. Follow `docs/agent/upgrade.md`:** a plain upgrade leaves `package.json` and `prisma/schema.prisma`, and
+this release needs both changed.
+
+- **Nothing charged twice, nothing sold twice.** Every checkout now carries an idempotency key: a double click, a retry
+  or a reload gets the same checkout, and an attempt already paid goes to the thanks page. New managed
+  `src/platform/idempotency.ts` (`idempotent()`), a new `idempotency_keys` table, `src/lib/idempotency.ts` in the browser, and
+  `docs/agent/orders-and-stock.md`: keys, conditional stock updates, unique and exclusion constraints, locks and holds.
+- **The database now uses one WebSocket per request, not one HTTPS call per query.** New managed
+  `src/platform/db-socket.ts`, used by `getDb()` on Prisma Postgres. A query is ~3 ms (was ~130 ms),
+  ~20 ms to open once; 10 awaited reads went from ~1,300 ms to ~40 ms and writes improved the same way. No
+  site code changes: every Prisma call works as before, with Prisma's HTTPS driver as the fallback.
+  Plain reads overlap on the socket; writes run alone in order, and are never sent twice. Transactions keep
+  their own socket. New direct dependencies, exact versions: `@prisma/ppg`,
+  `@prisma/driver-adapter-utils`, `pg-types`, `postgres-array` (already installed through Prisma).
+  How it behaves: `database.md`.
+- **Caching: reads that repeat, in balance.** Every Prisma Postgres query is billed and a cache read isn't, so `cache.md` now opens with
+  what each read costs and "Should this be cached?": fix the query first, then cache what many requests read and rarely changes. It walks through deciding for each read by tracing the code, with a table of how caches go wrong, worked
+  examples, and the rules that stop old data showing. `AGENTS.md`, `performance.md`, `review.md`.
+- **The owner comes only from "View as admin".** A ticket from the dashboard is now the ONE way to hold
+  `owner`: on live, staging, the Preview and a local copy with a Site Key. Removed: owner by sign-up, confirmation,
+  password reset or emailed code, the first-account rule, `ownerEmails`, `firstUserBecomesOwner`, `SITE_OWNER_EMAILS`
+  and `/site-api/health`'s `ownerSetup`. Fixes a takeover: someone who registered the owner's address first kept
+  their password when the owner clicked. The owner account is tied to an opaque id, so the site never learns
+  the owner's email. It has no password or two-step here, and nobody can suspend or demote it from inside the
+  site. When the site changes hands, all admin rights go. **After publishing:** whoever held `owner` becomes
+  a normal user and admins stay, so open the admin once with View as admin. A new migration is included.
+- **`catch P2002` works on deployed sites.** Prisma's Prisma Postgres adapter throws driver errors as plain
+  objects, so a duplicate never became `P2002` and the visitor got a 500 (for example, two sign-ups for one
+  address at the same moment). `db-socket.ts` wraps them as Prisma expects, with the socket on or off.
+- **Password sign-up and sign-in work on deployed sites.** Passwords were hashed with PBKDF2 at 600,000
+  iterations, and the Workers runtime refuses above 100,000: every hash failed with a 500 (Node allows it, so
+  tests passed). Now scrypt, N=2^14, r=8, p=5 (OWASP), through `node:crypto`, ~160 ms per hash. Older hashes
+  the runtime can verify are re-hashed at the next login. Others count as a wrong password: the person
+  signs in by email or resets it. `password.ts`, `auth.md`.
+- **Don't use `String[]`.** Prisma's Prisma Postgres driver mishandles scalar lists, over HTTPS too (`database.md`).
+
 ## 0.10.10
 
 - **Passwords and email addresses (owner's rule).** A password never leaves the server in any form
@@ -237,8 +387,8 @@ Managed by the template: replaced on upgrade.
   shield) signs the owner in with a fetch, since the Preview can't keep a page-load session.
 - **Neutral platform names.** Nothing in the site's code, variables, headers or paths names the
   company that hosts it. Rename these in your own `.env` and code:
-  `SITE_KEY` (was `EZYSTUDIO_SITE_KEY`), `SITE_URL`, `SITE_PREVIEW`, `SITE_OWNER_EMAILS`,
-  `SITE_JOBS_SECRET` (each was `EZYSTUDIO_…`), `SITE_DIR` for `npm run platform`.
+  `SITE_KEY`, `SITE_URL`, `SITE_PREVIEW`, `SITE_OWNER_EMAILS`, `SITE_JOBS_SECRET` (each was the
+  old prefixed name), `SITE_DIR` for `npm run platform`.
   Background jobs arrive at `POST /site-api/_platform/jobs`, signed in `x-site-signature`.
   Site Keys start `stk_`. Installed apps keep their records in `.platform/apps/`.
 
@@ -249,9 +399,9 @@ Managed by the template: replaced on upgrade.
   platform's own, which the platform edge removes before a request reaches a site, so a deployed
   site saw every signed-in visitor as signed out.
 - **Background jobs reach the live site.** Deliveries come to `POST /site-api/_platform/jobs`,
-  signed in `x-site-signature` (was `/_ezy/jobs` and `x-platform-*`, which the edge also removed).
+  signed in `x-site-signature` (was the old prefixed path and `x-platform-*`, which the edge also removed).
 - Platform variables are the platform-only names: `SITE_URL`, `SITE_PREVIEW`,
-  `SITE_OWNER_EMAILS` (were `EZY_*`). Rename them in your own `.env`.
+  `SITE_OWNER_EMAILS` (were the old prefixed names). Rename them in your own `.env`.
 - **One-click owner sign-in.** "Open admin" in the dashboard signs an owner address
   straight into `/portal` as owner, with no sign-up and no email (`GET /site-api/auth/owner`,
   `src/platform/auth/owner.ts`). The owner role now follows the owner list: when the account

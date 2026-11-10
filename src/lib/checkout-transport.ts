@@ -1,6 +1,6 @@
 import {siteFetch} from '../platform/browser';
 
-import {CheckoutError, type CheckoutGateway, type CheckoutResult, type CheckoutTransport, TRIAL_USED_CODE} from './checkout-session';
+import {ALREADY_PAID_CODE, CheckoutError, type CheckoutGateway, type CheckoutResult, type CheckoutTransport, TRIAL_USED_CODE} from './checkout-session';
 
 /**
  * BROWSER: how a `CheckoutSession` reaches the platform from this app: through the site's own
@@ -35,6 +35,9 @@ export const siteCheckoutTransport: CheckoutTransport = {
       body: JSON.stringify(request),
     });
     const body = await json(res);
+    if (body.paid === true && typeof body.id === 'string') {
+      throw new CheckoutError('This has already been paid.', ALREADY_PAID_CODE, res.status, body.id);
+    }
     if (res.status === 409 && body.code === TRIAL_USED_CODE) throw refused(res, body);
     if (!res.ok || typeof body.id !== 'string' || !body.embedded) throw refused(res, body);
     return {id: body.id, mode: body.mode as CheckoutResult['mode'], embedded: body.embedded as CheckoutResult['embedded']};

@@ -1,0 +1,59 @@
+EzyStudio Platform Template License
+
+Copyright (c) 2026 EzyLab, LLC ("EzyStudio", "we"). All rights reserved.
+
+IN SHORT: this template belongs to EzyStudio. It is NOT open source. You may use it only to build
+sites and apps that run on EzyStudio. You may not use it, or anything made from it, anywhere else.
+Being able to see, clone or fork this repository does not give you any other right.
+
+This license covers this template repository: its code, documentation and other files (the
+"Template"), and any work you make from it (a "Derivative").
+
+1. Ownership. The Template is the property of EzyLab, LLC and is protected by copyright and other
+   laws. We license it to you; we do not sell it or give it away. Every right not expressly
+   granted in section 2 is reserved by us.
+
+2. The only use allowed. Free of charge, for as long as you have an EzyStudio account in good
+   standing, you may copy and modify the Template and make Derivatives solely to build sites and
+   apps that run on EzyStudio, namely:
+   a. listings you submit to the EzyStudio App Store, and the updates you submit for them;
+   b. your own sites and apps hosted on EzyStudio;
+   c. sites and apps you build for your clients that are hosted on EzyStudio;
+   d. developing and testing any of the above on your own computers.
+   You may share the Template or a Derivative only with people working with you on one of these
+   (your team, your contractors, your client), and only under this same license.
+
+3. What you may not do. You may not, in whole or in part:
+   a. host, deploy or run the Template or a Derivative anywhere other than on EzyStudio, including
+      on your own servers or on any other hosting service, cloud or platform;
+   b. use the Template, a Derivative, or any part of either (code, structure, documentation,
+      design or the agent instructions) in any other product, project, template or service;
+   c. use it to build, offer, train or improve a website builder, app builder, template or app
+      marketplace, AI coding product or hosting platform, whether or not it competes with
+      EzyStudio;
+   d. sell, rent, sublicense, distribute or publish the Template or a Derivative, or offer it as
+      a template, starter kit or boilerplate, anywhere outside EzyStudio;
+   e. publish the Template or a Derivative in a public repository or package registry, other than
+      a fork on GitHub that stays subject to this license;
+   f. remove or change this license, or any copyright or ownership notice, in any copy.
+
+4. Your own code. The code, content and other material you write yourself stay yours. This
+   license gives us no rights in them; what you grant us when you submit a listing is set by the
+   EzyStudio Developer Agreement.
+
+5. Other licenses. Third-party packages the Template uses keep their own licenses.
+
+6. No warranty. The Template is provided "as is", without warranty of any kind, express or
+   implied, including merchantability, fitness for a particular purpose and non-infringement. To
+   the fullest extent the law allows, we are not liable for any claim, damages or other liability
+   arising from the Template or its use.
+
+7. Ending. This license ends automatically if you break it or if your EzyStudio account is
+   closed. When it ends, you must stop using the Template and every Derivative outside what
+   EzyStudio already hosts for you, and delete your copies. We may also end it by written notice
+   if we find a use outside section 2.
+
+8. Changes. We may publish a new version of this license with a new release of the Template;
+   using that release means accepting it.
+
+The EzyStudio Terms of Service and Developer Agreement also apply to your use of EzyStudio.

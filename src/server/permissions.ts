@@ -2,7 +2,8 @@ import {abilitiesOf, type AbilitiesOf, codenamesOf, CORE_PERMISSIONS, definePerm
 
 /**
  * THE permission catalogue: every codename this site checks, declared ONCE.
- * Adding an entry here is the whole job (docs/agent/roles-and-permissions.md):
+ * Adding a permission is one entry here, plus its line in tests/permissions.test.ts
+ * (docs/agent/roles-and-permissions.md):
  *
  *   - `PERMISSIONS.<KEY>` is its codename, for `requirePermission` / `can`;
  *   - `ability` adds a flag to `/me` `abilities` (and to the `Abilities` type)
@@ -10,6 +11,9 @@ import {abilitiesOf, type AbilitiesOf, codenamesOf, CORE_PERMISSIONS, definePerm
  *   - the row reaches the `permissions` table (the roles screen) on the next
  *     signed-in request after deploy, and `roles` get it that first time only
  *     (`src/platform/permission-sync.ts`). No migration.
+ *   - tests/permissions.test.ts lists every shipped codename and ability, so
+ *     `npm test` fails until you add the new one there too (on purpose: a
+ *     renamed or lost permission never slips through).
  *
  * Never rename or reuse a shipped codename: roles hold it by name. Browser-safe
  * (no server imports): the portal reads the `Abilities` type from here.

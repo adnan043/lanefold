@@ -68,6 +68,12 @@ export function Account() {
           </Card>
         )
       ) : (
+        viewer.platformOwner ? (
+          <Card
+            title="You're the site owner"
+            description="Your access comes from the dashboard. Open this admin from there, with View as admin. There's no separate password, email or two-step sign-in here."
+          />
+        ) : (
         <Tabs label="Account sections" items={[...TABS]} value={tab} onChange={pick}>
           <div className="account-panel">
             {tab === 'profile' && (
@@ -86,6 +92,7 @@ export function Account() {
             {tab === 'danger' && <DeleteSection />}
           </div>
         </Tabs>
+        )
       )}
     </div>
   );
@@ -142,7 +149,7 @@ function ProfileSection({viewer}: {viewer: Viewer}) {
   );
 }
 
-/** The current password, when the account has one (an account made by the dashboard's "Open admin" may not). */
+/** The current password, when the account has one (an account that only signs in by emailed code may not). */
 function usePasswordNeeded() {
   const status = useQuery(twoFactorQuery);
   return status.data?.hasPassword ?? true;

@@ -325,7 +325,7 @@ describe('parseTrelloExport: checklists, comments, labels, links', () => {
   });
   it('only plain http(s) links without credentials survive', () => {
     const urls = [
-      'javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:alert(1)', 'data:text/html,<script>1</script>', 'file:///etc/passwd', 'ftp://x.test/f', 'mailto:a@b.c',
+      'javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:alert(1)', 'data:text/html,<script>1</script>', 'file:///tmp/secret.txt', 'ftp://x.test/f', 'mailto:a@b.c',
       'vbscript:x', 'blob:https://x.test/1', '//evil.test', '/relative', 'https://user:pw@x.test/', 'https://@x.test/', 'not a url', '', 'https://', 'http://[::1', 'trello.com/x',
       'https://ok.test/a b', 'HTTP://OK.TEST/UP',
     ];

@@ -168,12 +168,6 @@ export function Overview() {
       />
 
       {me.error && <ErrorNote error={me.error} />}
-      {health.data && !health.data.ownerSetup && (
-        <Notice tone="warning" title="Nobody can become this site's owner yet">
-          No owner email is set. Publish the site again from the platform, or add the owner's email to
-          ownerEmails in src/server/auth-settings.ts.
-        </Notice>
-      )}
       {health.data && !health.data.siteKey && (
         <Notice tone="info" title="Emails are not sent here">
           This copy has no Site Key, so sign-in codes and password resets are not emailed. The live site has one.

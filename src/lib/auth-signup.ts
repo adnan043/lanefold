@@ -1,4 +1,4 @@
-import {nextPath, replaceWithMessage} from './account';
+import {nextPath, rememberSignUpEmail} from './account';
 import {bindForm, postJson} from './form';
 import {bindPasswordChecks} from './password-checks';
 import {AUTH_RULES, passwordMeetsRules} from './rules';
@@ -6,9 +6,9 @@ import {siteFetch} from '../platform/browser';
 
 /**
  * BROWSER: the "Create account" tab of `/account/login/` and `/account/register/`
- * (`src/components/auth/AuthTabs.astro`). Posts to `/site-api/auth/register`. With email
- * confirmation on (the default) the answer is the same whether or not the email already has an
- * account: "check your inbox".
+ * (`src/components/auth/AuthTabs.astro`). Posts to `/site-api/auth/register`. The answer is the
+ * same whether or not the email already has an account, and no account exists until the emailed
+ * code comes back in this browser (`/account/verify/`).
  */
 export function initSignUp(): void {
   const next = nextPath();
@@ -20,10 +20,10 @@ export function initSignUp(): void {
     rules: {name: AUTH_RULES.name, email: AUTH_RULES.email, password: [passwordMeetsRules(() => email.value)]},
     pendingLabel: 'Creating account…',
     async submit(values) {
-      const {res, result} = await postJson(siteFetch, '/site-api/auth/register', values);
-      if (res?.status === 201) return {ok: true, redirect: next};
-      if (result.ok) replaceWithMessage(form, result.message ?? 'Check your inbox to continue.');
-      return result;
+      const {result} = await postJson(siteFetch, '/site-api/auth/register', values);
+      if (!result.ok) return result;
+      rememberSignUpEmail(String(values.email));
+      return {ok: true, redirect: `/account/verify/?next=${encodeURIComponent(next)}`};
     },
   });
 }

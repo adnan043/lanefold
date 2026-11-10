@@ -1,4 +1,4 @@
-import {nextPath} from './account';
+import {nextPath, rememberSignUpEmail} from './account';
 import {bindForm, postJson} from './form';
 import {AUTH_RULES, rules} from './rules';
 import {siteFetch} from '../platform/browser';
@@ -129,6 +129,11 @@ export function initSignIn(): boolean {
     pendingLabel: 'Signing in…',
     async submit(values) {
       const {result, data} = await postJson(siteFetch, '/site-api/auth/login', {...values, next});
+      // Never confirmed: this browser knows the password, and the emailed code finishes it.
+      if ((data as {needsCode?: unknown} | null)?.needsCode) {
+        rememberSignUpEmail(String(values.email));
+        return {ok: true, redirect: `/account/verify/?next=${encodeURIComponent(next)}`};
+      }
       if (result.ok && data?.twoFactor === true && typeof data.challenge === 'string') {
         askTwoFactor(data.challenge);
         return {ok: true};

@@ -36,7 +36,7 @@ export const siteQuery = queryOptions({
 
 export const healthQuery = queryOptions({
   queryKey: ['health'],
-  queryFn: () => read<{database: boolean; auth: boolean; siteKey: boolean; ownerSetup: boolean}>(api.health.$get()),
+  queryFn: () => read<{database: boolean; auth: boolean; siteKey: boolean}>(api.health.$get()),
 });
 
 export type UsersPage = {users: AdminUser[]; nextBefore: number | null};

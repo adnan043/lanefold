@@ -92,7 +92,7 @@ describe('links', () => {
       'data:text/html,<script>alert(1)</script>',
       'data:text/html;base64,PHNjcmlwdD4=',
       'vbscript:msgbox(1)',
-      'file:///etc/passwd',
+      'file:///tmp/secret.txt',
       '//evil.com',
       '/relative',
       'evil.com',

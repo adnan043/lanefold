@@ -5,11 +5,13 @@ import {validator} from 'hono/validator';
 
 import type {PrismaClient} from '../../generated/prisma/client';
 import type {Viewer} from '../../lib/types';
+import {cookieName, CSRF_COOKIE, readCookie} from '../../platform/auth/cookies';
 import {getDb} from '../../platform/db';
 import {formCsrf, problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {
   cancelMembership,
   type Checkout,
+  checkoutAttemptKey,
   createCheckout,
   getCheckout,
   isSitePath,
@@ -46,6 +48,7 @@ const CHECKOUT_PAGE = '/checkout/';
 const PRICE_KEY = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 const GATEWAY = /^[a-z0-9_-]{1,40}$/;
+const ATTEMPT_KEY = /^[A-Za-z0-9_-]{16,64}$/;
 
 type CheckoutForm = {
   price: string;
@@ -56,6 +59,7 @@ type CheckoutForm = {
   metadata?: Record<string, string>;
   gateway?: string;
   noTrial: boolean;
+  idempotencyKey?: string;
 };
 
 const isForm = (type: string | undefined) =>
@@ -78,7 +82,10 @@ const checkoutBody = createMiddleware<{Variables: {input: CheckoutForm; form: bo
   const email = typeof raw.email === 'string' && raw.email.trim() ? raw.email.trim().toLowerCase() : undefined;
   const gateway = typeof raw.gateway === 'string' && raw.gateway.trim() ? raw.gateway.trim() : undefined;
   const noTrial = raw.noTrial === true || raw.noTrial === '1' || raw.noTrial === 'true';
+  const sentKey = typeof raw.idempotencyKey === 'string' ? raw.idempotencyKey : c.req.header('idempotency-key');
+  const idempotencyKey = sentKey?.trim() || undefined;
   const fields: Record<string, string> = {};
+  if (idempotencyKey !== undefined && !ATTEMPT_KEY.test(idempotencyKey)) fields.price = 'Start the purchase again.';
   if (gateway !== undefined && !GATEWAY.test(gateway)) fields.gateway = 'Choose a way to pay.';
   if (!PRICE_KEY.test(price)) fields.price = 'Choose something to buy.';
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) fields.quantity = 'Choose a quantity from 1 to 99.';
@@ -97,7 +104,7 @@ const checkoutBody = createMiddleware<{Variables: {input: CheckoutForm; form: bo
   if (Object.keys(fields).length) {
     return c.json({...problem('invalid_input', Object.values(fields)[0]!), fields}, 422);
   }
-  c.set('input', {price, quantity, successPath, cancelPath, email, metadata, gateway, noTrial});
+  c.set('input', {price, quantity, successPath, cancelPath, email, metadata, gateway, noTrial, idempotencyKey});
   c.set('form', form);
   await next();
 });
@@ -169,6 +176,14 @@ export const checkoutRoutes = new Hono()
       if (ways.ok && ways.data.length > 1) return answer(askPage(input), 200, {choose: true});
       if (ways.ok && ways.data.length === 1) gateway = ways.data[0]!.slug;
     }
+    // The script sends one key per attempt. A plain form post has none: a resend of it within 2
+    // minutes, from this browser, is the same attempt.
+    const visitor = readCookie(c.req.header('cookie'), cookieName(CSRF_COOKIE, c.req.url));
+    const idempotencyKey =
+      input.idempotencyKey ??
+      (!signedIn && visitor
+        ? await checkoutAttemptKey([visitor, input.price, input.quantity, gateway ?? null, input.noTrial, input.email ?? null])
+        : undefined);
     const started = await createCheckout(c.req.url, {
       price: input.price,
       quantity: input.quantity,
@@ -177,9 +192,10 @@ export const checkoutRoutes = new Hono()
       metadata: input.metadata,
       ...(gateway ? {gateway} : {}),
       ...(input.noTrial ? {noTrial: true} : {}),
+      ...(idempotencyKey ? {idempotencyKey} : {}),
       // A signed-in buyer pays as themselves: their own address, their id as the reference.
       ...(signedIn
-        ? {email: viewer.email ?? undefined, name: viewer.name ?? undefined, customerRef: String(viewer.id)}
+        ? {email: viewer.email || undefined, name: viewer.name ?? undefined, customerRef: String(viewer.id)}
         : {email: input.email}),
     });
     if (!started.ok && started.code === 'E_SITE_PAYMENTS_TRIAL_USED') {
@@ -190,11 +206,17 @@ export const checkoutRoutes = new Hono()
       });
     }
     if (!started.ok) {
-      const status = started.status === 404 ? 404 : started.status === 422 ? 422 : started.status === 0 ? 503 : 502;
+      const status =
+        started.status === 404 ? 404 : started.status === 409 ? 409 : started.status === 422 ? 422 : started.status === 0 ? 503 : 502;
       if (c.var.form) return c.redirect(`${CHECKOUT_PAGE}?error=${encodeURIComponent(started.code)}`, 303);
       return c.json(problem(started.code.toLowerCase(), started.message), status);
     }
-    const {id, mode, embedded} = started.data;
+    const {id, mode, embedded, paid} = started.data;
+    if (paid) {
+      // Already paid under this key: the thanks page, nothing new.
+      const sep = input.successPath.includes('?') ? '&' : '?';
+      return answer(`${input.successPath}${sep}checkout=${encodeURIComponent(id)}`, 200, {id, mode, paid: true});
+    }
     return answer(`${CHECKOUT_PAGE}?id=${encodeURIComponent(id)}`, 200, {id, mode, embedded: embedded ?? null});
   })
 

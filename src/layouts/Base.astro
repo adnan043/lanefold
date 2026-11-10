@@ -54,6 +54,8 @@ interface Props {
    * a renamed site (`/site-api/site`) after load.
    */
   isStatic?: boolean;
+  /** A list page's JSON route (`/site-api/jobs`): the browser starts fetching it with the page, not after it. */
+  preloadData?: string;
   /** Keep the page out of search results (account pages, private pages). */
   noindex?: boolean;
   /** The page URL carries a secret (a reset or confirmation token): send no Referer. */
@@ -78,6 +80,7 @@ const {
   publishedAt,
   updatedAt,
   isStatic = false,
+  preloadData,
   noindex = false,
   secretInUrl = false,
   jsonLd,
@@ -117,6 +120,7 @@ const structured = indexable
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     {canonical && <link rel="canonical" href={canonical} />}
+    {preloadData && <link rel="preload" href={preloadData} as="fetch" crossorigin="anonymous" />}
     {noindex && <meta name="robots" content="noindex" />}
     {secretInUrl && <meta name="referrer" content="no-referrer" />}
     <meta property="og:site_name" content={name} />
@@ -279,7 +283,6 @@ const structured = indexable
       import {logout, refreshSession, siteFetch} from '../platform/browser';
       import {hydrateStaticPage} from '../platform/static-page';
       import {notifyPaymentOpener} from '../lib/checkout-session';
-
       // Every button shows when it is busy (AGENTS.md "Buttons and forms").
       const busy = (button: HTMLButtonElement, label?: string) => {
         button.disabled = true;

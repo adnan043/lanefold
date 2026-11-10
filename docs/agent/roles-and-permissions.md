@@ -144,9 +144,13 @@ export and delete of your feature writes one `audit()` event (`security.md` › 
 (`team_member_added`), target (`['team', teamId]`), small non-personal `meta`. The managed admin
 API already audits its own changes (`/dashboard/activity`).
 
-## Recipe: add a permission (ONE edit)
-Add an entry to `CATALOGUE` in `src/server/permissions.ts`. That is all: no migration, no
-`/me` change, no type change.
+## Recipe: add a permission (one entry, and its test)
+Add an entry to `CATALOGUE` in `src/server/permissions.ts`: no migration, no `/me` change, no
+type change. Then add it to `tests/permissions.test.ts`, which lists every shipped codename and
+ability on purpose (a renamed or lost permission fails `npm test`): its codename next to the
+others (`expect(PERMISSIONS.CRM_READ).toBe('site:crm:read')`), its `ability` in the
+`NO_ABILITIES` key list, and in the expected `admin` abilities (`seeContacts: false`, or `true`
+with its codename added to that test's granted set). Run `npm test`.
 ```ts
 CRM_READ: {
   codename: 'site:crm:read',
@@ -158,7 +162,7 @@ CRM_READ: {
 },
 ```
 A malformed entry (bad codename, duplicate codename or ability, empty title) throws at load:
-the dev server and the build fail at once. `tests/permissions.test.ts` checks the catalogue.
+the dev server and the build fail at once.
 
 ## Recipe: gate an API route
 `validator → withViewer → requireAuth → requirePermission(PERMISSIONS.CRM_READ) → withDb`.

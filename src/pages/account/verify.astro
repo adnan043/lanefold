@@ -5,7 +5,10 @@
  * emails are often opened by scanners, which must not use the token up.
  * An expired link offers to send a new one.
  */
+import AuthShell from '../../components/auth/AuthShell.astro';
+import Icon from '../../components/home/Icon.astro';
 import Base from '../../layouts/Base.astro';
+import '../../styles/account.css';
 import {staticContext} from '../../server/page';
 
 export const prerender = true;
@@ -13,30 +16,52 @@ export const prerender = true;
 const {site, viewer} = await staticContext(Astro.request);
 ---
 
-<Base site={site} viewer={viewer} isStatic noindex secretInUrl title="Confirm your email">
-  <main id="main" tabindex="-1" class="wrap auth-wrap section">
-    <div class="card auth-card">
+<Base site={site} viewer={viewer} isStatic noindex bare secretInUrl title="Confirm your email">
+  <AuthShell>
+    <div class="auth-heading">
+      <span class="auth-badge"><Icon name="mail" size={22} /></span>
       <h1>Confirm your email</h1>
-      <form id="verify-form" class="auth-form" novalidate>
-        <p class="muted">One click and your account is ready.</p>
-        <p class="notice" data-form-status hidden></p>
-        <button class="button" type="submit">Confirm my email</button>
-      </form>
-      <form id="resend-form" class="auth-form" novalidate hidden>
-        <p class="muted">Need a new link? Enter your email and we will send one.</p>
-        <div class="field">
-          <label for="resend-email">Email</label>
-          <input id="resend-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="name@example.com" />
-        </div>
-        <p class="notice" data-form-status hidden></p>
-        <button class="button ghost" type="submit">Send a new link</button>
-      </form>
     </div>
-  </main>
+    <form id="verify-form" class="auth-form" novalidate>
+      <p class="muted">One click and your account is ready.</p>
+      <p class="notice" data-form-status hidden></p>
+      <button class="button auth-submit" type="submit">Confirm my email</button>
+    </form>
+    <form id="link-form" class="auth-form" novalidate hidden>
+      <p class="muted">One click and your account is ready. This only works in the browser you signed up in.</p>
+      <p class="notice" data-form-status hidden></p>
+      <button class="button auth-submit" type="submit">Confirm my email</button>
+    </form>
+    <form id="code-form" class="auth-form" novalidate hidden>
+      <p class="muted">Enter the 6-digit code we sent you, in this same browser.</p>
+      <div class="field">
+        <label for="code-email">Email</label>
+        <input id="code-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="name@example.com" />
+      </div>
+      <div class="field">
+        <label for="code-value">Code from the email</label>
+        <input id="code-value" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" maxlength="6" />
+      </div>
+      <p class="notice" data-form-status hidden></p>
+      <button class="button auth-submit" type="submit">Confirm my email</button>
+    </form>
+    <form id="resend-form" class="auth-form" novalidate hidden>
+      <p class="muted">Need a new code? Enter your email and we will send one.</p>
+      <div class="field">
+        <label for="resend-email">Email</label>
+        <input id="resend-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="name@example.com" />
+      </div>
+      <p class="notice" data-form-status hidden></p>
+      <button class="button ghost" type="submit">Send a new code</button>
+    </form>
+    <p class="auth-foot">
+    <a class="auth-back" href="/account/login/" data-astro-prefetch><Icon name="arrow-left" size={16} />Back to sign in</a>
+    </p>
+  </AuthShell>
 </Base>
 
 <script>
-  import {replaceWithMessage, takeToken} from '../../lib/account';
+  import {nextPath, replaceWithMessage, signUpEmail, takeToken} from '../../lib/account';
   import {bindForm, postJson} from '../../lib/form';
   import {AUTH_RULES} from '../../lib/rules';
   import {verifyOutcome} from '../../lib/verify-outcome';
@@ -52,10 +77,52 @@ const {site, viewer} = await staticContext(Astro.request);
     const offerResend = () => {
       resend.hidden = false;
     };
+    const codeForm = document.querySelector<HTMLFormElement>('#code-form')!;
+    const linkForm = document.querySelector<HTMLFormElement>('#link-form')!;
+    // A sign-up link: a press, not the page load, uses it, because email scanners open links too.
+    const params = new URL(window.location.href);
+    const signUpLink = params.searchParams.get('signup');
+    if (signUpLink) {
+      params.searchParams.delete('signup');
+      window.history.replaceState(window.history.state, '', `${params.pathname}${params.search}`);
+      linkForm.hidden = false;
+      bindForm(linkForm, {
+        rules: {},
+        pendingLabel: 'Confirming…',
+        async submit() {
+          const {data, result} = await postJson(siteFetch, '/site-api/auth/register/verify', {token: signUpLink, next: nextPath()});
+          if (!result.ok) {
+            linkForm.hidden = true;
+            codeForm.hidden = false;
+            offerResend();
+            return result;
+          }
+          const target = (data as {next?: unknown} | null)?.next;
+          return {ok: true, redirect: typeof target === 'string' ? target : nextPath()};
+        },
+      });
+    }
     if (!token) {
       verify.hidden = true;
-      offerResend();
+      if (!signUpLink) {
+        codeForm.hidden = false;
+        offerResend();
+      }
+      const remembered = signUpEmail();
+      (codeForm.elements.namedItem('email') as HTMLInputElement).value = remembered;
+      (resend.elements.namedItem('email') as HTMLInputElement).value = remembered;
     }
+
+    bindForm(codeForm, {
+      rules: {email: AUTH_RULES.email},
+      pendingLabel: 'Confirming…',
+      async submit(values) {
+        const {data, result} = await postJson(siteFetch, '/site-api/auth/register/verify', {...values, next: nextPath()});
+        if (!result.ok) return result;
+        const target = (data as {next?: unknown} | null)?.next;
+        return {ok: true, redirect: typeof target === 'string' ? target : nextPath()};
+      },
+    });
 
     bindForm(verify, {
       rules: {},
