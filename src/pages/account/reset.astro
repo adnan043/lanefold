@@ -23,7 +23,7 @@ const {site, viewer} = await staticContext(Astro.request);
         <div class="field">
           <label for="reset-password">New password</label>
           <div class="pw-input">
-            <input id="reset-password" name="password" type="password" autocomplete="new-password" aria-describedby="reset-password-checks" data-describedby="reset-password-checks" />
+            <input id="reset-password" name="password" type="password" autocomplete="new-password" placeholder="At least 10 characters" aria-describedby="reset-password-checks" data-describedby="reset-password-checks" />
             <button class="pw-reveal" type="button" data-reveal-password aria-controls="reset-password" aria-pressed="false" aria-label="Show password" hidden>Show</button>
           </div>
           <ul class="pw-checks" id="reset-password-checks"><li>At least 10 characters</li></ul>
@@ -31,7 +31,7 @@ const {site, viewer} = await staticContext(Astro.request);
         <div class="field">
           <label for="reset-confirm">Type it again</label>
           <div class="pw-input">
-            <input id="reset-confirm" name="confirm" type="password" autocomplete="new-password" aria-describedby="reset-confirm-checks" data-describedby="reset-confirm-checks" />
+            <input id="reset-confirm" name="confirm" type="password" autocomplete="new-password" placeholder="Repeat your new password" aria-describedby="reset-confirm-checks" data-describedby="reset-confirm-checks" />
             <button class="pw-reveal" type="button" data-reveal-password aria-controls="reset-confirm" aria-pressed="false" aria-label="Show password" hidden>Show</button>
           </div>
           <ul class="pw-checks" id="reset-confirm-checks" hidden></ul>

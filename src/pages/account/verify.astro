@@ -40,7 +40,7 @@ const {site, viewer} = await staticContext(Astro.request);
       </div>
       <div class="field">
         <label for="code-value">Code from the email</label>
-        <input id="code-value" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" maxlength="6" />
+        <input id="code-value" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="123456" />
       </div>
       <p class="notice" data-form-status hidden></p>
       <button class="button auth-submit" type="submit">Confirm my email</button>

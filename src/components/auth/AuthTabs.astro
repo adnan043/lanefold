@@ -53,7 +53,7 @@ const heading = HEADINGS[active];
       <p class="auth-hint" id="email-code-lead" aria-live="polite"></p>
       <div class="field">
         <label for="email-code">Code from the email</label>
-        <input id="email-code" class="auth-code-input" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" maxlength="7" spellcheck="false" />
+        <input id="email-code" class="auth-code-input" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" maxlength="7" spellcheck="false" placeholder="123456" />
       </div>
       <p class="notice" data-form-status hidden></p>
       <button class="button auth-submit" type="submit">Sign in</button>
@@ -75,7 +75,7 @@ const heading = HEADINGS[active];
           <a class="auth-inline-link" href="/account/forgot/" data-astro-prefetch>Forgot password?</a>
         </div>
         <div class="pw-input">
-          <input id="login-password" name="password" type="password" autocomplete="current-password" />
+          <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Your password" />
           <button class="pw-reveal" type="button" data-reveal-password aria-controls="login-password" aria-pressed="false" aria-label="Show password" hidden>Show</button>
         </div>
       </div>
@@ -118,7 +118,7 @@ const heading = HEADINGS[active];
       <div class="field">
         <label for="register-password">Password</label>
         <div class="pw-input">
-          <input id="register-password" name="password" type="password" autocomplete="new-password" aria-describedby="register-password-checks" data-describedby="register-password-checks" />
+          <input id="register-password" name="password" type="password" autocomplete="new-password" placeholder="At least 10 characters" aria-describedby="register-password-checks" data-describedby="register-password-checks" />
           <button class="pw-reveal" type="button" data-reveal-password aria-controls="register-password" aria-pressed="false" aria-label="Show password" hidden>Show</button>
         </div>
         <ul class="pw-checks" id="register-password-checks"><li>At least 10 characters</li></ul>
