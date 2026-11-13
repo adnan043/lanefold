@@ -99,7 +99,8 @@ const canonical = noindex || secretInUrl ? null : absoluteUrl(withSlash(path));
 const socialImage = absoluteUrl(image ?? DEFAULT_SOCIAL_IMAGE);
 const active = (href: string) => (href === '/' ? path === '/' : withSlash(path).startsWith(withSlash(href)));
 // Back to this page after signing in. A PATH only (`safeNext` refuses anything else).
-const back = encodeURIComponent(path.startsWith('/account') ? '/app' : `${path}${isStatic ? '' : Astro.url.search}`);
+// A page whose URL is a secret (a public share link) never copies it into the sign-in link (history, logs).
+const back = encodeURIComponent(path.startsWith('/account') || secretInUrl ? '/app' : `${path}${isStatic ? '' : Astro.url.search}`);
 // The editor Preview's gateway drops cookies: the server never sees the session
 // there, so every page fills the visitor in in the browser, like a prerendered one.
 const hydrate = isStatic || (config.preview && viewer.state !== 'user');

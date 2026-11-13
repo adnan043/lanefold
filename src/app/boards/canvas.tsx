@@ -117,9 +117,11 @@ export function BoardCanvas({
     if (laneId !== null) {
       const cards = lanesRef.current.find(l => l.id === laneId)?.cards ?? [];
       if (cards.length) {
+        // A Set, not cards.some() per container: this runs on every pointer move during a drag.
+        const inLane = new Set<string | number>(cards.map(card => `card-${card.id}`));
         const nearest = closestCenter({
           ...args,
-          droppableContainers: args.droppableContainers.filter(c => cards.some(card => `card-${card.id}` === c.id)),
+          droppableContainers: args.droppableContainers.filter(c => inLane.has(c.id)),
         });
         overId = nearest[0]?.id ?? overId;
       }

@@ -287,6 +287,15 @@ export const boardMemberRoutes = new Hono()
     if (!targetId) return notFound(c, 'member');
     const {workspaceId} = ctx.access;
     const boardId = ctx.boardId;
+    // A seat a board admin set BELOW the workspace role (a member held to viewer) is a restriction: leaving it would
+    // hand back the higher workspace role, so only a board admin may lift it.
+    if (self && !ctx.access.guest && ctx.access.seated && ctx.access.workspaceRole !== 'guest') {
+      const rank = {viewer: 0, member: 1, admin: 2} as const;
+      const without = resolveBoardRole(ctx.access.workspaceRole, ctx.access.visibility, null);
+      if (without !== null && rank[without] > rank[ctx.access.boardRole]) {
+        return c.json(problem('seat_restricted', 'A board admin set your access here. Ask them to change it.'), 409);
+      }
+    }
 
     const out = await db.$transaction(async tx => {
       const gone = await tx.boardMember.deleteMany({where: {boardId, userId: targetId, workspaceId}});

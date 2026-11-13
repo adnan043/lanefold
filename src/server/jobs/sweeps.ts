@@ -127,17 +127,17 @@ export async function cleanupOld(db: PrismaClient, data: unknown, now = Date.now
     cursor = Math.max(...rows.map(r => r.id));
   }
 
-  let bigCursor = 0n;
+  // Oldest read rows first on notifications_read_at_idx: each batch reads only rows it deletes (deleted rows are gone,
+  // so no cursor), instead of walking the table by id and skipping unread rows.
   for (let i = 0; i < MAX_DELETE_BATCHES; i++) {
     const rows = await db.$queryRaw<{id: bigint}[]>`
       WITH batch AS (
         SELECT id FROM notifications
-        WHERE id > ${bigCursor} AND read_at < ${notifBefore}
-        ORDER BY id LIMIT ${DELETE_BATCH})
+        WHERE read_at < ${notifBefore}
+        ORDER BY read_at LIMIT ${DELETE_BATCH})
       DELETE FROM notifications WHERE id IN (SELECT id FROM batch) RETURNING id`;
     notifications += rows.length;
     if (rows.length < DELETE_BATCH) break;
-    bigCursor = rows.reduce((max, r) => (r.id > max ? r.id : max), 0n);
   }
 
   // Abandoned uploads: a row created at step 1 (files.md) that was never confirmed, older than an hour (the upload route only counts the last hour). The stored

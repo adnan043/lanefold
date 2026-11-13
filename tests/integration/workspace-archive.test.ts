@@ -127,6 +127,6 @@ describe.skipIf(!DATABASE_URL)('workspace archive (integration, real Postgres)',
     expect((await bob.post('/site-api/memberships/sub_arch_1/cancel', {})).status).toBe(404);
     // The owner passes the guard (the outside call then answers whatever the test platform does, never the 404).
     const res = await ann.post('/site-api/memberships/sub_arch_1/cancel', {});
-    expect(res.json.code).not.toBe('not_found');
+    expect(res.json.error).not.toBe('not_found');
   });
 });

@@ -113,10 +113,24 @@ describe.skipIf(!DATABASE_URL)('board members (integration, real Postgres)', () 
     expect((await ben.get(`/site-api/boards/${board}`)).status).toBe(404);
 
     const shared = (await ann.post(`/site-api/workspaces/${wsA}/boards`, {name: 'Open', lanes: ['To do']})).json.board.id;
-    await put(ann, benId, 'viewer', shared);
-    expect((await ben.get(`/site-api/boards/${shared}`)).json.board.role).toBe('viewer');
+    await put(ann, benId, 'member', shared);
     const out = await del(ben, benId, shared);
     expect(out.json.lostAccess).toBe(false);
+    expect((await ben.get(`/site-api/boards/${shared}`)).json.board.role).toBe('member');
+  });
+
+  it('a workspace member a board admin held to viewer cannot lift it by leaving (or re-joining)', async () => {
+    const shared = (await ann.post(`/site-api/workspaces/${wsA}/boards`, {name: 'Open', lanes: ['To do']})).json.board.id;
+    await put(ann, benId, 'viewer', shared);
+    const left = await del(ben, benId, shared);
+    expect(left.status).toBe(409);
+    expect(left.json.error).toBe('seat_restricted');
+    expect((await ben.post(`/site-api/boards/${shared}/join`, {})).json.role).toBe('viewer');
+    const board = await ben.get(`/site-api/boards/${shared}`);
+    expect(board.json.board.role).toBe('viewer');
+    expect((await ben.post(`/site-api/boards/${shared}/lanes`, {name: 'Mine'})).status).toBe(403);
+    // A board admin can still lift it.
+    expect((await del(ann, benId, shared)).status).toBe(200);
     expect((await ben.get(`/site-api/boards/${shared}`)).json.board.role).toBe('member');
   });
 

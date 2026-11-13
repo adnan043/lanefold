@@ -72,9 +72,16 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
   const merge = useCallback((incoming: MessageT[]) => {
     if (incoming.length === 0) return;
     setItems(prev => {
+      // Keep the old object when nothing changed, so memoised messages skip re-rendering on every refresh.
       const byId = new Map(prev.map(m => [m.id, m]));
-      for (const m of incoming) byId.set(m.id, m);
-      return [...byId.values()].sort((a, b) => a.seq - b.seq);
+      let changed = false;
+      for (const m of incoming) {
+        const old = byId.get(m.id);
+        if (old && (old === m || JSON.stringify(old) === JSON.stringify(m))) continue;
+        byId.set(m.id, m);
+        changed = true;
+      }
+      return changed ? [...byId.values()].sort((a, b) => a.seq - b.seq) : prev;
     });
   }, []);
 

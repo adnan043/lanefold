@@ -320,13 +320,14 @@ export const membershipRoutes = new Hono()
     const subscriptionId = c.req.param('id');
     const mine = await c.var.db.membership.findFirst({
       where: {subscriptionId, ...(await visibleTo(c.var.db, c.var.viewer))},
-      select: {subscriptionId: true, mode: true, workspaceId: true},
+      select: {subscriptionId: true, mode: true, workspaceId: true, userId: true},
     });
     if (!mine) return c.json(problem('not_found', 'No such membership.'), 404);
-    // A workspace's plan is cancelled only by someone who is still an admin or owner there (not a removed or demoted buyer).
+    // A workspace's plan is cancelled by its owner, or by the buyer while still an admin there. Another admin
+    // (who can see the plan) must not end what the owner pays for: the owner is king.
     if (mine.workspaceId) {
       const member = await membership(c.var.db, mine.workspaceId, c.var.viewer.id!);
-      let allowed = member !== null && member.rank >= 3;
+      let allowed = member !== null && (member.role === 'owner' || (member.rank >= 3 && mine.userId === c.var.viewer.id));
       if (!member) {
         // An ARCHIVED workspace is closed to everyone (membership() is null), but its owner must still be able to stop paying.
         const owner = await c.var.db.workspaceMember.findFirst({

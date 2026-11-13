@@ -982,6 +982,8 @@ model Attachment {
   @@index([workspaceId, cardId, id])
   @@index([workspaceId, messageId, id])
   @@index([uploadedBy, createdAt])
+  /// NOTE: the partial index `attachments_unready_idx` (WHERE ready = false) exists ONLY in SQL
+  /// (migration 20261113200300); Prisma cannot model it. Do not drop it.
   @@map("attachments")
 }
 
@@ -1037,6 +1039,9 @@ model Notification {
   @@index([userId, workspaceId, id(sort: Desc)])
   @@index([actorId])
   @@index([cardId])
+  /// NOTE: the partial indexes `notifications_board_id_idx`, `notifications_conversation_id_idx` and
+  /// `notifications_read_at_idx` exist ONLY in SQL (migrations 20261113200000-20261113200200); Prisma cannot
+  /// model them. Do not drop them: delete any `DROP INDEX` for them from a later --create-only migration.
   @@map("notifications")
 }
 

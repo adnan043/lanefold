@@ -177,4 +177,22 @@ describe.skipIf(!DATABASE_URL)('authz gaps (integration, real Postgres)', () => 
       expect(res.status, `${name} cancels the plan of A`).toBe(404);
     }
   });
+
+  it('an admin who did not buy the workspace plan cannot cancel it; the owner and the admin buyer can', async () => {
+    await db.membership.createMany({
+      data: [
+        {subscriptionId: 'sub_gaps_owner', priceKey: 'team', status: 'active', userId: ids.ann, workspaceId: wsA},
+        {subscriptionId: 'sub_gaps_admbuy', priceKey: 'team', status: 'active', userId: ids.adm, workspaceId: wsA},
+      ],
+    });
+    // The admin sees the owner's plan (the list), but cancelling it — now or at period end — is a 404.
+    for (const body of [{}, {atPeriodEnd: false}]) {
+      const res = await adm.post('/site-api/memberships/sub_gaps_owner/cancel', body);
+      expect(res.status, `admin cancels the owner's plan ${JSON.stringify(body)}`).toBe(404);
+    }
+    // The owner, and the admin who bought a plan, pass the guard (the outside call then answers whatever the test
+    // platform does, never the 404).
+    expect((await ann.post('/site-api/memberships/sub_gaps_admbuy/cancel', {})).json.error).not.toBe('not_found');
+    expect((await adm.post('/site-api/memberships/sub_gaps_admbuy/cancel', {})).json.error).not.toBe('not_found');
+  });
 });

@@ -464,12 +464,12 @@ const uploadBody = body(v => {
   }
   const size = intField(v.size, 1, 100 * 1024 * 1024);
   if (!size.ok) return errAt('file', {code: 'E_FILE_TOO_LARGE', message: 'Pick a file from 1 byte up to 100 MB.'});
-  return {ok: true, value: {name: name.value.replace(/[\\/]/g, '_'), contentType: type, size: size.value}};
+  return {ok: true, value: {name: name.value.replace(/[\\/"\u0000-\u001f\u007f]/g, '_'), contentType: type, size: size.value}};
 });
 
 const renameBody = body(v => {
   const t = textField(v.name, 1, 200);
-  return t.ok ? {ok: true, value: {name: t.value}} : errAt('name', t.error);
+  return t.ok ? {ok: true, value: {name: t.value.replace(/[\\/"\u0000-\u001f\u007f]/g, '_')}} : errAt('name', t.error);
 });
 
 const coverBody = body(v => {

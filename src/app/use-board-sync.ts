@@ -1,4 +1,4 @@
-import {useQueryClient} from '@tanstack/react-query';
+import {type QueryClient, useQueryClient} from '@tanstack/react-query';
 import {useEffect} from 'react';
 
 import {ApiError, type BoardData, call, type Delta} from './api';
@@ -32,6 +32,27 @@ export async function tracked<T>(run: () => Promise<T>): Promise<T> {
 let paused = false;
 export function pauseBoardSync(on: boolean) {
   paused = on;
+}
+
+/**
+ * Right after one of our own writes that the client cannot apply by itself (bulk actions, moving a lane's cards):
+ * fetch the delta now instead of reloading the whole board. A reload re-caps every lane at its first page (the
+ * "Load more" pages are lost) and re-fires a page request per lane; the delta changes only what moved.
+ * Too big a delta, or an error: the board reloads as before. Another write still in flight: the poll catches up.
+ */
+export async function syncBoardNow(queryClient: QueryClient, boardId: number) {
+  const key = ['board', boardId];
+  const data = queryClient.getQueryData<BoardData>(key);
+  if (!data || inflight > 0) return;
+  const gen = writeGen;
+  try {
+    const delta = await call<Delta>('GET', `/boards/${boardId}/changes?since=${data.board.rev}`);
+    if (inflight > 0 || gen !== writeGen) return;
+    if (delta.truncated) await queryClient.invalidateQueries({queryKey: key});
+    else queryClient.setQueryData<BoardData>(key, current => (current ? applyChanges(current, delta) : current));
+  } catch {
+    await queryClient.invalidateQueries({queryKey: key});
+  }
 }
 
 const BASE_MS = 5000;

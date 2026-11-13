@@ -1174,8 +1174,13 @@ export const boardRoutes = new Hono()
     if (out === 'full') return c.json(problem('lane_card_limit', `A lane holds up to ${MAX_CARDS_PER_LANE} cards.`), 409);
     if (out === 'stale') return stale(c);
     if (out === 'gone') return c.json(problem('not_found', 'No such lane.'), 404);
-    if (from !== laneId) await notifyWatchers(c.var.db, {workspaceId, boardId: ctx.boardId, cardId: ctx.card.id}, userId, 'card_moved');
-    if (from !== laneId) await runFlows(c.var.db, [{kind: 'card_moved', workspaceId, boardId: ctx.boardId, cardId: ctx.card.id, laneId, fromLaneId: from}]);
+    // Independent of each other (runFlows never throws): side by side, not one after the other.
+    if (from !== laneId) {
+      await Promise.all([
+        notifyWatchers(c.var.db, {workspaceId, boardId: ctx.boardId, cardId: ctx.card.id}, userId, 'card_moved'),
+        runFlows(c.var.db, [{kind: 'card_moved', workspaceId, boardId: ctx.boardId, cardId: ctx.card.id, laneId, fromLaneId: from}]),
+      ]);
+    }
     return c.json({ok: true, rev: String(out.rev), position: out.key});
   })
 

@@ -37,7 +37,7 @@ const uploadBody = validator('json', (value, c) => {
   if (!BG_IMAGE_TYPES.has(contentType)) return invalid(c, {file: BAD_IMAGE});
   const size = intField(v.size, 1, BG_IMAGE_MAX_BYTES);
   if (!size.ok) return invalid(c, {file: BAD_IMAGE});
-  return {name: name.value.replace(/[\\/]/g, '_'), contentType, size: size.value};
+  return {name: name.value.replace(/[\\/"\u0000-\u001f\u007f]/g, '_'), contentType, size: size.value};
 });
 
 export const boardBackgroundRoutes = new Hono()

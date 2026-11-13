@@ -257,6 +257,7 @@ function ThreadPanel({workspaceId, boardId, conversationId, parent, people, peop
 }) {
   const t = useT();
   const feed = useMessageFeed({conversationId, parentId: parent.id, pollMs: 5000, me});
+  const cardTarget = useMemo(() => ({workspaceId, boardId}), [workspaceId, boardId]);
   return (
     <aside className="chat-thread" aria-label={t('chat.thread')}>
       <div className="chat-thread-head">
@@ -264,7 +265,7 @@ function ThreadPanel({workspaceId, boardId, conversationId, parent, people, peop
         <IconButton icon="x" size="sm" label={t('chat.closeThread')} onClick={onClose} />
       </div>
       <ul className="chat-msgs chat-thread-parent">
-        <MessageItem message={parent} grouped={false} people={people} peopleList={peopleList} me={me} canWrite={canWriteMain} canModerate={canModerate} onChange={onParentChange} cardTarget={{workspaceId, boardId}} />
+        <MessageItem message={parent} grouped={false} people={people} peopleList={peopleList} me={me} canWrite={canWriteMain} canModerate={canModerate} onChange={onParentChange} cardTarget={cardTarget} />
       </ul>
       <MessageList
         feed={feed}
@@ -272,7 +273,7 @@ function ThreadPanel({workspaceId, boardId, conversationId, parent, people, peop
         peopleList={peopleList}
         me={me}
         canModerate={canModerate || feed.canModerate}
-        cardTarget={{workspaceId, boardId}}
+        cardTarget={cardTarget}
         emptyTitle={t('chat.noRepliesTitle')}
         emptyBody={t('chat.noRepliesBody')}
       />
@@ -333,6 +334,10 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
   useEffect(() => setMuted(conversation.muted), [conversation.id, conversation.muted]);
 
   const onSeen = useCallback((seq: number) => markRead(conversation.id, seq), [markRead, conversation.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Stable props for the memoised MessageItem: a new function or object here re-renders every message.
+  const onReply = useCallback((message: MessageT) => setThread(message.id), []);
+  const boardId = conversation.boardId ?? null;
+  const cardTarget = useMemo(() => ({workspaceId, boardId}), [workspaceId, boardId]);
 
   const toggleMute = async () => {
     setMuting(true);
@@ -375,12 +380,12 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
             me={me}
             canModerate={canModerate}
             canPin={canPin}
-            onReply={message => setThread(message.id)}
+            onReply={onReply}
             onSeen={onSeen}
             emptyTitle={t('chat.emptyConversationTitle')}
             emptyBody={t('chat.emptyConversationBody')}
             announceIn={title}
-            cardTarget={{workspaceId, boardId: conversation.boardId ?? null}}
+            cardTarget={cardTarget}
           />
           {feed.status === 'ready' &&
             (feed.canWrite ? (
