@@ -13,9 +13,11 @@ import type {FileResult, FileVisibility, StoredFile, UploadGrant} from './files-
  *                       (name, type, exact size). It checks Storage is on, the type, the size and
  *                       the room left.
  *   2. the BROWSER PUTs the file's bytes to `upload.url` with `upload.headers`: `putFile()` from
- *      `./files-browser` (a path on this site's own address: no other host, nothing to change in
- *      the CSP). It answers with the file `ready`.
- *   3. completeUpload() your route confirms it before saving the file id in your own table.
+ *      `./files-browser`. The URL goes straight to the storage, signed for exactly this size and
+ *      type (anything else is refused), so the page that uploads calls `allowFileUploads()` in
+ *      its frontmatter: it adds the storage to that page's CSP only.
+ *   3. completeUpload() your route confirms it (the platform checks the stored size and type)
+ *      before your table treats the file as there. Nothing can be read before this step.
  *
  * Files are private: fileUrl() makes a link that works for a while (default 1 hour), then stops.
  * A file uploaded with `visibility: 'public'` also has a stable link, publicFileUrl().
@@ -34,10 +36,15 @@ export interface StorageUsage {
   /** `block` = uploads stop at the limit; `bill` = extra storage is billed to the owner. */
   onExceed: 'block' | 'bill';
   maxFileBytes: number;
+  /** Where the browser sends uploads (scheme + host); null = this site's own address. */
+  uploadOrigin?: string | null;
 }
 
-/** The largest single file. */
-export const MAX_FILE_BYTES = 100 * 1024 * 1024;
+/**
+ * The platform's largest single file. A ceiling, not a target: set your OWN, lower limit for each
+ * kind of upload (an avatar is not a video), check it in your route before createUpload().
+ */
+export const MAX_FILE_BYTES = 5 * 1024 ** 3;
 
 /** Types storage accepts (the platform checks too). Never HTML or JavaScript. */
 export const ALLOWED_FILE_TYPES = [
@@ -113,7 +120,35 @@ export function createUpload(
   requestUrl: string | URL,
   input: {name: string; contentType: string; size: number; visibility?: FileVisibility}
 ) {
-  return call<UploadGrant>(requestUrl, 'POST', '/uploads', input);
+  // `direct`: straight to the storage (the page allows it with allowFileUploads()).
+  return call<UploadGrant>(requestUrl, 'POST', '/uploads', {...input, direct: true});
+}
+
+interface CspApi {
+  insertDirective: (directive: string) => void;
+}
+
+const ORIGIN_TTL_MS = 10 * 60 * 1000;
+let uploadOriginCache: {origin: string | null; until: number} | null = null;
+
+/**
+ * Call in the frontmatter of EVERY page whose browser code uploads (`putFile`): adds the storage's
+ * upload address to that page's `connect-src` (the rest of the site keeps `'self'`). Remembered
+ * for 10 minutes per Worker, so it costs one platform call now and then, not one per view.
+ * `await allowFileUploads(Astro.csp, Astro.url)`
+ */
+export async function allowFileUploads(csp: CspApi | undefined, requestUrl: string | URL): Promise<void> {
+  if (!csp) return;
+  if (!uploadOriginCache || uploadOriginCache.until < Date.now()) {
+    const res = await storageUsage(requestUrl).catch(() => null);
+    // Storage off or unreachable: leave the CSP alone (the upload route says why) and ask again soon.
+    if (!res?.ok) return;
+    uploadOriginCache = {origin: res.data.uploadOrigin ?? null, until: Date.now() + ORIGIN_TTL_MS};
+  }
+  const origin = uploadOriginCache.origin;
+  if (origin && /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(origin)) {
+    csp.insertDirective(`connect-src 'self' ${origin}`);
+  }
 }
 
 /** Step 3: after the browser's PUT. The file is `ready` (or the error says why not). */

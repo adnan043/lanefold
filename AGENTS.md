@@ -21,9 +21,9 @@ is compared byte for byte). Read `docs/agent/<topic>.md` in this folder instead 
 `{{DOCS_URL}}`; for any other one, `DEVELOPERS.md` or `STORE-LISTING.md`, if present, says what it is on
 that computer; otherwise it isn't available there: do the task without it and say so in one line.
 
-## First: is this site on the required template version? (0.10.21)
-Read `version` in `template.json` at the start of a session, new or resumed, before anything else. **If it's below 0.10.21, this site
-has problems these rules can't fix for it:** below 0.10.21 a list bound as one raw-SQL parameter (`unnest(${ids}::text[])`,
+## First: is this site on the required template version? (0.10.22)
+Read `version` in `template.json` at the start of a session, new or resumed, before anything else. **If it's below 0.10.22, this site
+has problems these rules can't fix for it:** below 0.10.22 file uploads can fail on a custom domain and are limited to 100 MB; below 0.10.21 a list bound as one raw-SQL parameter (`unnest(${ids}::text[])`,
 `= ANY(${ids})`) fails on the live database with `malformed array literal` although every local test passes; below 0.10.20 `npm run platform -- check` puts a half-done merge back
 with the wrong file, and on a developer's computer its AI can open a placeholder as a link; below 0.10.19 it can't tell when the template's own files
 were changed, and a Windows copy can change their line endings; below 0.10.18 its sample data doesn't stop on a database in use, and it can't be
@@ -306,10 +306,12 @@ whole-table loops, nothing big in module memory (`performance.md`).
   query shape, `migrate dev --create-only`, BEGIN/COMMIT, `migrate dev`, then
   `npx prisma generate`), then a Site API route (`site-api.md`), then the page or portal screen
   that calls it.
-- **A file upload** (photos, documents, attachments): `files.md`. Your route asks
-  `createUpload()` (`src/platform/files.ts`), the browser sends the bytes with `putFile()`, your
-  route confirms with `completeUpload()` and keeps the file id in your own table. Private by
-  default; show files through your route (it checks access, then redirects to a short link).
+- **A file upload** (photos, documents, attachments): `files.md`. Your route checks the file
+  against THIS feature's own limits first (types, a max size that fits it: an avatar is not a
+  video, who may upload), then asks `createUpload()` (`src/platform/files.ts`); the browser sends
+  the bytes straight to storage with `putFile()` (the page calls `allowFileUploads()`); your route
+  confirms with `completeUpload()` and keeps the file id in your own table. Private by default;
+  show files through your route (it checks access, then redirects to a short link).
 - **Something to sell** (a product, a booking fee, a membership): `payments.md`. Create the
   sandbox price (`npm run platform -- prices add …`), put `<BuyButton price="<key>" />` on the
   page, record what was bought in `src/server/payments-hooks.ts`, gate member pages with

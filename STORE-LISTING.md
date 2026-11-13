@@ -1,10 +1,10 @@
 # Store listing: a whole web app
 
-This repository is the Web App template (`astro-app`), release 0.10.21: exactly what every new
+This repository is the Web App template (`astro-app`), release 0.10.22: exactly what every new
 site starts from, plus four files for you, the developer:
 - `DEVELOPERS.md`: setting up, your admin account, updates by `git merge`, and steps for your AI.
 - `STORE-LISTING.md` (this file): what the store needs from a whole-site listing, and how review works.
-- `store-check.mjs`: the store's checks for release 0.10.21, run on your machine with `node store-check.mjs`.
+- `store-check.mjs`: the store's checks for release 0.10.22, run on your machine with `node store-check.mjs`.
 - `LICENSE`: what you may do with the template.
 
 Keep them committed: each release updates them when you merge it. Submit leaves all four out, so they
@@ -75,7 +75,7 @@ This repository is for a **web app**.
 ## 3. The rules
 Submit refuses a version on the first one it breaks, and says which file and how to fix it.
 `node store-check.mjs` runs the same checks before you push.
-- **`template.json`** stays as the template wrote it (version `0.10.21` in this release).
+- **`template.json`** stays as the template wrote it (version `0.10.22` in this release).
   The version must be the template's CURRENT release on the day you submit, for a first version and for every
   update: older is refused, and so is any version that isn't a release. When a newer one comes out, merge it:
   `git fetch upstream --tags`, then `git merge "$(git describe --tags --abbrev=0 upstream/main)"`
@@ -88,7 +88,7 @@ Submit refuses a version on the first one it breaks, and says which file and how
 - **The template's own files untouched:** `template.json`, `CHANGELOG.md`, `scripts/platform.mjs`, `scripts/managed-files.json`. Byte for byte this release's copies,
   none deleted. (`managed_file_changed`)
 - **Put any of them back** with git, from the release tag you are on:
-  `git checkout v0.10.21 -- src/platform docs/agent AGENTS.md CLAUDE.md GEMINI.md template.json CHANGELOG.md scripts/platform.mjs scripts/managed-files.json`
+  `git checkout v0.10.22 -- src/platform docs/agent AGENTS.md CLAUDE.md GEMINI.md template.json CHANGELOG.md scripts/platform.mjs scripts/managed-files.json`
   Line endings count: the template's `.gitattributes` keeps every text file LF, also on Windows.
 - **Instructions for the customer's AI untouched.** Keep `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and `docs/agent/`
   as the template has them: they are the template's instructions for the AI that works on the customer's site

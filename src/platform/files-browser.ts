@@ -1,7 +1,8 @@
 /**
  * File storage, the BROWSER's half (`docs/agent/files.md`): PUT a picked file to the upload URL
  * your route got from `createUpload()` (`src/platform/files.ts`, server only). No secrets here:
- * the URL is a one-time path on this site's own address.
+ * the URL is one-time and signed for exactly this file's size and type. It goes straight to the
+ * storage (`upload.direct`), or on an older grant to a path on this site's own address.
  */
 
 export type FileVisibility = 'private' | 'public';
@@ -21,7 +22,16 @@ export interface StoredFile {
 
 export interface UploadGrant {
   file: StoredFile;
-  upload: {method: 'PUT'; url: string; headers: Record<string, string>; expiresAt: string};
+  upload: {
+    method: 'PUT';
+    url: string;
+    headers: Record<string, string>;
+    expiresAt: string;
+    /** true = `url` is the storage itself (the page's CSP must allow it: `allowFileUploads`). */
+    direct?: boolean;
+    /** The file this upload is for (still `pending` until your route calls completeUpload). */
+    file?: StoredFile;
+  };
 }
 
 export type FileResult<T> =
@@ -29,8 +39,9 @@ export type FileResult<T> =
   | {ok: false; status: number; code: string; message: string};
 
 /**
- * PUT the picked `File` to the grant's URL. Resolves to the stored file (`ready`) or an error with
- * a message for people; shows nothing itself. Pass an AbortSignal to let people cancel.
+ * PUT the picked `File` to the grant's URL. Resolves to the file (then call your route's complete
+ * step, which makes it `ready`) or an error with a message for people; shows nothing itself. Pass
+ * an AbortSignal to let people cancel.
  */
 export async function putFile(
   upload: UploadGrant['upload'],
@@ -41,7 +52,23 @@ export async function putFile(
   try {
     res = await fetch(upload.url, {method: 'PUT', headers: upload.headers, body: file, signal});
   } catch {
+    // A direct upload the page's CSP doesn't allow fails here too: `allowFileUploads` on the page.
     return {ok: false, status: 0, code: 'E_UPLOAD_FAILED', message: 'The upload stopped. Try again.'};
+  }
+  if (upload.direct) {
+    // The storage answers, not the platform: no JSON. It refuses (403) any other size or type than
+    // the URL was signed for, or a URL past its time.
+    if (res.ok && upload.file) return {ok: true, data: upload.file};
+    if (res.ok) return {ok: false, status: res.status, code: 'E_UPLOAD_FAILED', message: 'The upload did not work. Try again.'};
+    return {
+      ok: false,
+      status: res.status,
+      code: res.status === 403 ? 'E_UPLOAD_REFUSED' : `HTTP_${res.status}`,
+      message:
+        res.status === 403
+          ? 'The file was not the size or type it was meant to be, or the upload took too long to start. Pick it again.'
+          : 'The upload did not work. Try again.',
+    };
   }
   const answer = (await res.json().catch(() => null)) as
     | {data?: {file: StoredFile}; errors?: Array<{code?: string; message?: string}>}

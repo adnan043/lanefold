@@ -4,6 +4,17 @@ Template releases. `npm run platform -- check` says when a newer one is out;
 `npm run platform -- upgrade` applies it (see `scripts/platform.mjs`).
 Managed by the template: replaced on upgrade.
 
+## 0.10.22
+
+**Required upgrade.** File uploads go straight to storage:
+- `src/platform/files.ts`: `createUpload()` asks for a direct upload. The upload URL is the storage itself, signed for exactly the
+  file's size and type (the storage refuses anything else), so uploads work on every domain, including a custom one where the
+  older path on the site's own address could be refused. New `allowFileUploads(Astro.csp, Astro.url)` adds the storage to the
+  uploading page's CSP only. One file can now be up to 5 GB (was 100 MB).
+- `src/platform/files-browser.ts`: `putFile()` sends to the storage and explains a refusal (`E_UPLOAD_REFUSED`).
+- `docs/agent/files.md`, `AGENTS.md`: every upload feature sets and enforces its own types and size limit; the platform's 5 GB is
+  only a ceiling. `completeUpload()` checks the stored size and type.
+
 ## 0.10.21
 
 **Required upgrade.** A list in raw SQL works on the live database:

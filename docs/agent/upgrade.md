@@ -77,6 +77,12 @@ Start with a clean git tree: commit what's there. Never stash: Publish ships the
    (`tests/db-socket.test.ts`, with the tests in step 3). In this site's own code: a route that reads a page of ids and then the
    rows for them becomes ONE statement (`database.md`, "Don't fetch ids, then fetch rows by those ids"); a helper of its own that
    builds an array literal (`pgArray`) still works and can stay.
+   **Coming from below 0.10.22** (uploads go straight to storage). The upgrade brings `src/platform/files.ts` and
+   `files-browser.ts` (managed). In this site's own code, for every page whose browser code calls `putFile()` (a page, or the
+   portal page that hosts an upload screen): add `await allowFileUploads(Astro.csp, Astro.url);` to its frontmatter (import
+   it from `src/platform/files`). Without it the browser blocks the upload. Then check each upload route still checks its own
+   types and max size before `createUpload()` (`files.md`, "Your own limits"); a route that used `MAX_FILE_BYTES` as its limit
+   now allows 5 GB: give it a limit of its own. And after `putFile()`, the browser code checks the complete call's answer.
 9. Check it:
    ```bash
    npm install

@@ -21,8 +21,8 @@ import {join} from 'node:path';
 const RULES = {
   "kit": {
     "template": "astro-app",
-    "version": "0.10.21",
-    "madeOn": "2026-11-08"
+    "version": "0.10.22",
+    "madeOn": "2026-11-12"
   },
   "versionsUrl": "https://ezystudio.com/api/public/templates/v1/versions",
   "templateFile": "template.json",
@@ -66,8 +66,8 @@ const RULES = {
     "src/platform/db-socket-conversion.ts": "7425997c4ad9e736526bb03b736cbad8e22baafeb9fd833acc62bf8877c56e1f",
     "src/platform/db-socket.ts": "10022694ebbaa35ba3a0a7e93d2750c495f31f97fd4253f5cff1483365f63e41",
     "src/platform/db.ts": "a42e931634f011943a68696dd1715a90eef9685525534fa3466f3223de4c5208",
-    "src/platform/files-browser.ts": "db30cb0bada236d7ba4d265da05725c8e713b7a23d0ba8afe04a10cd2627394c",
-    "src/platform/files.ts": "6251e31cd665af9f1c9ef5bc15565cb3b1a12887ad1b122a0d96dc43bbea0b88",
+    "src/platform/files-browser.ts": "5ebd6a1f20d500b59efcf1f4fc268f0911823efedc68222f8484d2b59eaf1fad",
+    "src/platform/files.ts": "45c9ca262dad2659418a5ed35a3c04ed2e8d411843981df1b4eba30c78aee25f",
     "src/platform/guards.ts": "dafd2c6be79e2b66ed9cdb7379444f41399cd4e303170a7cf06d11d066dc7b20",
     "src/platform/headers.ts": "ea01c0dbaf8b8e318c9a81ccd8f884c0875a579652e3a94a2e031db6f50546cb",
     "src/platform/idempotency.ts": "5c900d817bee2bbfeccda7b2ff7beb43d936ec92e50e7a0fb16a6a287e47f0ff",
@@ -81,13 +81,13 @@ const RULES = {
     "src/platform/types.ts": "8bb4f37febb760a29504819f6e2bdafdf89fe05c6ab463967b540912719c17e6"
   },
   "agentInstructions": {
-    "AGENTS.md": "e6f4f1b6641772ee4bc63f5b3bb26c60fbbea8c238a2bcc580bc23dac659acf3",
+    "AGENTS.md": "f09a11a4a46e2dc24734a47fa48c325cd94b1e85595f126e79c1a7e89cdb7c14",
     "CLAUDE.md": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
     "docs/agent/auth.md": "5ac439264673f9654f74ae9fd1d28da13af0ed3af5ac9485dc3afbc574724bd2",
     "docs/agent/background-jobs.md": "468bff990103671ea4189769a46e8fd05275a851a74bdc203d1f3b2e6f7dbfda",
     "docs/agent/cache.md": "4316d3edb70bdae4900dd537179582aa5839780878dd36d6da451af4fd501871",
     "docs/agent/database.md": "85f0b84fcc10c006b6b35890568a8ac4ab47d7d565c3033b7a6be3ff3bb9e48e",
-    "docs/agent/files.md": "4ebee5f72bbdbfc4bf067f579a1bb8121c6bbfde41174d8d2879cc3c910601a1",
+    "docs/agent/files.md": "2acb3d8f98504b4b3899d42228070dfbe00f62890268b86c356105954ca3fb06",
     "docs/agent/orders-and-stock.md": "a0587b32dc8568889c8091215ed167649d730c989a1ee3ffc2c2ee6389e6b0b1",
     "docs/agent/payments.md": "678021ab00b846b1a40807486c6ba5aed9fedeffbf462d8f16c82eb00322577a",
     "docs/agent/performance.md": "eb331ba544cc60a097b0ce0ed5e90acf111489fac552acf36d7d2e041c12e318",
@@ -99,14 +99,14 @@ const RULES = {
     "docs/agent/seo.md": "ab4ca0d3658b2278a7f56ca8c6eb696d39e03ac28763de928c0373e181d7c4ae",
     "docs/agent/site-api.md": "75d3745e2d10bda8146a6d9ddb7893ab09be25a09b456aa5302a090459667bc4",
     "docs/agent/ui.md": "11defaec817347938ee890e5077fa76a1bc1ef16bb1bc5905f54be52dd86103e",
-    "docs/agent/upgrade.md": "5f4a1d162ffba37f70b73f6e28c725122e2bbabc754f48d82388226a1993487c",
+    "docs/agent/upgrade.md": "32524ee9f38b1d46d79a880d41c0d7e0b8f3557b8f0b2f18c18c34dc43460af7",
     "GEMINI.md": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49"
   },
   "managedFiles": {
-    "CHANGELOG.md": "46c05926d074321908e2451f4cca44227216c9e9a0c083dab0fdcbd61926d64b",
-    "scripts/managed-files.json": "70df22ba7c6353165096d7e50abbc06f4668d5ff0cf3418f5129d9e0570fb387",
+    "CHANGELOG.md": "41a3aa947ff3b2774480ffb5d02b092c21e8d946750949656be26ebf1413fc33",
+    "scripts/managed-files.json": "b4e7108ce9235a0898e4d1adda6c13b1995b18ec04e5ffb04d72d06f21944320",
     "scripts/platform.mjs": "edaab90e225a49ca4ce87cb0076995417f22abf88e877e94c4494d517e57fe74",
-    "template.json": "66c376c2fd1738dfac1ca4782514dacca869e31ac7944abf55f2b9952d1dbdf9"
+    "template.json": "43949b6f4898296744d67c818f8d0ea4171d1e9e5206895a92d234cb4569de6f"
   },
   "developerFiles": [
     "DEVELOPERS.md",

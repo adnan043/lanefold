@@ -1,7 +1,7 @@
 import {env} from 'cloudflare:workers';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 
-import {completeUpload, createUpload, forwardPlatformFiles, publicFileUrl} from '../src/platform/files';
+import {allowFileUploads, completeUpload, createUpload, forwardPlatformFiles, publicFileUrl} from '../src/platform/files';
 import {putFile} from '../src/platform/files-browser';
 
 const KEY = 'stk_0123456789abcdef_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG';
@@ -33,6 +33,33 @@ describe('file storage: server helpers', () => {
     const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://shop.example/api/site/v1/files/uploads');
     expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`);
+  });
+
+  it('asks for a direct upload (straight to the storage)', async () => {
+    vars.SITE_KEY = KEY;
+    const fetch = vi.fn(async () => json(201, {data: {file: {id: 'file_x'}, upload: {}}}));
+    vi.stubGlobal('fetch', fetch);
+    await createUpload('https://shop.example/', {name: 'a.png', contentType: 'image/png', size: 4});
+    const [, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({name: 'a.png', contentType: 'image/png', size: 4, direct: true});
+  });
+
+  it('allowFileUploads adds the storage to this page’s connect-src, once per 10 minutes', async () => {
+    vars.SITE_KEY = KEY;
+    const fetch = vi.fn(async () =>
+      json(200, {data: {usedBytes: 0, limitBytes: null, onExceed: 'block', maxFileBytes: 1, uploadOrigin: 'https://de-s3.storage.example'}})
+    );
+    vi.stubGlobal('fetch', fetch);
+    const directives: string[] = [];
+    const csp = {insertDirective: (d: string) => directives.push(d)};
+    await allowFileUploads(csp, 'https://shop.example/');
+    await allowFileUploads(csp, 'https://shop.example/');
+    expect(directives).toEqual([
+      "connect-src 'self' https://de-s3.storage.example",
+      "connect-src 'self' https://de-s3.storage.example",
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await allowFileUploads(undefined, 'https://shop.example/');
   });
 
   it('keeps the platform’s error code and message', async () => {
@@ -73,6 +100,22 @@ describe('file storage: server helpers', () => {
 });
 
 describe('file storage: the browser PUT', () => {
+  it('direct: sends the file to the storage with the signed type; a refusal is said in words', async () => {
+    const file = {id: 'file_x', status: 'pending'} as never;
+    const upload = {method: 'PUT' as const, url: 'https://store.example/s1/live/x.png?sig', headers: {'Content-Type': 'image/png'}, expiresAt: '', direct: true, file};
+    const fetch = vi.fn(async () => new Response('', {status: 200}));
+    vi.stubGlobal('fetch', fetch);
+    const ok = await putFile(upload, new Blob(['abcd'], {type: 'image/png'}));
+    expect(ok).toEqual({ok: true, data: file});
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(upload.url);
+    expect(init.headers).toEqual({'Content-Type': 'image/png'});
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<Error/>', {status: 403})));
+    const refused = await putFile(upload, new Blob(['abcdef']));
+    expect(refused).toMatchObject({ok: false, status: 403, code: 'E_UPLOAD_REFUSED'});
+  });
+
   it('returns the ready file, or the error in words', async () => {
     const upload = {method: 'PUT' as const, url: '/__platform/files/uploads/t', headers: {'Content-Type': 'application/octet-stream'}, expiresAt: ''};
     vi.stubGlobal('fetch', vi.fn(async () => json(200, {data: {file: {id: 'file_x', status: 'ready'}}})));
