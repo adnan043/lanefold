@@ -13,6 +13,7 @@ import '../../app/design.css';
 import AppRoot from '../../app/AppRoot';
 import App from '../../layouts/App.astro';
 import {config} from '../../platform/config';
+import {allowFileUploads} from '../../platform/files';
 import {pageContext} from '../../server/page';
 
 export const prerender = false;
@@ -22,6 +23,8 @@ const back = encodeURIComponent(`${Astro.url.pathname}${Astro.url.search}`);
 // The editor Preview's gateway drops cookies, so this page never sees the session there: the app starts
 // anyway and asks `/site-api/me` itself (its shell sends a signed-out visitor to sign in).
 const open = viewer.state === 'user' || config.preview;
+// Card attachments and board backgrounds PUT straight to storage: allow its address on this page only.
+await allowFileUploads(Astro.csp, Astro.url);
 ---
 
 <App site={site} viewer={viewer} title="App">
