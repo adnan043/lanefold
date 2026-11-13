@@ -2,7 +2,7 @@ import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 
 import {app} from '../../src/server/app';
 import {invalidateAppSettings} from '../../src/server/entitlements';
-import {type Browser, configureEnv, DATABASE_URL, db, resetDatabase, signedIn, userId} from './support/harness';
+import {type Browser, configureEnv, DATABASE_URL, db, ownerSignedIn, resetDatabase, signedIn, userId} from './support/harness';
 
 /** The brand colour (/dashboard Branding): owners only, validated, audited, served to everyone as brand.css. */
 
@@ -31,10 +31,10 @@ describe.skipIf(!DATABASE_URL)('branding (integration, real Postgres)', () => {
   beforeEach(async () => {
     await resetDatabase();
     await clearBrand();
-    owner = await signedIn(app, 'brand-owner@example.test', undefined, '203.0.113.71');
+    // The site owner: only the platform's "View as admin" makes one (an `owner` role set by hand is removed).
+    owner = await ownerSignedIn(app, undefined, '203.0.113.71');
     admin = await signedIn(app, 'brand-admin@example.test', undefined, '203.0.113.72');
     member = await signedIn(app, 'brand-member@example.test', undefined, '203.0.113.73');
-    await setRoles('brand-owner@example.test', 'owner');
     await setRoles('brand-admin@example.test', 'admin');
     await setRoles('brand-member@example.test', 'member');
   });

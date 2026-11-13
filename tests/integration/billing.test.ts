@@ -3,7 +3,7 @@ import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {inRequestScope} from '../../src/platform/request-scope';
 import {app} from '../../src/server/app';
 import {applyWorkspacePlan, paymentHooks, recordMembership} from '../../src/server/payments-hooks';
-import {Browser, configureEnv, DATABASE_URL, db, resetDatabase, signedIn, userId} from './support/harness';
+import {Browser, configureEnv, DATABASE_URL, db, ownerSignedIn, resetDatabase, signedIn, userId} from './support/harness';
 
 /**
  * Phase 0.7: workspace billing, plan limits, staff workspaces and the plan hook, against a real Postgres.
@@ -52,9 +52,9 @@ describe.skipIf(!DATABASE_URL)('billing (integration, real Postgres)', () => {
     admin = await signedIn(app, 'wsadmin@example.test', undefined, '203.0.113.51');
     member = await signedIn(app, 'wsmember@example.test', undefined, '203.0.113.52');
     outsider = await signedIn(app, 'outsider@example.test', undefined, '203.0.113.53');
-    staff = await signedIn(app, 'staff@example.test', undefined, '203.0.113.54');
-    for (const email of ['wsadmin', 'wsmember', 'outsider', 'staff']) await setRoles(`${email}@example.test`, 'member');
-    await setRoles('staff@example.test', 'owner');
+    // The site owner: only the platform's "View as admin" makes one (an `owner` role set by hand is removed).
+    staff = await ownerSignedIn(app, undefined, '203.0.113.54');
+    for (const email of ['wsadmin', 'wsmember', 'outsider']) await setRoles(`${email}@example.test`, 'member');
     adminId = await userId('wsadmin@example.test');
     const memberId = await userId('wsmember@example.test');
     const outsiderId = await userId('outsider@example.test');

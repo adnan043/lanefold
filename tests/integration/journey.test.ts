@@ -224,8 +224,10 @@ describe.skipIf(!DATABASE_URL)('Lanefold journey (integration, real Postgres)', 
     expect(down.json).toMatchObject({userId: ids.bob, role: 'viewer'});
     const list = await ann.get(`/site-api/workspaces/${ws}/members`);
     expect((list.json.items as J[]).find(m => m.userId === ids.bob)!.role).toBe('viewer');
-    // Admins see a MASKED address (m•••@host) at most, never a full one.
-    expect(JSON.stringify(list.json)).not.toMatch(/"email"|(ann|bob|cy|dee)@example\.test/);
+    // Admins see a MASKED address (m•••@host) of others at most, never a full one; only their own in full.
+    const others = (list.json.items as J[]).filter(m => m.userId !== ids.ann);
+    expect(JSON.stringify(others)).not.toMatch(/"email"|(ann|bob|cy|dee)@example\.test/);
+    expect((list.json.items as J[]).find(m => m.userId === ids.ann)!.email).toBe('ann@example.test');
     expect((await bob.post(`/site-api/lanes/${lane1}/cards`, {title: 'nope'})).status).toBe(403);
     expect((await bob.get(`/site-api/boards/${board}`)).json.board.canWrite).toBe(false);
     expect((await ann.request('PATCH', `/site-api/workspaces/${ws}/members/${ids.bob}`, {role: 'member'})).status).toBe(200);

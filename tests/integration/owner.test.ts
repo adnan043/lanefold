@@ -5,6 +5,7 @@ import {authRoutes, DEFAULT_AUTH_SETTINGS} from '../../src/platform/auth';
 import {resetOwnerSeatForTests} from '../../src/platform/auth/owner-seat';
 import {csrf, sameOrigin} from '../../src/platform/guards';
 import {app} from '../../src/server/app';
+import {authSettings} from '../../src/server/auth-settings';
 import {env} from './support/cloudflare-workers';
 import {
   Browser,
@@ -56,7 +57,7 @@ describe.skipIf(!DATABASE_URL)('the site owner (integration, real Postgres)', ()
       const browser = new Browser(app);
       const res = await browser.get(`/site-api/auth/owner?ticket=${ticket}`);
       expect(res.status).toBe(303);
-      expect(res.headers.get('location')).toBe('/dashboard');
+      expect(res.headers.get('location')).toBe(authSettings.afterSignInPath); // Lanefold: '/app'
       expect(res.headers.get('referrer-policy')).toBe('no-referrer');
       expect(await roles(browser)).toEqual(['owner']);
       const me = (await browser.get('/site-api/auth/me')).json.user as {email: string; platformOwner: boolean};

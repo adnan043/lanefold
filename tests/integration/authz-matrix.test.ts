@@ -1,7 +1,7 @@
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 
 import {app} from '../../src/server/app';
-import {Browser, configureEnv, DATABASE_URL, db, resetDatabase, signedIn, userId} from './support/harness';
+import {Browser, configureEnv, DATABASE_URL, db, ownerSignedIn, resetDatabase, signedIn, userId} from './support/harness';
 
 /**
  * Adversarial AUTHORIZATION matrix over EVERY route the Site API mounts (docs/agent/review.md, step 1).
@@ -105,7 +105,7 @@ const TABLE: Row[] = [
   row('GET /boards/:id/archived-lanes', 'resource', {path: r => `/boards/${r.board}/archived-lanes`, priv: true}),
   row('GET /boards/:id/archived-cards', 'resource', {path: r => `/boards/${r.board}/archived-cards`, priv: true}),
   row('POST /boards/:id/duplicate', 'resource', {path: r => `/boards/${r.board}/duplicate`, body: () => ({}), min: 'member', priv: true}),
-  // ---- board-share.ts: board admin (workspace admin and up here) + site:board:share (every default member holds it) ----
+  // ---- board-share.ts: board admin (workspace admin and up here) + board:share (every default member holds it) ----
   row('GET /boards/:id/share', 'resource', {path: r => `/boards/${r.board}/share`, min: 'admin', priv: true, noPositive: true}),
   row('POST /boards/:id/share', 'resource', {path: r => `/boards/${r.board}/share`, body: () => ({}), min: 'admin', priv: true}),
   row('DELETE /boards/:id/share', 'resource', {path: r => `/boards/${r.board}/share`, min: 'admin', priv: true}),
@@ -236,7 +236,7 @@ const TABLE: Row[] = [
   row('POST /cards/:id/save-template', 'resource', {path: r => `/cards/${r.card}/save-template`, body: () => ({name: 'ZQXT'}), min: 'member', priv: true}),
   row('POST /cards/:id/apply-template', 'resource', {path: r => `/cards/${r.card}/apply-template`, body: r => ({templateId: Number(r.template)}), min: 'member', priv: true}),
   row('DELETE /card-templates/:id', 'resource', {path: r => `/card-templates/${r.template}`, min: 'admin'}),
-  // ---- flows.ts: site:board:flows (every default member holds it) + board admin (workspace admin and up here); a non-seat on a private board gets 404 ----
+  // ---- flows.ts: board:flows (every default member holds it) + board admin (workspace admin and up here); a non-seat on a private board gets 404 ----
   row('GET /boards/:id/flows', 'resource', {path: r => `/boards/${r.board}/flows`, min: 'admin', priv: true, privAdminOnly: true}),
   row('POST /boards/:id/flows', 'resource', {
     path: r => `/boards/${r.board}/flows`,
@@ -471,11 +471,10 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
     configureEnv();
     await resetDatabase();
     anon = new Browser(app, '203.0.113.50');
-    // In this harness there is no SITE_OWNER_EMAILS and the build is not production, so the platform's
-    // `first` owner mode (src/platform/auth/settings.ts ownerClaimMode) makes the FIRST account to register the
-    // SITE owner. That must be a dedicated account, never one of the six workspace users below, or the
-    // "no site permission" rows would test a site owner. (Live, with no owner address, the mode is `off`.)
-    siteOwner = await signedIn(app, 'root@example.test', undefined, '203.0.113.49');
+    // The SITE owner: only the platform's "View as admin" ticket makes one (src/platform/auth/owner.ts). It is a
+    // dedicated account, never one of the six workspace users below, or the "no site permission" rows would
+    // test a site owner.
+    siteOwner = await ownerSignedIn(app, undefined, '203.0.113.49');
     ann = await signedIn(app, 'ann@example.test', undefined, '203.0.113.51');
     adm = await signedIn(app, 'adm@example.test', undefined, '203.0.113.52');
     mia = await signedIn(app, 'mia@example.test', undefined, '203.0.113.53');
@@ -596,15 +595,16 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
 
   /* --------------------------------------------------------------------------- helpers */
 
-  type Actor = {name: string; b: Browser; forbid: RegExp};
+  /** `own`: the actor's own address, the one address a response may show them (members list, /me). */
+  type Actor = {name: string; b: Browser; forbid: RegExp; own?: string};
   const actors = (): Record<'anon' | 'ann' | 'adm' | 'mia' | 'vic' | 'nick' | 'bob', Actor> => ({
     anon: {name: 'signed-out', b: anon, forbid: /ZQX/},
-    ann: {name: 'owner A', b: ann, forbid: B_MARK},
-    adm: {name: 'admin A', b: adm, forbid: B_MARK},
-    mia: {name: 'member A (board member)', b: mia, forbid: B_MARK},
-    vic: {name: 'viewer A', b: vic, forbid: /ZQXPRIV|ZQXBETA/},
-    nick: {name: 'member A (not on private board)', b: nick, forbid: /ZQXPRIV|ZQXBETA/},
-    bob: {name: 'owner B', b: bob, forbid: A_MARK},
+    ann: {name: 'owner A', b: ann, forbid: B_MARK, own: 'ann@example.test'},
+    adm: {name: 'admin A', b: adm, forbid: B_MARK, own: 'adm@example.test'},
+    mia: {name: 'member A (board member)', b: mia, forbid: B_MARK, own: 'mia@example.test'},
+    vic: {name: 'viewer A', b: vic, forbid: /ZQXPRIV|ZQXBETA/, own: 'vic@example.test'},
+    nick: {name: 'member A (not on private board)', b: nick, forbid: /ZQXPRIV|ZQXBETA/, own: 'nick@example.test'},
+    bob: {name: 'owner B', b: bob, forbid: A_MARK, own: 'bob@example.test'},
   });
   const ROLE_ACTOR = {viewer: 'vic', member: 'nick', admin: 'adm', owner: 'ann'} as const;
 
@@ -613,9 +613,10 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
     const res = await who.b.request(method, `/site-api${path}`, BODY_FOR_SIGNED_OUT.has(method) ? (body ?? {}) : undefined);
     const text = JSON.stringify(res.json);
     const label = `${who.name} ${method} ${path}`;
-    const email = text.match(EMAIL_RE);
-    if (email) problems.push(`${label}: response contains an e-mail address (${email[0]})`);
-    for (const seeded of SEEDED) if (text.toLowerCase().includes(seeded)) problems.push(`${label}: response contains ${seeded}`);
+    // No address but the actor's own, ever: someone else's is a leak.
+    const email = [...text.matchAll(new RegExp(EMAIL_RE.source, 'g'))].map(m => m[0]).find(e => e.toLowerCase() !== who.own);
+    if (email) problems.push(`${label}: response contains an e-mail address (${email})`);
+    for (const seeded of SEEDED) if (seeded !== who.own && text.toLowerCase().includes(seeded)) problems.push(`${label}: response contains ${seeded}`);
     if (SECRET_RE.test(text)) problems.push(`${label}: response contains a password hash field`);
     if (who.forbid.test(text)) problems.push(`${label}: response (${res.status}) leaks data this user may not see`);
     return res.status;
