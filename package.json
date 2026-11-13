@@ -39,7 +39,7 @@
     "@tanstack/react-virtual": "^3.14.26",
     "astro": "^7.3.8",
     "fractional-indexing": "4.0.0",
-    "hono": "^4.13.13",
+    "hono": "^4.13.18",
     "pg-types": "4.0.2",
     "postgres-array": "3.0.4",
     "react": "^19.3.0",
