@@ -806,6 +806,15 @@ export const chatRoutes = new Hono()
         }
       }
       if (!row) return c.json(problem('internal_error', 'Something went wrong.'), 500);
+      if (existing) {
+        // Removing someone from the workspace deletes their conversation rows; when they come back, the same DM
+        // (same pair, same key) must take them in again, or it answers 404 forever. Both were checked above as
+        // members of THIS workspace. A rejoined member starts read up to now, not with the whole history unread.
+        await db.conversationMember.createMany({
+          data: [me, others[0]!].map(userId => ({conversationId: row!.id, userId, workspaceId, lastReadSeq: row!.lastSeq})),
+          skipDuplicates: true,
+        });
+      }
       // The real read marker (an existing DM has history); a new one has none yet.
       const [names, mine] = await Promise.all([
         namesOf(db, [me, others[0]!]),
@@ -976,22 +985,14 @@ export const chatRoutes = new Hono()
         const mine = Number(conv.lastSeq);
         const seen = Math.min(input.lastSeenSeq ?? a.lastReadSeq, mine - 1);
         await markRead(tx, a, me, seen >= mine - 1 ? mine : Math.max(seen, 0));
-        const named = mentions.filter(id => id !== me);
-        if (named.length) {
-          // Muted members still get the mention; they asked to silence the chat, not people who name them.
-          await tx.notification.createMany({
-            data: named.map(userId => ({
-              userId,
-              workspaceId: a.workspaceId,
-              kind: 'message_mention',
-              actorId: me,
-              boardId: a.boardId,
-              conversationId: a.conversationId,
-            })),
-          });
-        }
         return created;
       });
+      // Mentions go through notify() AFTER the commit, so its per-sender cap (20 an hour from one person) stops
+      // mention spam. Muted members still get the mention; they asked to silence the chat, not people who name them.
+      const named = mentions.filter(id => id !== me);
+      if (named.length) {
+        await notify(db, named, {kind: 'message_mention', workspaceId: a.workspaceId, actorId: me, boardId: a.boardId, conversationId: a.conversationId});
+      }
       if (mentionsAll(input.body)) await notifyEveryone(db, a, me, mentions);
       // A brand-new message has no reactions, and its names (sender, mentions) were read above: shape it directly.
       return c.json({message: messageShape(row, names, [], a.conversationId, await cardNumberRefs(db, a, me, [row]))}, 201);

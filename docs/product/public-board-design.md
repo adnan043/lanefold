@@ -24,7 +24,7 @@ Member names policy (recommended default): show first name plus last initial ("M
 
 ## 2. Who may create, what a link is
 
-- Create, rotate, revoke, change expiry, toggle names: **board admin** or workspace admin/owner (new permission codename `site:board:share`, ability `shareBoard`, entered in `CATALOGUE`, no migration; check by workspace membership role in the query `where`, never by role slug). Board editors and viewers cannot. Staff cannot create links, only revoke (audited).
+- Create, rotate, revoke, change expiry, toggle names: **board admin** or workspace admin/owner (new permission codename `board:share`, ability `shareBoard`, entered in `CATALOGUE`, no migration; check by workspace membership role in the query `where`, never by role slug). Board editors and viewers cannot. Staff cannot create links, only revoke (audited).
 - One **active** link per board (simplest to reason about). Rotate = revoke old + create new in one transaction.
 - Board `visibility = 'public'` is the on/off switch. Turning visibility to private or archiving the board makes the link answer 404 at once (the link row is kept so turning it back on does not need a new token only if not revoked; default: turning off does NOT revoke, it hides).
 - Inbox boards (`inbox_of` not null) can never be shared.

@@ -69,8 +69,15 @@ describe('the permission catalogue', () => {
     expect('roles' in CATALOGUE.BRANDING_MANAGE).toBe(false);
   });
 
+  it('gives the member role no `site:` codename (the platform counts those as admin power)', () => {
+    // A `site:` codename on `member` makes it an admin role: a change of site owner would sign out every user.
+    const onMember = Object.values(CATALOGUE).filter(def => (('roles' in def ? def.roles : undefined) as readonly string[] | undefined)?.includes('member'));
+    expect(onMember.length).toBeGreaterThan(0);
+    for (const def of onMember) expect(def.codename, def.codename).not.toMatch(/^site:|^\*$/);
+  });
+
   it('lets default members and admins share boards, and nobody else by default', () => {
-    expect(CATALOGUE.BOARD_SHARE.codename).toBe('site:board:share');
+    expect(CATALOGUE.BOARD_SHARE.codename).toBe('board:share');
     expect(CATALOGUE.BOARD_SHARE.roles).toEqual(['member', 'admin']);
   });
 

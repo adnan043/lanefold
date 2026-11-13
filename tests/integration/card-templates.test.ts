@@ -111,4 +111,16 @@ describe.skipIf(!DATABASE_URL)('card templates (integration, real Postgres)', ()
     await db.cardTemplate.createMany({data: Array.from({length: MAX_CARD_TEMPLATES}, (_, i) => ({workspaceId: wsA, kind: 'card', name: `t${i}`, payload: {}}))});
     expect((await ann.post(url(), {name: 'one more', payload})).status).toBe(409);
   });
+  it('a guest (a seat on one board, no membership) cannot apply a workspace template to read it', async () => {
+    const id = (await ann.post(url(), {name: 'Secret steps', payload})).json.template?.id ?? (await ann.get(url())).json.items[0].id;
+    // bob owns another workspace and holds only a member seat on this board: a guest here.
+    const bobId = (await db.user.findUniqueOrThrow({where: {email: 'bob@example.test'}, select: {id: true}})).id;
+    await db.boardMember.create({data: {boardId: boardA, userId: bobId, workspaceId: wsA, role: 'member'}});
+    const card = await newCard('Guest card');
+    expect((await bob.get(`/site-api/boards/${boardA}`)).json.board.canWrite).toBe(true); // the seat really writes
+    expect((await bob.post(`/site-api/cards/${card}/apply-template`, {templateId: Number(id)})).status).toBe(404);
+    const detail = await ann.get(`/site-api/cards/${card}/detail`);
+    expect(JSON.stringify(detail.json)).not.toContain('Steps');
+    expect((await mia.post(`/site-api/cards/${card}/apply-template`, {templateId: Number(id)})).status).toBe(200); // a member still can
+  });
 });

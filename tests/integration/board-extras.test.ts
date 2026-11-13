@@ -129,6 +129,15 @@ describe.skipIf(!DATABASE_URL)('board extras (integration, real Postgres)', () =
     expect((await ann.post(`/site-api/boards/${boardA}/duplicate`, {cards: 'yes'})).status).toBe(422);
   });
 
+  it('refuses to copy a board with its cards past 5000 checklist items (no million-row copies)', async () => {
+    const list = await db.checklist.create({data: {cardId: card, workspaceId: wsA, title: 'Huge', position: 'a0'}, select: {id: true}});
+    await db.checklistItem.createMany({data: Array.from({length: 5001}, (_, i) => ({checklistId: list.id, workspaceId: wsA, text: `item ${i}`, position: `a${i}`}))});
+    const big = await ann.post(`/site-api/boards/${boardA}/duplicate`, {cards: true});
+    expect(big.status).toBe(409);
+    expect(big.json.error ?? big.json.code).toBe('board_copy_too_big');
+    expect((await ann.post(`/site-api/boards/${boardA}/duplicate`, {cards: false})).status).toBe(201); // lanes and settings still copy
+  });
+
   it('saves the settings drawer fields: gradient, angle, visibility and a card limit', async () => {
     const res = await ann.request('PATCH', `/site-api/boards/${boardA}`, {name: 'New', visibility: 'private', bgKind: 'gradient', bgColor1: '#0EA5E9', bgColor2: '#1E3A8A', bgAngle: 135});
     expect(res.status).toBe(200);

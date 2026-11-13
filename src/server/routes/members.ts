@@ -352,7 +352,10 @@ const resendBody = validator("json", (value, c) => {
   return { email };
 });
 
-/** Invite emails one workspace / one inviter may queue per hour (counted on the invite rows; no address is stored). */
+/**
+ * Invite emails one workspace / one inviter may queue per hour (counted on the invite rows; no address is stored).
+ * The inviter's count spans EVERY workspace: otherwise one account with many workspaces multiplies it.
+ */
 const EMAIL_PER_HOUR_WORKSPACE = 30;
 const EMAIL_PER_HOUR_INVITER = 10;
 /** Sends per invite (the first one and every Resend), so one row cannot be used to flood an address. */
@@ -371,7 +374,7 @@ export async function emailLimited(
       take: EMAIL_PER_HOUR_WORKSPACE,
     }),
     db.workspaceInvite.findMany({
-      where: { workspaceId, createdBy: userId, emailQueuedAt: { gt: since } },
+      where: { createdBy: userId, emailQueuedAt: { gt: since } }, // @@index([createdBy, emailQueuedAt])
       select: { id: true },
       take: EMAIL_PER_HOUR_INVITER,
     }),

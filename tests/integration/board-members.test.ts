@@ -173,6 +173,20 @@ describe.skipIf(!DATABASE_URL)('board members (integration, real Postgres)', () 
     expect((await ann.get(`/site-api/workspaces/${wsA}/invites`)).json.items).toHaveLength(0);
   });
 
+  it('address checks are capped per inviter (30 an hour): no unlimited guessing of who is a member', async () => {
+    // 30 checks of already-seated or made-up workspace addresses: each answers, none emails anyone.
+    for (let i = 0; i < 30; i++) {
+      const res = await ann.post(`/site-api/boards/${board}/invites`, {email: i === 0 ? 'ben@example.test' : `ben${i}@example.test`, role: 'member'});
+      expect(res.status, `check ${i}`).not.toBe(429);
+      // Made-up addresses go the invite way; age those rows so the separate invite/email caps don't trip first.
+      await db.workspaceInvite.updateMany({data: {createdAt: new Date(Date.now() - 7_200_000), emailQueuedAt: new Date(Date.now() - 7_200_000)}});
+    }
+    const next = await ann.post(`/site-api/boards/${board}/invites`, {email: 'ben@example.test', role: 'member'});
+    expect(next.status).toBe(429);
+    // The checks are audited on the inviter, not the board: the workspace audit log stays readable.
+    expect(await db.auditEvent.count({where: {action: 'board.invite.lookup', targetType: 'user'}})).toBe(30);
+  });
+
   it('an invite link seats whoever opens it (a guest when outside), and dies when removed or its maker loses the right', async () => {
     const made = await ann.post(`/site-api/boards/${board}/invite-link`, {role: 'viewer'});
     expect(made.status).toBe(201);

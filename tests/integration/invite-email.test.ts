@@ -110,6 +110,13 @@ describe.skipIf(!DATABASE_URL)('invite emails (integration, real Postgres)', () 
     expect((await bob.post(`/site-api/workspaces/${ws}/invites`, {})).status).toBe(201);
   });
 
+  it('counts the inviter across workspaces: a second workspace does not reset the limit', async () => {
+    for (let i = 0; i < 10; i++) expect((await create(ann, {email: `zqx-m${i}@example.test`})).status).toBe(201);
+    const other = (await ann.post('/site-api/workspaces', {name: 'Second'})).json.workspace.id as number;
+    const again = await ann.post(`/site-api/workspaces/${other}/invites`, {email: 'zqx-m99@example.test', sendEmail: true});
+    expect(again.status).toBe(429);
+  });
+
   it('an archived workspace answers 404', async () => {
     await db.workspace.update({where: {id: ws}, data: {archivedAt: new Date()}});
     expect((await create(bob)).status).toBe(404);

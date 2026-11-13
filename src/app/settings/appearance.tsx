@@ -30,6 +30,7 @@ import {
   storedTheme,
   THEMES,
   type ThemeMode,
+  CUSTOM_ACCENT_START,
 } from './prefs';
 import {useSavePreferences, type PreferencesPatch} from './sync';
 
@@ -64,7 +65,7 @@ function CustomSwatch({value, checked, onPick, onDone}: {value: string; checked:
         ref={input}
         type="color"
         className="lf-swatch-input"
-        value={value || '#6d28d9'}
+        value={value || CUSTOM_ACCENT_START}
         aria-label={t('appearance.accent.custom')}
         onChange={event => onPick(event.target.value)}
       />

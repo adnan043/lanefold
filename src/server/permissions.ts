@@ -45,18 +45,23 @@ export const CATALOGUE = definePermissions({
     ability: 'readWorkspaces',
     roles: ['admin'],
   },
-  /** Create, rotate or revoke the public read-only link of a board (also needs board admin). A site-wide switch. */
+  /**
+   * Create, rotate or revoke the public read-only link of a board (also needs board admin). A site-wide switch.
+   * NOT under `site:`: every member holds it, and the platform treats any `site:` codename as an admin power
+   * (it strips such roles from everyone when the site changes owner). Renamed from `site:board:share` by
+   * migration 20261113120000_member_permissions_out_of_site.
+   */
   BOARD_SHARE: {
-    codename: 'site:board:share',
+    codename: 'board:share',
     title: 'Share boards publicly',
     description: 'Create, replace or remove the public read-only link of a board. Board admins only.',
     group: 'Boards',
     ability: 'shareBoards',
     roles: ['member', 'admin'],
   },
-  /** Create, edit, switch and delete a board's Flows (automations); also needs board admin. A site-wide switch. */
+  /** Create, edit, switch and delete a board's Flows (automations); also needs board admin. A site-wide switch. Not under `site:`, like BOARD_SHARE. */
   BOARD_FLOWS: {
-    codename: 'site:board:flows',
+    codename: 'board:flows',
     title: 'Manage board Flows',
     description: 'Create, edit, switch on or off and delete the automations (Flows) of a board. Board admins only.',
     group: 'Boards',

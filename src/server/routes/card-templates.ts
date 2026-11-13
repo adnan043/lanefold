@@ -183,6 +183,9 @@ export const cardTemplateRoutes = new Hono()
     const userId = c.var.viewer.id!;
     const ctx = await cardCtx(db, userId, idOf(c.req.param('id')), 'write');
     if (refused(ctx)) return send(c, ctx);
+    // Templates belong to the workspace: a guest (a seat on one shared board, no membership) can't list them,
+    // so they can't apply one either (applying would copy its content onto a card they can read).
+    if (ctx.access.guest) return notFound(c, 'template');
     const row = await db.cardTemplate.findFirst({where: {id: c.req.valid('json').templateId, workspaceId: ctx.workspaceId, kind: 'card'}, select: {payload: true}});
     const parsed = row ? parsePayload(row.payload) : null;
     if (!parsed?.ok) return notFound(c, 'template');

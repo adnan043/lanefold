@@ -30,7 +30,7 @@ import {noStore} from './boards';
  *   PATCH  /flows/:id           change name, switch, trigger, conditions or actions
  *   DELETE /flows/:id
  *
- * Guards: withViewer, requireAuth, requirePermission('site:board:flows'), withDb, then board access (the visitor's
+ * Guards: withViewer, requireAuth, requirePermission('board:flows'), withDb, then board access (the visitor's
  * workspace membership is IN its query: another workspace's board or flow is a 404) and board ADMIN (403).
  * Writes also refuse an archived board, a personal Inbox and a read-only workspace. The engine that RUNS flows is
  * src/server/flows/engine.ts; nothing here executes an action.

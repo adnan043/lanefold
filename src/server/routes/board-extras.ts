@@ -36,6 +36,8 @@ const BOARDS_PER_HOUR = 20;
 /** One duplicate copies at most this many open cards (one request on the Worker: bounded memory and time). */
 const MAX_COPY_CARDS = 1000;
 const MAX_COPY_LABELS = 200;
+/** Checklist items a copy may carry in all (each card allows 20 x 100): without it one copy could write millions of rows. */
+const MAX_COPY_ITEMS = 5000;
 
 const noStore = createMiddleware(async (c, next) => {
   c.header('Cache-Control', 'private, no-store');
@@ -218,6 +220,21 @@ export const boardExtraRoutes = new Hono()
       return c.json(problem('board_rate_limited', 'You created many boards in the last hour. Try again later.'), 429);
     }
     const keepCards = c.req.valid('json').cards;
+    if (keepCards) {
+      // Counted BEFORE anything is loaded, and bounded: it stops at MAX_COPY_ITEMS + 1 rows.
+      const [{n}] = await db.$queryRaw<{n: number}[]>`
+        SELECT count(*)::int AS n FROM (
+          SELECT 1 FROM cards k
+          JOIN lanes l ON l.id = k.lane_id AND l.archived_at IS NULL
+          JOIN checklists ch ON ch.workspace_id = ${workspaceId} AND ch.card_id = k.id
+          JOIN checklist_items i ON i.workspace_id = ${workspaceId} AND i.checklist_id = ch.id
+          WHERE k.board_id = ${boardId} AND k.workspace_id = ${workspaceId} AND k.archived_at IS NULL
+          LIMIT ${MAX_COPY_ITEMS + 1}
+        ) x`;
+      if (n > MAX_COPY_ITEMS) {
+        return c.json(problem('board_copy_too_big', `A board with more than ${MAX_COPY_ITEMS} checklist items cannot be copied with its cards.`), 409);
+      }
+    }
     const [source, cards] = await Promise.all([
       db.board.findFirst({
         where: {id: boardId, workspaceId, inboxOf: null},

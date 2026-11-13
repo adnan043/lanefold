@@ -149,6 +149,29 @@ describe.skipIf(!DATABASE_URL)('chat (integration, real Postgres)', () => {
     expect(await db.notification.count({where: {userId: ids.ann, kind: 'message_mention'}})).toBe(1);
   });
 
+  it('someone removed and added back gets their old DM again (not a 404)', async () => {
+    const dm = await ann.post(`/site-api/workspaces/${wsA}/conversations`, {kind: 'dm', userIds: [ids.mia]});
+    const conv = dm.json.conversation.id as number;
+    await send(ann, conv, 'before');
+    expect((await ann.request('DELETE', `/site-api/workspaces/${wsA}/members/${ids.mia}`)).status).toBe(200);
+    expect((await mia.get(`/site-api/conversations/${conv}/messages`)).status).toBe(404); // gone while removed
+    await db.workspaceMember.create({data: {workspaceId: wsA, userId: ids.mia!, role: 'member'}});
+    const back = await mia.post(`/site-api/workspaces/${wsA}/conversations`, {kind: 'dm', userIds: [ids.ann]});
+    expect(back.status).toBe(200);
+    expect(back.json.conversation.id).toBe(conv);
+    expect((await mia.get(`/site-api/conversations/${conv}/messages`)).status).toBe(200);
+    expect((await send(mia, conv, 'I am back')).status).toBe(201);
+  });
+
+  it('mention spam is capped: one sender reaches a person at most 20 times an hour', async () => {
+    for (let round = 0; round < 2; round++) {
+      // Chat's own send limit is 20 a minute: age the first round's messages so the second may follow.
+      for (let i = 0; i < 13; i++) expect((await send(mia, channel, `@ann ping ${round}-${i}`, undefined, {mentions: [ids.ann]})).status).toBe(201);
+      await db.message.updateMany({where: {senderId: ids.mia}, data: {createdAt: new Date(Date.now() - 120_000)}});
+    }
+    expect(await db.notification.count({where: {userId: ids.ann, kind: 'message_mention', actorId: ids.mia}})).toBe(20);
+  });
+
   it('edit and delete: own only, moderators may delete, deleted text never returns', async () => {
     const msg = (await send(mia, channel, 'mine')).json.message.id;
     expect((await vic.request('PATCH', `/site-api/messages/${msg}`, {body: 'hax'})).status).toBe(404);

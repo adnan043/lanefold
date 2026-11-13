@@ -107,13 +107,46 @@ describe('filterCommands', () => {
   });
 });
 
+/**
+ * `color-mix(in oklab, <hex> N%, white)` as the browser computes it (CSS Color 4: mix in OKLab, then sRGB,
+ * rounded), so tokens built from the accent can be checked like plain hex ones.
+ */
+function mixWithWhite(hex: string, pct: number): string {
+  const toLin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const toSrgb = (c: number) => {
+    const v = Math.min(1, Math.max(0, c));
+    return v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055;
+  };
+  const oklab = (h: string) => {
+    const [r, g, b] = [1, 3, 5].map(i => toLin(parseInt(h.slice(i, i + 2), 16) / 255)) as [number, number, number];
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+  };
+  const a = oklab(hex);
+  const w = oklab('#ffffff');
+  const [L, A, B] = a.map((v, i) => (pct / 100) * v + (1 - pct / 100) * w[i]!) as [number, number, number];
+  const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
+  const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
+  const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
+  const rgb = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+  return `#${rgb.map(c => Math.round(toSrgb(c) * 255).toString(16).padStart(2, '0')).join('')}`;
+}
+/** The light `--control-border` mix: `color-mix(in oklab, var(--accent) N%, white)` → N. */
+const CONTROL_BORDER_MIX = Number(/--control-border:\s*color-mix\(in oklab, var\(--accent\) (\d+)%, white\)/.exec(readFileSync('src/styles/global.css', 'utf8'))?.[1] ?? NaN);
+
 describe('colour tokens (global.css)', () => {
   const css = readFileSync('src/styles/global.css', 'utf8');
   const block = (start: string) => {
     const i = css.indexOf(start);
     return css.slice(i, css.indexOf('}', i));
   };
-  const token = (b: string, name: string) => new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`).exec(b)![1]!;
+  const token = (b: string, name: string): string => {
+    // An accent tint (the light --control-border) is computed from this block's --accent.
+    if (name === '--control-border' && new RegExp(`${name}:\\s*color-mix`).test(b)) return mixWithWhite(token(b, '--accent'), CONTROL_BORDER_MIX);
+    return new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`).exec(b)![1]!;
+  };
   const sets = {
     light: {block: block(':root {'), surfaces: ['--bg', '--surface', '--card', '--hover', '--line']},
     dark: {block: block(":root[data-theme='dark'] {"), surfaces: ['--bg', '--surface', '--card', '--hover']},
@@ -162,6 +195,14 @@ describe('accent presets and high contrast (src/app/settings/accents.css)', () =
   const light = surfacesOf(':root', ['bg', 'surface', 'card', 'hover']);
   const dark = surfacesOf(":root[data-theme='dark']", ['bg', 'surface', 'card', 'hover']);
   const accents = [...css.matchAll(/^:root\[data-accent='(\w+)'\] \{/gm)].map(m => m[1]!);
+
+  it('the light field border (an accent tint) is 3:1 on every surface, for every preset', () => {
+    expect(CONTROL_BORDER_MIX).toBeGreaterThan(0);
+    for (const name of accents) {
+      const border = mixWithWhite(hexOf(block(`:root[data-accent='${name}']`), 'accent'), CONTROL_BORDER_MIX);
+      for (const s of light) expect(contrastRatio(border, s), `${name} ${border} on ${s}`).toBeGreaterThanOrEqual(3);
+    }
+  });
 
   it('has the presets the picker offers', () => {
     expect(accents.sort()).toEqual(['blue', 'green', 'indigo', 'orange', 'purple', 'rose', 'slate', 'teal']);

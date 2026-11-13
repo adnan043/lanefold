@@ -18,7 +18,7 @@ import {sha256Hex} from './public-board';
  *   POST   /boards/:id/share   create, or rotate when one exists: returns {url} ONCE (the server keeps only SHA-256)
  *   DELETE /boards/:id/share   revoke: clears the hash, visibility back to `workspace`
  *
- * Guards: validator-free (no body), withViewer, requireAuth, requirePermission('site:board:share'), withDb, then the
+ * Guards: validator-free (no body), withViewer, requireAuth, requirePermission('board:share'), withDb, then the
  * board access (workspace membership IN the query: another workspace is a 404) and board admin (403).
  * Writes also refuse a read-only workspace, an archived board, an Inbox and a private board (making a private board
  * public would widen who sees it, and the old visibility is not stored to restore it).

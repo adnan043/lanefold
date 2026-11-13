@@ -3,7 +3,7 @@
 Board automations. Routes live in `src/server/routes/flows.ts`, mounted at `/` (so `/site-api/boards/:id/flows`). Engine: `src/server/flows/`. Daily job: `src/server/jobs/flows.ts`.
 
 ## Access
-- Permission `site:board:flows` (ability `manageFlows`, roles member + admin) AND board admin. Reads are board-admin only too.
+- Permission `board:flows` (ability `manageFlows`, roles member + admin) AND board admin. Reads are board-admin only too.
 - Not your board / no such flow: **404**. Board member below admin: **403**. Archived board, Inbox board or read-only workspace on writes: **409** (`board_archived`, `inbox_board`, `workspace_read_only`).
 - Plan: `features.flows` must be on (`403 plan_feature`, text says to upgrade) and the workspace holds up to `limits.maxFlows` flows (`409 limit_reached`). A board holds up to **30** flows. Creating, editing or turning a flow ON needs the plan feature; deleting and turning OFF always work.
 - All writes are audited (`flow.create|update|delete`). Responses are `Cache-Control: private, no-store`.

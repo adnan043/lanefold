@@ -23,7 +23,7 @@
   --muted: #4a5360;
   --subtle: #5b6573;
   --control-h: 40px; /* ONE height for every input, select and picker; 44px under a coarse pointer (a11y.css) */
-  --control-border: color-mix(in oklab, var(--accent) 40%, white); /* light mode: an accent tint, never grey or black */
+  --control-border: color-mix(in oklab, var(--accent) 78%, white); /* light mode: an accent tint, never grey or black; 78% keeps it 3:1 on every surface for every accent (tests/contrast.test.ts) */
   --control-border-hover: var(--accent); /* hover: the full accent colour, every field */
   --line: #e4e7ec;
   --line-strong: #d0d5dd;

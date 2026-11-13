@@ -59,6 +59,8 @@ const MAX_LIST = 200;
 const MAX_CANDIDATES = 20;
 const MAX_PENDING = 50;
 const INVITE_DAYS = 14;
+/** Address checks (POST /boards/:id/invites) one person may make per hour, across all boards. */
+const LOOKUPS_PER_HOUR = 30;
 const LINK_OPS_PER_HOUR = 20;
 
 const roleOf = (value: unknown): BoardRole | null =>
@@ -385,6 +387,22 @@ export const boardMemberRoutes = new Hono()
     const {email, role} = c.req.valid('json');
     const {workspaceId} = ctx.access;
     if (!ctx.access.canAdmin && role === 'admin') return c.json(FORBIDDEN().body, 403);
+
+    // The answer below says whether an address belongs to someone of this workspace ('added'/'already' vs an
+    // invite), so every check is counted per inviter BEFORE the lookup: guessing addresses is slow and audited.
+    // Bounded read on @@index([actorUserId, action, id desc]).
+    const lookups = await db.auditEvent.findMany({
+      where: {actorUserId: me, action: 'board.invite.lookup', createdAt: {gt: new Date(Date.now() - 3600_000)}},
+      orderBy: {id: 'desc'},
+      take: LOOKUPS_PER_HOUR,
+      select: {id: true},
+    });
+    if (lookups.length >= LOOKUPS_PER_HOUR) {
+      c.header('Retry-After', '3600');
+      return c.json(problem('rate_limited', 'Too many invites. Try again in an hour.'), 429);
+    }
+    // Targeted at the inviter, not the board: it stays out of the workspace audit log (one row per check).
+    await audit(db, {actorUserId: me, action: 'board.invite.lookup', target: ['user', me], meta: {boardId: ctx.boardId}});
 
     // Someone of this workspace already: seated at once (their workspace role still caps the seat), no email.
     // ONE read: the address's active account, its role in this workspace and its seat on the board.
