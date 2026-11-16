@@ -33,6 +33,16 @@ export async function softLimited(userId: number, name: string, max: number, win
   return false;
 }
 
+/** softLimited() for `n` calls at once: how many of them fit (0..n), counted with ONE cache read and ONE write. */
+export async function softTake(userId: number, name: string, max: number, windowSec: number, n: number): Promise<number> {
+  if (n <= 0) return 0;
+  const k = key(userId, name, windowSec);
+  const used = (await cache.get<number>(k)) ?? 0;
+  const take = Math.max(0, Math.min(n, max - used));
+  if (take > 0) await cache.set(k, used + take, Math.max(60, windowSec));
+  return take;
+}
+
 /**
  * The same soft limit for callers who are not signed in, keyed by their address (Cloudflare's `cf-connecting-ip`),
  * hashed with the site secret so the raw address is never a cache key. Same LIMITATION as above: a cost guard only.

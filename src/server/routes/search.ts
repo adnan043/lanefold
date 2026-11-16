@@ -40,6 +40,11 @@ function searchLimit(userId: number) {
 }
 const SEARCH_SIDE = 8;
 const MIN_QUERY = 2;
+/**
+ * Trigram indexes (pg_trgm) only help a pattern of 3+ characters. A 2-character search matches titles only: the
+ * descriptions (up to 10k characters each) would be read for every card of the workspace on each keystroke.
+ */
+const MIN_DESCRIPTION_QUERY = 3;
 const MAX_QUERY = 80;
 const MY_DAY_CAP = 200;
 const INBOX_PAGE = 50;
@@ -195,7 +200,7 @@ export const searchRoutes = new Hono()
           AND (b.inbox_of IS NULL OR b.inbox_of = ${userId})
           AND (${seesAll}::boolean OR b.visibility <> 'private' OR b.inbox_of = ${userId}
                OR EXISTS (SELECT 1 FROM board_members bm WHERE bm.board_id = b.id AND bm.user_id = ${userId}))
-          AND (c.title ILIKE ${pattern} OR c.description_md ILIKE ${pattern})
+          AND (c.title ILIKE ${pattern} OR (${q.length >= MIN_DESCRIPTION_QUERY}::boolean AND c.description_md ILIKE ${pattern}))
         ORDER BY c.id DESC
         LIMIT ${SEARCH_CARDS + 1}`,
       firstPage && !short

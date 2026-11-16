@@ -315,7 +315,7 @@ export function useBoardActions(boardId: number) {
     /** Lane menu: every open card to the end of another lane. Rejects (lane full, lane gone) so the dialog can say why. */
     const moveLaneCards = async (laneId: number, toLaneId: number): Promise<number> => {
       const res = await tracked(() => call<{moved: number}>('POST', `/lanes/${laneId}/move-cards`, {toLaneId}));
-      await syncBoardNow(queryClient, boardId);
+      void syncBoardNow(queryClient, boardId);
       return res.moved;
     };
 
@@ -334,18 +334,19 @@ export function useBoardActions(boardId: number) {
 
     /**
      * Bulk bar: ONE action on the selected cards, all or nothing. Not optimistic: the changed cards come in as a
-     * delta right after (`syncBoardNow`), not a full reload. Rejects so the bar can say why. The answer carries `undo` (the server's exact inverse steps) when there is one.
+     * delta right after (`syncBoardNow`, not awaited: it waits for any other write in flight, up to 10 s a try, and the
+     * bar must not spin that long once the server has answered), not a full reload. Rejects so the bar can say why. The answer carries `undo` (the server's exact inverse steps) when there is one.
      */
     const bulkCards = async (cardIds: number[], action: BulkAction): Promise<BulkAnswer> => {
       const res = await tracked(() => call<BulkAnswer>('POST', `/boards/${boardId}/cards/bulk`, {cardIds, ...action}));
-      await syncBoardNow(queryClient, boardId);
+      void syncBoardNow(queryClient, boardId);
       return res;
     };
 
     /** Take a bulk action back: the server's inverse steps one after the other; a card changed since is skipped. Never rejects. */
     const undoBulk = async (steps: readonly BulkUndoStep[]) => {
       const result = await runUndoSteps(steps, step => tracked(() => call<BulkAnswer>('POST', `/boards/${boardId}/cards/bulk`, step)));
-      await syncBoardNow(queryClient, boardId);
+      void syncBoardNow(queryClient, boardId);
       return result;
     };
 

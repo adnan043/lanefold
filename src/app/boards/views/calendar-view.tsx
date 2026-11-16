@@ -12,6 +12,9 @@ import {LoadMoreBar, useFirstPages} from './use-lanes-loaded';
 import {agendaDays, dropChangesDue, groupByDue, isInMonth, monthOf, monthWeeks, shiftMonth, weekdayOrder} from './view-logic';
 
 const MAX_CHIPS = 3;
+// Module constants, as in canvas.tsx: inline option objects rebuilt both sensors on every render (every sync delta).
+const MOUSE_SENSOR = {activationConstraint: {distance: 6}};
+const TOUCH_SENSOR = {activationConstraint: {delay: 220, tolerance: 8}};
 const SUNDAY = '2026-11-01'; // a known Sunday: weekday names come from Intl, in the user's language
 
 function CardChip({card, canDrag, onOpen}: {card: CardT; canDrag: boolean; onOpen: (card: CardT) => void}) {
@@ -77,7 +80,7 @@ export function CalendarView({data, actions, onOpenCard}: {data: BoardData; acti
   const {byDay, undated} = useMemo(() => groupByDue(data.lanes), [data.lanes]);
   const weeks = useMemo(() => monthWeeks(ym, firstDayOfWeek), [ym, firstDayOfWeek]);
   const agenda = useMemo(() => agendaDays(byDay, ym), [byDay, ym]);
-  const sensors = useSensors(useSensor(MouseSensor, {activationConstraint: {distance: 6}}), useSensor(TouchSensor, {activationConstraint: {delay: 220, tolerance: 8}}));
+  const sensors = useSensors(useSensor(MouseSensor, MOUSE_SENSOR), useSensor(TouchSensor, TOUCH_SENSOR));
 
   const fmt = (iso: string, options: Intl.DateTimeFormatOptions) => formatDate(`${iso}T00:00:00Z`, {...options, timeZone: 'UTC'});
   const monthLabel = fmt(`${String(ym.year).padStart(4, '0')}-${String(ym.month).padStart(2, '0')}-01`, {month: 'long', year: 'numeric'});

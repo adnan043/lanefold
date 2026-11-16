@@ -348,6 +348,9 @@ export const boardMemberRoutes = new Hono()
       return c.json(problem('workspace_admin', 'Workspace owners and admins already manage every board.'), 409);
     }
     if (a.guest || !a.selfJoin) return c.json(problem('join_disabled', 'Ask a board admin to add you.'), 403);
+    // Someone a board admin removed comes back only when an admin adds them again (as with the board's invite link).
+    const removed = await db.$queryRaw<{x: number}[]>`SELECT 1 AS x FROM board_removals WHERE board_id = ${ctx.boardId} AND user_id = ${me}`;
+    if (removed.length) return c.json(problem('join_disabled', 'Ask a board admin to add you.'), 403);
     const role: BoardRole = a.workspaceRole === 'viewer' ? 'viewer' : 'member';
     // The board must still allow it and the visitor still be a member/viewer: both inside the write.
     const n = await db.$executeRaw`
@@ -356,6 +359,7 @@ export const boardMemberRoutes = new Hono()
       FROM boards b JOIN workspace_members m ON m.workspace_id = b.workspace_id AND m.user_id = ${me} AND m.role IN ('member', 'viewer')
       WHERE b.id = ${ctx.boardId} AND b.workspace_id = ${a.workspaceId} AND b.self_join AND b.visibility <> 'private'
         AND b.archived_at IS NULL AND b.inbox_of IS NULL
+        AND NOT EXISTS (SELECT 1 FROM board_removals r WHERE r.board_id = b.id AND r.user_id = ${me})
       ON CONFLICT (board_id, user_id) DO NOTHING`;
     if (n > 0) {
       await Promise.all([

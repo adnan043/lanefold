@@ -7,7 +7,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 
 /** Every /fonts/ URL in i18n.css and the CSS it imports. */
 function fontUrls(): string[] {
-  // i18n-cjk.css is loaded on demand (zh/ja/ko only) by src/i18n/index.tsx, so it is listed here.
+  // i18n-cjk.css is linked on demand (zh/ja/ko only, as a ?url) by src/i18n/index.tsx, so it is listed here.
   const main = read('src/styles/i18n.css');
   const files = ['src/styles/i18n.css', 'src/styles/i18n-cjk.css'];
   for (const m of main.matchAll(/@import\s+'\.\/([^']+)'/g)) if (!files.includes(`src/styles/${m[1]}`)) files.push(`src/styles/${m[1]}`);

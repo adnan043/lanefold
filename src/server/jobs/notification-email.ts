@@ -64,7 +64,9 @@ export async function runNotificationEmails(db: PrismaClient, job: {attempt: num
       AND ((p.email_notify_mode = 'immediate' AND (p.email_notified_at IS NULL OR p.email_notified_at <= ${immediateCut}))
         OR (p.email_notify_mode = 'digest' AND (p.email_notified_at IS NULL OR p.email_notified_at <= ${digestCut})))
       AND EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = p.user_id AND n.read_at IS NULL AND n.id > p.email_notify_cursor AND n.kind = ANY(${kinds}::text[]))
-    ORDER BY p.user_id
+    -- Longest waiting first (never mailed, then the oldest last mail): by user_id alone, the same low ids took every
+    -- run's MAX_PER_RUN once more people were due, and people with high ids were never mailed.
+    ORDER BY p.email_notified_at ASC NULLS FIRST, p.user_id
     LIMIT ${MAX_PER_RUN}`;
   if (due.length === 0) return;
   const ids = due.map(d => d.user_id);

@@ -87,8 +87,14 @@ const boardsRoute = createRoute({
   path: '/boards',
   staticData: {title: 'nav.boards'},
   loader: async ({context: {queryClient}}) => {
-    const workspaces = await queryClient.ensureQueryData(workspacesQuery).catch(() => null);
-    const id = remembered() || workspaces?.[0]?.id;
+    // A remembered workspace: its boards load beside the workspace list, not after it (one round trip less on open).
+    const known = remembered();
+    const workspaces = queryClient.ensureQueryData(workspacesQuery).catch(() => null);
+    if (known) {
+      await Promise.all([workspaces, warm(queryClient.ensureInfiniteQueryData(boardsQuery(known)))]);
+      return;
+    }
+    const id = (await workspaces)?.[0]?.id;
     if (id) await warm(queryClient.ensureInfiniteQueryData(boardsQuery(id)));
   },
   component: lazyRouteComponent(() => import('./boards/board-list'), 'BoardList'),

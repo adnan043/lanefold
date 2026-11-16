@@ -75,6 +75,10 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
   const [editError, setEditError] = useState('');
   const [picker, setPicker] = useState(false);
   const [cardOpen, setCardOpen] = useState(false);
+  // The create-card dialog mounts on first use, never for every message: each copy subscribes to the board cache, so
+  // up to MAX_KEPT closed dialogs re-rendered on every card move. Kept mounted after that, so closing it returns focus.
+  const [cardUsed, setCardUsed] = useState(false);
+  if (cardOpen && !cardUsed) setCardUsed(true);
   const pickerButton = useRef<HTMLButtonElement>(null);
   const own = message.sender.id === me;
   const name = displayName(message.sender.name, t('chat.deletedUser'));
@@ -285,7 +289,7 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
           {menu.length > 0 && <Menu label={t('chat.moreActions')} items={menu} />}
         </div>
       )}
-      {cardTarget && (
+      {cardTarget && cardUsed && (
         <CreateCardDialog
           open={cardOpen}
           onClose={() => setCardOpen(false)}

@@ -5,12 +5,19 @@ import {useEffect, useMemo, useState} from 'react';
 import {useI18n, useT} from '../../i18n';
 import {CARD_TITLE_MAX, titleFromMessage} from '../../lib/card-from-message';
 import {Button, Field, LoadingBlock, Modal, Notice, Select, useToast} from '../../portal/ui';
-import {call} from '../api';
+import {type BoardData, call} from '../api';
 import {useWriteCooldown} from '../write-cooldown';
 import {boardQuery, boardsQuery} from '../queries';
 import {applyTemplate, type CardTemplate, expandTitle} from '../templates/templates';
 import {TemplatePicker} from '../templates/template-picker';
 import type {MessageT} from './api';
+
+type Picked = {board: Pick<BoardData['board'], 'id' | 'name' | 'canWrite' | 'archived'>; lanes: {id: number; name: string}[]};
+const NO_LANES: Picked['lanes'] = [];
+const pickBoard = (d: BoardData): Picked => ({
+  board: {id: d.board.id, name: d.board.name, canWrite: d.board.canWrite, archived: d.board.archived},
+  lanes: d.lanes.filter(l => !l.archived).map(l => ({id: l.id, name: l.name})),
+});
 
 type Created = {card: {id: number; boardId: number; laneId: number; title: string}; messageId: string};
 
@@ -60,8 +67,9 @@ export function CreateCardDialog({
     if (open && boardId === null && list[0]) setBoardId(list[0].id);
   }, [open, boardId, list]);
 
-  const board = useQuery({...boardQuery(boardId ?? 0), enabled: open && boardId !== null, staleTime: 0});
-  const lanes = useMemo(() => (board.data?.lanes ?? []).filter(l => !l.archived), [board.data]);
+  // Only what the dialog shows (structurally shared): a card move on that board no longer re-renders it.
+  const board = useQuery({...boardQuery(boardId ?? 0), enabled: open && boardId !== null, select: pickBoard});
+  const lanes = board.data?.lanes ?? NO_LANES;
   // The select and the submitted board are the same state: a board that is not in the first page (more than
   // one page, or archived) is added to the options, never silently swapped for the first one.
   const boardOptions = useMemo(() => {

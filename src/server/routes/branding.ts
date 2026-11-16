@@ -3,6 +3,7 @@ import {validator} from 'hono/validator';
 
 import {audit} from '../../platform/auth';
 import {getDb} from '../../platform/db';
+import {scoped} from '../../platform/request-scope';
 import {requireAuth, requirePermission, withDb, withViewer} from '../../platform/guards';
 import {normalizeHex} from '../../portal/ui/contrast';
 import {brandCss} from '../../lib/brand';
@@ -18,18 +19,21 @@ import {invalid, objectOf} from '../validation';
  *                             personal, never reads the visitor: shared caching is fine.
  *                             `?v=<version of the sheet>` (`brandCssHref`, pages rendered on request): cached a year,
  *                             immutable, so the page's first paint never waits on it after the first visit; a saved
- *                             colour is a new `v`. Without `v` (prerendered pages, built once): revalidated on every
- *                             load (ETag), so a change still shows at once there.
+ *                             colour is a new `v`. Without `v` (prerendered pages, built once): fresh for 60 s, then
+ *                             served stale while it revalidates (ETag), so a change shows there within about a minute
+ *                             and a full load never waits on the Worker for it.
  * `site:branding:manage` (/dashboard Branding):
  *   GET /site-api/branding    {brandColor}
  *   PUT /site-api/branding    {brandColor: '#rrggbb' | null}  null = back to the default green
  */
 
 /**
- * The unversioned brand.css is revalidated on every page load (`no-cache` + an ETag of the sheet), so a saved colour
- * shows at once everywhere; an unchanged one costs a bodiless 304. The versioned one never changes: a year, immutable.
+ * The unversioned brand.css is fresh for 60 s, then served stale while the browser revalidates it in the background
+ * (ETag: an unchanged sheet costs a bodiless 304). It blocks rendering, so `no-cache` made every full load of a
+ * prerendered page wait on a Worker trip; a saved colour now shows there within about a minute.
+ * The versioned one never changes: a year, immutable.
  */
-const CSS_CACHE = 'public, no-cache';
+const CSS_CACHE = 'public, max-age=60, stale-while-revalidate=86400';
 const CSS_CACHE_VERSIONED = 'public, max-age=31536000, immutable';
 export const BRAND_CSS_PATH = '/site-api/brand.css';
 
@@ -49,7 +53,12 @@ export function brandVersion(css: string): string {
  * page: its link would be frozen at build time (those link `BRAND_CSS_PATH`, revalidated). Falls back to that same
  * plain link when the settings cannot be read.
  */
-export async function brandCssHref(): Promise<string> {
+export function brandCssHref(): Promise<string> {
+  // Once per request: `pageContext` starts it beside its own reads, so the layout's `await` finds it done.
+  return scoped('brandHref', brandCssHrefNow);
+}
+
+async function brandCssHrefNow(): Promise<string> {
   const db = getDb();
   if (!db) return BRAND_CSS_PATH;
   try {

@@ -71,8 +71,8 @@ describe.skipIf(!DATABASE_URL)('branding (integration, real Postgres)', () => {
     expect(css.headers.get('content-type')).toContain('text/css');
     expect(css.headers.get('cache-control')).toContain('public');
     expect(css.json.text).toContain('--accent: #1d4ed8;');
-    // Revalidated on every load: the same colour is a bodiless 304, a new colour a new ETag (instant everywhere).
-    expect(css.headers.get('cache-control')).toContain('no-cache');
+    // Fresh a minute, then revalidated in the background: the same colour is a bodiless 304, a new colour a new ETag.
+    expect(css.headers.get('cache-control')).toBe('public, max-age=60, stale-while-revalidate=86400');
     const etag = css.headers.get('etag')!;
     expect((await member.request('GET', '/site-api/brand.css', undefined, {'If-None-Match': etag})).status).toBe(304);
     await owner.request('PUT', '/site-api/branding', {brandColor: '#be123c'});
@@ -84,7 +84,7 @@ describe.skipIf(!DATABASE_URL)('branding (integration, real Postgres)', () => {
     expect(versioned.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     expect(versioned.json.text).toContain('--accent: #be123c;');
     const stale = await member.get('/site-api/brand.css?v=old');
-    expect(stale.headers.get('cache-control')).toContain('no-cache');
+    expect(stale.headers.get('cache-control')).toContain('max-age=60,');
     expect(stale.json.text).toContain('--accent: #be123c;');
 
     expect((await owner.request('PUT', '/site-api/branding', {brandColor: null})).json).toEqual({brandColor: null});
