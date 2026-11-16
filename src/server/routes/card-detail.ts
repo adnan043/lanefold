@@ -17,7 +17,7 @@ import {isEmoji} from './chat';
 import {HEX_RE, idOf, intField, invalid, likeEscape, objectOf, textField, type FieldError} from '../validation';
 import {afterResponse, type WithExecutionCtx} from '../after-response';
 import {cardWithAccess, workspaceReadOnly} from '../board-access-via';
-import {softLimited} from '../soft-limit';
+import {softLimited, softTake} from '../soft-limit';
 
 /**
  * Phase 2: everything inside a card. Mounted ONCE at `/` in `app.ts`.
@@ -951,9 +951,9 @@ export const cardDetailRoutes = new Hono()
     if (dueAt && dueRemindMinutes != null) {
       const url = c.req.url;
       await afterResponse(c, 'item reminder jobs', async () => {
-        const send = [];
-        for (const i of out.items) if (!(await reminderJobsSpent(userId))) send.push(scheduleItemReminder(url, i.id, i.dueAt, i.dueRemindMinutes));
-        await Promise.all(send);
+        // One limiter read and write for the whole batch (was one get + set per item, one after another).
+        const allowed = await softTake(userId, 'reminder-jobs', REMINDER_JOBS_PER_HOUR, 3600, out.items.length);
+        await Promise.all(out.items.slice(0, allowed).map(i => scheduleItemReminder(url, i.id, i.dueAt, i.dueRemindMinutes)));
       });
     }
     return c.json({...out, items: out.items.map(i => itemShape(i, names))}, 201);
@@ -1330,8 +1330,12 @@ export const cardDetailRoutes = new Hono()
     if (!row || !row.fileId || !row.ready || row.cardId === null) return notFound(c, 'file');
     const ctx = await viaCard(db, userId, row.cardId, row.workspaceId, 'read');
     if (refused(ctx)) return send(c, ctx);
-    const link = await fileUrl(c.req.url, row.fileId, {expiresIn: 300, download: c.req.query('download') === '1' || !INLINE_TYPES.has(row.contentType)});
+    const download = c.req.query('download') === '1' || !INLINE_TYPES.has(row.contentType);
+    const link = await fileUrl(c.req.url, row.fileId, {expiresIn: 300, download});
     if (!link.ok) return c.json(problem(link.code, link.message), 400);
+    // Shown inline (card covers: one per card on every board render): this browser may reuse the redirect for a minute,
+    // as with the board background. The link lasts 5; someone who loses access stops seeing the file within minutes.
+    if (!download) c.header('Cache-Control', 'private, max-age=60');
     return c.redirect(link.data.url, 302);
   })
 

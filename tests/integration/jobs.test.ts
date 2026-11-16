@@ -21,6 +21,35 @@ describe.skipIf(!DATABASE_URL)('scheduled sweeps (integration, real Postgres)', 
     expect(await cleanupOld(db, null)).toEqual(a);
   });
 
+  it('deletes notifications nobody opened after the unread retention, and keeps the rest', async () => {
+    await resetDatabase();
+    const user = await db.user.create({data: {email: 'reader@example.com', passwordHash: 'x', name: 'Reader'}, select: {id: true}});
+    const ws = await db.workspace.create({data: {name: 'w', slug: 'w', plan: 'free', memberLimit: 5, createdBy: null}, select: {id: true}});
+    const day = 86_400_000;
+    const now = Date.now();
+    const at = (daysAgo: number) => new Date(now - daysAgo * day);
+    const row = (createdDaysAgo: number, readDaysAgo: number | null) =>
+      db.notification.create({
+        data: {userId: user.id, workspaceId: ws.id, kind: 'assigned', createdAt: at(createdDaysAgo), readAt: readDaysAgo === null ? null : at(readDaysAgo)},
+        select: {id: true},
+      });
+    // In id order, as time runs: ids grow with created_at.
+    const oldUnread = await row(400, null);
+    const oldReadLately = await row(300, 10);
+    const oldUnread2 = await row(200, null);
+    const youngUnread = await row(20, null);
+    const youngRead = await row(5, 1);
+
+    const result = await cleanupOld(db, {}, now);
+    expect(result.notifications).toBe(2);
+    const left = (await db.notification.findMany({select: {id: true}, orderBy: {id: 'asc'}})).map(n => n.id);
+    expect(left).toEqual([oldReadLately.id, youngUnread.id, youngRead.id]);
+    expect(left).not.toContain(oldUnread.id);
+    expect(left).not.toContain(oldUnread2.id);
+    // A second run finds nothing more.
+    expect((await cleanupOld(db, {}, now)).notifications).toBe(0);
+  });
+
   const sub = (id: string, status: 'active' | 'canceled', ref: string | null, accessEndsAt: string | null = null) => ({
     id,
     price: 'pro-monthly',

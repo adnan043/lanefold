@@ -209,6 +209,7 @@ export const boardExtraRoutes = new Hono()
     if (!boardId || !access) return notFound(c, 'board');
     const {workspaceId} = access;
     if (!access.canWrite || rankOf(access.workspaceRole) < 2) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
+    if (access.archived) return c.json(problem('board_archived', 'This board is archived.'), 409);
     const ent = await getEntitlements(db, workspaceId);
     if (ent?.readOnly) return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
     const recent = await db.board.findMany({

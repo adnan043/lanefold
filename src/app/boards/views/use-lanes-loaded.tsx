@@ -26,6 +26,8 @@ export function useFirstPages(lanes: LaneT[], actions: BoardActions) {
   const asked = useRef(new Set<number>());
   const {loadLane} = actions;
   useEffect(() => {
+    // A full board reload brings lanes back unloaded under the same ids: forget a lane once it has loaded, so it is asked again.
+    for (const lane of lanes) if (lane.loaded) asked.current.delete(lane.id);
     const wanted = lanes.filter(lane => !lane.loaded && !asked.current.has(lane.id)).map(lane => lane.id);
     if (wanted.length === 0) return;
     for (const id of wanted) asked.current.add(id);

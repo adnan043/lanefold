@@ -14,7 +14,9 @@ type J = Record<string, any>;
  * - parallel accepts cannot push guests past the plan's cap;
  * - only the uploader (or a board admin) renames an attachment;
  * - a member cannot fill the workspace's channel slots;
- * - the hourly board cap holds under a burst of parallel creates.
+ * - the hourly board cap holds under a burst of parallel creates;
+ * - a member a board admin removed cannot seat themselves again through self-join (2026-11-16, review 10);
+ * - an archived board cannot be duplicated (review 10).
  */
 describe.skipIf(!DATABASE_URL)('security check 2026-11 (integration, real Postgres)', () => {
   let ann: Browser; // owner of A
@@ -162,5 +164,25 @@ describe.skipIf(!DATABASE_URL)('security check 2026-11 (integration, real Postgr
     const created = await db.board.count({where: {workspaceId: wsA, createdBy: (await db.user.findUniqueOrThrow({where: {email: 'ann@example.test'}})).id, inboxOf: null}});
     expect(created).toBeLessThanOrEqual(20);
     expect(made.filter(r => r.status === 429).length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('a member a board admin removed cannot self-join back; an admin re-add lifts it', async () => {
+    expect((await ann.request('PATCH', `/site-api/boards/${board}/sharing`, {selfJoin: true})).status).toBe(200);
+    expect((await ben.post(`/site-api/boards/${board}/join`, {})).json.joined).toBe(true);
+    expect((await ann.delete(`/site-api/boards/${board}/members/${benId}`)).status).toBe(200);
+    const again = await ben.post(`/site-api/boards/${board}/join`, {});
+    expect(again.status).toBe(403);
+    expect(await db.boardMember.count({where: {boardId: board, userId: benId}})).toBe(0);
+    // Leaving on your own does not bar you.
+    expect((await ann.request('PUT', `/site-api/boards/${board}/members/${benId}`, {role: 'member'})).status).toBe(200);
+    expect((await ben.delete(`/site-api/boards/${board}/members/${benId}`)).status).toBe(200);
+    expect((await ben.post(`/site-api/boards/${board}/join`, {})).json.joined).toBe(true);
+  });
+
+  it('an archived board cannot be duplicated', async () => {
+    expect((await ann.request('PATCH', `/site-api/boards/${board}`, {archived: true})).status).toBe(200);
+    const dup = await ann.post(`/site-api/boards/${board}/duplicate`, {});
+    expect(dup.status).toBe(409);
+    expect((dup.json as J).error).toBe('board_archived');
   });
 });

@@ -106,7 +106,8 @@ export const boardWorkloadRoutes = new Hono().get('/boards/:id/workload', todayQ
              (count(*) FILTER (WHERE oc.due_date >= ${today}::date AND oc.due_date <= ${today}::date + 7))::int AS soon,
              COALESCE(sum(oc.estimate_minutes), 0)::int AS est
       FROM busiest bz
-      JOIN card_members cm ON cm.user_id = bz.user_id
+      -- workspace_id: index (user_id, workspace_id, card_id) reads only this workspace's assignments, not every one the person has.
+      JOIN card_members cm ON cm.user_id = bz.user_id AND cm.workspace_id = ${workspaceId}
       JOIN oc ON oc.id = cm.card_id
       JOIN users u ON u.id = bz.user_id
       GROUP BY cm.user_id, u.name, oc.lane_id

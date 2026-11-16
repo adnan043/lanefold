@@ -57,6 +57,8 @@ describe.skipIf(!DATABASE_URL)('search, my day and inbox (integration, real Post
     expect((await search(ann, '%%')).json.cards).toHaveLength(0);
     expect((await search(ann, '__')).json.cards).toHaveLength(0);
     expect((await search(ann, 'a')).json.cards).toHaveLength(0); // under two characters: nothing
+    expect((await search(ann, 'bu')).json.cards).toHaveLength(0); // two characters: titles only, never descriptions
+    expect((await search(ann, 'Al')).json.cards).toHaveLength(1);
   });
 
   it("another workspace's user gets 404", async () => {

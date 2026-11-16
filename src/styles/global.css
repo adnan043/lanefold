@@ -430,8 +430,13 @@ hr {
   --brand-size: 72px;
 }
 
+/* The admin's logo comes from the platform as a URL only (no stored dimensions), so its width is unknown until it loads.
+   A square box is reserved up front: a square logo moves nothing, a wider one shifts the header by only its extra width
+   (before: the whole logo width, the name and the nav jumping right). */
 .brand-logo[class*='brand-size-'] {
   height: var(--brand-size);
+  min-width: var(--brand-size);
+  object-position: left center;
 }
 
 .brand-monogram[class*='brand-size-'] {

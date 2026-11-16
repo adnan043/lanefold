@@ -44,14 +44,16 @@
 }
 
 :root {
-  --font-bn: 'LF Noto Bengali', 'Noto Sans Bengali', 'Nirmala UI', 'Kalpurush', var(--font-sans);
-  --font-hi: 'LF Noto Devanagari', 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', var(--font-sans);
-  --font-ar: 'LF Noto Arabic', 'Noto Sans Arabic', 'Segoe UI', Tahoma, var(--font-sans);
-  --font-ur: 'LF Noto Nastaliq', 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'LF Noto Arabic', 'Noto Sans Arabic', 'Segoe UI', Tahoma, var(--font-sans);
-  --font-th: 'LF Noto Thai', 'Noto Sans Thai', 'Leelawadee UI', 'Tahoma', var(--font-sans);
-  --font-zh: 'LF Noto SC', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', var(--font-sans);
-  --font-ja: 'LF Noto JP', 'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans CJK JP', var(--font-sans);
-  --font-ko: 'LF Noto KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', var(--font-sans);
+  /* System families first: a device that has one (macOS, Windows, most phones) never downloads the self-hosted Noto
+     subset; `LF Noto *` is the fallback for devices without one (it used to come first and was fetched everywhere). */
+  --font-bn: 'Noto Sans Bengali', 'Nirmala UI', 'Kalpurush', 'LF Noto Bengali', var(--font-sans);
+  --font-hi: 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', 'LF Noto Devanagari', var(--font-sans);
+  --font-ar: 'Noto Sans Arabic', 'Segoe UI', Tahoma, 'LF Noto Arabic', var(--font-sans);
+  --font-ur: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'LF Noto Nastaliq', 'Noto Sans Arabic', 'Segoe UI', Tahoma, 'LF Noto Arabic', var(--font-sans);
+  --font-th: 'Noto Sans Thai', 'Leelawadee UI', 'Tahoma', 'LF Noto Thai', var(--font-sans);
+  --font-zh: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'LF Noto SC', var(--font-sans);
+  --font-ja: 'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans CJK JP', 'LF Noto JP', var(--font-sans);
+  --font-ko: 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', 'LF Noto KR', var(--font-sans);
 }
 
 html.lang-bn { --font-sans: var(--font-bn); }

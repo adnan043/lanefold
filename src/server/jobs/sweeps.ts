@@ -94,11 +94,12 @@ export async function sweepGrace(db: PrismaClient): Promise<{checked: number}> {
   return {checked};
 }
 
-/** Daily: delete old expired/used invites, expired/revoked join links and old read notifications and abandoned uploads, in bounded batches. */
+/** Daily: delete old expired/used invites, expired/revoked join links, old read and very old unread notifications and abandoned uploads, in bounded batches. */
 export async function cleanupOld(db: PrismaClient, data: unknown, now = Date.now()): Promise<{invites: number; joinLinks: number; notifications: number; uploads: number}> {
   const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
   const inviteBefore = cutoff(now, keepDays(d.inviteDays, DEFAULT_RETENTION.inviteDays));
   const notifBefore = cutoff(now, keepDays(d.notificationDays, DEFAULT_RETENTION.notificationDays));
+  const unreadBefore = cutoff(now, keepDays(d.unreadNotificationDays, DEFAULT_RETENTION.unreadNotificationDays));
   let invites = 0;
   let joinLinks = 0;
   let notifications = 0;
@@ -140,6 +141,27 @@ export async function cleanupOld(db: PrismaClient, data: unknown, now = Date.now
         ORDER BY read_at LIMIT ${DELETE_BATCH})
       DELETE FROM notifications WHERE id IN (SELECT id FROM batch) RETURNING id`;
     notifications += rows.length;
+    if (rows.length < DELETE_BATCH) break;
+  }
+
+  // Very old UNREAD rows (never opened). No index on created_at: ids grow with time, so find the first row young enough
+  // to keep (a primary-key walk past only the rows this sweep deletes), then delete below that id in batches, oldest
+  // first. Bounded like the read rows; what is left goes on the next run.
+  const [keep] = await db.$queryRaw<{id: bigint}[]>`
+    SELECT id FROM notifications WHERE created_at >= ${unreadBefore} ORDER BY id LIMIT 1`;
+  // A plain `id < $1` (no `$1 IS NULL OR …`): a generic plan would not use the primary-key range through an OR.
+  const below = keep ? Prisma.sql`AND id < ${keep.id}` : Prisma.empty;
+  // `after`: each batch resumes past the last id deleted, never re-walks from the oldest row (or its dead index entries).
+  let after = 0n;
+  for (let i = 0; i < MAX_DELETE_BATCHES; i++) {
+    const rows = await db.$queryRaw<{id: bigint}[]>`
+      WITH batch AS (
+        SELECT id FROM notifications
+        WHERE id > ${after} AND read_at IS NULL AND created_at < ${unreadBefore} ${below}
+        ORDER BY id LIMIT ${DELETE_BATCH})
+      DELETE FROM notifications WHERE id IN (SELECT id FROM batch) RETURNING id`;
+    notifications += rows.length;
+    for (const row of rows) if (row.id > after) after = row.id;
     if (rows.length < DELETE_BATCH) break;
   }
 

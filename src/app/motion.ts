@@ -28,8 +28,15 @@ function gapOf(el: HTMLElement, axis: 'block' | 'inline'): number {
  */
 export function leave(el: Element | null | undefined, axis: 'block' | 'inline' = 'block'): Promise<void> {
   if (!(el instanceof HTMLElement) || reduced() || !el.isConnected) return Promise.resolve();
-  const size = axis === 'block' ? el.offsetHeight : el.offsetWidth;
-  const gap = gapOf(el, axis);
+  return leaveMeasured(el, axis, measure(el, axis));
+}
+
+type Measured = {size: number; gap: number};
+
+const measure = (el: HTMLElement, axis: 'block' | 'inline'): Measured => ({size: axis === 'block' ? el.offsetHeight : el.offsetWidth, gap: gapOf(el, axis)});
+
+/** The writes of `leave`, from sizes read before: no layout read here, so many can start after one layout. */
+function leaveMeasured(el: HTMLElement, axis: 'block' | 'inline', {size, gap}: Measured): Promise<void> {
   const from: Keyframe =
     axis === 'block'
       ? {opacity: 1, transform: 'scale(1)', height: `${size}px`, marginBlockEnd: '0px'}
@@ -65,8 +72,12 @@ export function leave(el: Element | null | undefined, axis: 'block' | 'inline' =
 
 /** `leave` for every element matching `selector` inside `root`, together. */
 export function leaveAll(root: ParentNode | null | undefined, selector: string, axis: 'block' | 'inline' = 'block'): Promise<void> {
-  if (!root) return Promise.resolve();
-  return Promise.all([...root.querySelectorAll(selector)].map(el => leave(el, axis))).then(() => undefined);
+  if (!root || reduced()) return Promise.resolve();
+  // Every size is read first, then every animation starts. Read-write per element (as `leave` does) forced a layout
+  // per card: "archive all" on a lane of 300 cards froze the page for about a second.
+  const els = [...root.querySelectorAll(selector)].filter((el): el is HTMLElement => el instanceof HTMLElement && el.isConnected);
+  const sizes = els.map(el => measure(el, axis));
+  return Promise.all(els.map((el, i) => leaveMeasured(el, axis, sizes[i]!))).then(() => undefined);
 }
 
 /** Keys (`card-12`, `lane-3`) that should grow in the next time they mount. Short-lived: cleared on mount. */

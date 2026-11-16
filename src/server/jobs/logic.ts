@@ -8,7 +8,9 @@ export const MAX_PAGES = 40;
 export const DELETE_BATCH = 500;
 export const MAX_DELETE_BATCHES = 20;
 
-export const DEFAULT_RETENTION = {inviteDays: 30, notificationDays: 90} as const;
+/** `unreadNotificationDays`: a notification nobody opened is kept twice as long as a read one, then goes too (else the
+ * rows of someone who never opens the bell grow forever, and their badge and the list read more of them each time). */
+export const DEFAULT_RETENTION = {inviteDays: 30, notificationDays: 90, unreadNotificationDays: 180} as const;
 
 /** A paid membership has ended: it no longer opens access (cancelled and `accessEndsAt` passed, or none). */
 export const membershipEnded = (status: string, accessEndsAt: Date | string | null, now = Date.now()): boolean =>

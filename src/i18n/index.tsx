@@ -7,6 +7,19 @@ import {browserTimezone, type FormatContext, formatDate, formatDateTime, formatN
 import {DEFAULT_LOCALE, dirOf, isLocale, langClass, LOCALES, type LocaleCode} from './locales';
 import {LOCALE_COOKIE, readLocaleCookie, resolveLocale} from './resolve';
 
+// The zh/ja/ko font slices (~84 KB gzip of @font-face rules) as a URL, linked only when one of those languages is active.
+// Not `import('…css')`: the build hoists CSS reached from an island into the page's own <link>s, so every app load paid it.
+import cjkFontsHref from '../styles/i18n-cjk.css?url';
+
+function loadCjkFonts() {
+  if (typeof document === 'undefined' || document.getElementById('lf-cjk-fonts')) return;
+  const link = document.createElement('link');
+  link.id = 'lf-cjk-fonts';
+  link.rel = 'stylesheet';
+  link.href = cjkFontsHref;
+  document.head.append(link);
+}
+
 export * from './core';
 export * from './errors';
 export * from './format';
@@ -100,7 +113,7 @@ export function I18nProvider({settings, children}: {settings: UserLocaleSettings
 
   useEffect(() => {
     applyDocumentLocale(locale);
-    if (locale === 'zh' || locale === 'ja' || locale === 'ko') void import('../styles/i18n-cjk.css').catch(() => undefined);
+    if (locale === 'zh' || locale === 'ja' || locale === 'ko') loadCjkFonts();
     if (catalogs[locale]) return;
     let live = true;
     void loadCatalog(locale)

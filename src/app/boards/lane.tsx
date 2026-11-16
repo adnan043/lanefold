@@ -183,18 +183,43 @@ export const LaneColumn = memo(function LaneColumn({
       onLoadMore(lane);
       return;
     }
-    const root = node.closest('.lf-lanes');
-    const io = new IntersectionObserver(
+    // Near on BOTH axes: sideways in its row's scroller (about one lane ahead on either side, so the next lane is
+    // usually ready before it is seen) and, in the swimlane view, the row itself near the rows' vertical scroller.
+    // One observer rooted at the row's scroller ignores the vertical: every row would load all its lanes at once.
+    const row = node.closest('.lf-lanes');
+    const rows = node.closest('.lf-swim');
+    let sideways = false;
+    let vertical = rows === null;
+    const fire = () => {
+      if (!sideways || !vertical) return;
+      across.disconnect();
+      down?.disconnect();
+      onLoadMore(lane);
+    };
+    const across = new IntersectionObserver(
       entries => {
-        if (!entries.some(e => e.isIntersecting)) return;
-        io.disconnect();
-        onLoadMore(lane);
+        sideways = entries.some(e => e.isIntersecting);
+        fire();
       },
-      // About one lane ahead on either side, so the next lane is usually ready before it is seen.
-      {root, rootMargin: '0px 400px'}
+      {root: row, rootMargin: '0px 400px'}
     );
-    io.observe(node);
-    return () => io.disconnect();
+    // Watches the row's scroller, not the lane: the lane is clipped sideways by that scroller.
+    const down =
+      rows && row
+        ? new IntersectionObserver(
+            entries => {
+              vertical = entries.some(e => e.isIntersecting);
+              fire();
+            },
+            {root: rows, rootMargin: '300px 0px'}
+          )
+        : null;
+    across.observe(node);
+    if (down && row) down.observe(row);
+    return () => {
+      across.disconnect();
+      down?.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, laneId]);
 

@@ -75,10 +75,15 @@ export const workspaceAuditRoutes = new Hono().get(
           WHERE e.target_type = 'workspace' AND e.target_id = ${ws} ${older}
           ORDER BY e.id DESC LIMIT ${take})
         UNION ALL
+        -- LATERAL: the newest page per board from (target_type, target_id, id), then merged. A plain JOIN walked ALL of
+        -- audit_events newest first (every tenant) until it found this workspace's boards (measured 12 ms -> 1 ms).
         (SELECT e.id, e.actor_user_id, e.action, e.target_type, e.meta, e.created_at, b.name::text AS label
            FROM boards b
-           JOIN audit_events e ON e.target_type = 'board' AND e.target_id = b.id::text
-          WHERE b.workspace_id = ${workspaceId} AND b.inbox_of IS NULL ${older}
+           CROSS JOIN LATERAL (
+             SELECT e.id, e.actor_user_id, e.action, e.target_type, e.meta, e.created_at FROM audit_events e
+              WHERE e.target_type = 'board' AND e.target_id = b.id::text ${older}
+              ORDER BY e.id DESC LIMIT ${take}) e
+          WHERE b.workspace_id = ${workspaceId} AND b.inbox_of IS NULL
           ORDER BY e.id DESC LIMIT ${take})
         UNION ALL
         (SELECT e.id, e.actor_user_id, e.action, e.target_type, e.meta, e.created_at, COALESCE(f.name, cv.name)::text AS label
