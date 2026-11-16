@@ -237,7 +237,7 @@ export function Attachments({detail, actions, intake}: {detail: DetailT; actions
         onSelect: () => void run(`a-${a.id}`, () => actions.setCover(a.isCover ? null : a.id)),
       });
     }
-    if (canWrite) items.push({label: t('cd.rename'), icon: 'pencil', onSelect: () => setRenaming(a)});
+    if (canWrite && (a.mine || canAdmin)) items.push({label: t('cd.rename'), icon: 'pencil', onSelect: () => setRenaming(a)});
     if (canWrite && (a.mine || canAdmin)) {
       items.push('separator', {
         label: t('cd.remove'),

@@ -150,25 +150,44 @@ export const chatExtraRoutes = new Hono()
     const messageId = BigInt(raw);
     const {laneId, title: given} = c.req.valid('json');
 
-    const msg = await db.message.findFirst({
-      where: {id: messageId},
-      select: {id: true, bodyMd: true, deletedAt: true, kind: true, conversationId: true, _count: {select: {cardRefs: true}}},
-    });
+    // Two round trips of reads. First the message (with its conversation's kind, name and board) and the lane, side by
+    // side; nothing of either is used until the access checks below have passed.
+    const [msg, laneRow] = await Promise.all([
+      db.message.findFirst({
+        where: {id: messageId},
+        select: {
+          id: true,
+          bodyMd: true,
+          deletedAt: true,
+          kind: true,
+          conversationId: true,
+          _count: {select: {cardRefs: true}},
+          conversation: {select: {workspaceId: true, kind: true, name: true, boardId: true}},
+        },
+      }),
+      db.lane.findFirst({where: {id: laneId, archivedAt: null}, select: {id: true, boardId: true, workspaceId: true}}),
+    ]);
     if (!msg) return notFound(c, 'message');
-    const a = await conversationAccess(db, msg.conversationId, me);
+    const conv = msg.conversation;
+    // Then, together: my access to the conversation (its board chat's access check runs alongside), my access to the
+    // lane's board, the plan, and the board chat's name for the description.
+    const [a, laneAccess, ent, sourceBoard] = await Promise.all([
+      conversationAccess(db, msg.conversationId, me, conv.kind === 'board' && conv.boardId ? conv.boardId : undefined),
+      laneRow && laneRow.workspaceId === conv.workspaceId ? boardAccess(db, laneRow.boardId, me) : null,
+      getEntitlements(db, conv.workspaceId),
+      conv.kind === 'board' && conv.boardId
+        ? db.board.findFirst({where: {id: conv.boardId, workspaceId: conv.workspaceId}, select: {name: true, visibility: true}})
+        : null,
+    ]);
     if (!a || msg.deletedAt || msg.kind !== 'user') return notFound(c, 'message');
 
     // The lane must be in the conversation's workspace; the board's own access decides the rest.
-    const lane = await db.lane.findFirst({
-      where: {id: laneId, workspaceId: a.workspaceId, archivedAt: null},
-      select: {id: true, boardId: true},
-    });
+    const lane = laneRow && laneRow.workspaceId === a.workspaceId ? laneRow : null;
     if (!lane) return notFound(c, 'lane');
-    const access = await boardAccess(db, lane.boardId, me);
+    const access = laneAccess;
     if (!access || access.workspaceId !== a.workspaceId) return notFound(c, 'lane');
     if (!access.canWrite) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
     if (access.archived) return c.json(problem('board_archived', 'This board is archived.'), 409);
-    const ent = await getEntitlements(db, a.workspaceId);
     if (ent?.readOnly) return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
     if (msg._count.cardRefs >= MAX_CARD_REFS) return c.json(problem('too_many_cards', `A message links up to ${MAX_CARD_REFS} cards.`), 409);
 
@@ -176,10 +195,9 @@ export const chatExtraRoutes = new Hono()
     // A private board chat's name is only written when the card lands on that same board; else a generic label.
     let source = 'a direct message';
     if (a.kind === 'channel') {
-      const conv = await db.conversation.findFirst({where: {id: a.conversationId, workspaceId: a.workspaceId}, select: {name: true}});
-      source = `#${conv?.name ?? 'channel'}`; // channels are open to the whole workspace
+      source = `#${conv.name ?? 'channel'}`; // channels are open to the whole workspace
     } else if (a.kind === 'board' && a.boardId) {
-      const b = await db.board.findFirst({where: {id: a.boardId, workspaceId: a.workspaceId}, select: {name: true, visibility: true}});
+      const b = sourceBoard;
       source = b && (a.boardId === lane.boardId || b.visibility !== 'private') ? `#${b.name}` : 'a board chat';
     } else if (a.kind === 'group') source = 'a group chat';
 

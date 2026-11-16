@@ -4,9 +4,9 @@ import {validator} from 'hono/validator';
 import {audit} from '../../platform/auth';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {isStaleDays, type StaleDays} from '../../lib/stale';
-import {getEntitlements} from '../entitlements';
+import {accessSelect, boardAccessGated, resolveAccess, workspaceReadOnly} from '../board-access-via';
 import {idOf, invalid, objectOf} from '../validation';
-import {boardAccess, notFound} from '../workspaces';
+import {boardReachable, notFound} from '../workspaces';
 import {noStore} from './boards';
 
 /**
@@ -32,14 +32,14 @@ const staleBody = validator('json', (value, c) => {
 export const boardStaleRoutes = new Hono()
   .get('/boards/:id/stale-days', withViewer, requireAuth, withDb, noStore, async c => {
     const boardId = idOf(c.req.param('id'));
-    const access = boardId ? await boardAccess(c.var.db, boardId, c.var.viewer.id!) : null;
-    if (!boardId || !access) return notFound(c, 'board');
+    const userId = c.var.viewer.id!;
+    // ONE query: boardAccess()'s columns and rules (board-access-via.ts) plus the setting.
+    const row = boardId
+      ? await c.var.db.board.findFirst({where: {id: boardId, ...boardReachable(userId)}, select: {...accessSelect(userId), staleDays: true}})
+      : null;
+    const access = row ? resolveAccess(row, userId) : null;
+    if (!boardId || !row || !access) return notFound(c, 'board');
     if (!access.canAdmin) return forbidden(c);
-    const row = await c.var.db.board.findFirst({
-      where: {id: boardId, workspaceId: access.workspaceId},
-      select: {staleDays: true},
-    });
-    if (!row) return notFound(c, 'board');
     return c.json({staleDays: isStaleDays(row.staleDays) ? row.staleDays : null});
   })
 
@@ -47,12 +47,12 @@ export const boardStaleRoutes = new Hono()
     const db = c.var.db;
     const userId = c.var.viewer.id!;
     const boardId = idOf(c.req.param('id'));
-    const access = boardId ? await boardAccess(db, boardId, userId) : null;
-    if (!boardId || !access) return notFound(c, 'board');
+    const gated = boardId ? await boardAccessGated(db, boardId, userId) : null;
+    if (!boardId || !gated) return notFound(c, 'board');
+    const {access} = gated;
     if (!access.canAdmin) return forbidden(c);
     if (access.archived) return c.json(problem('board_archived', 'This board is archived.'), 409);
-    const ent = await getEntitlements(db, access.workspaceId);
-    if (ent?.readOnly) return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
+    if (await workspaceReadOnly(db, access.workspaceId, gated.graceUntil)) return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
     const {staleDays} = c.req.valid('json');
     const {count} = await db.board.updateMany({
       where: {id: boardId, workspaceId: access.workspaceId, archivedAt: null, inboxOf: null},

@@ -2,6 +2,7 @@ import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 
 import {app} from '../../src/server/app';
 import {invalidateAppSettings} from '../../src/server/entitlements';
+import {brandVersion} from '../../src/server/routes/branding';
 import {type Browser, configureEnv, DATABASE_URL, db, ownerSignedIn, resetDatabase, signedIn, userId} from './support/harness';
 
 /** The brand colour (/dashboard Branding): owners only, validated, audited, served to everyone as brand.css. */
@@ -78,6 +79,13 @@ describe.skipIf(!DATABASE_URL)('branding (integration, real Postgres)', () => {
     const changed = await member.request('GET', '/site-api/brand.css', undefined, {'If-None-Match': etag});
     expect(changed.status).toBe(200);
     expect(changed.json.text).toContain('--accent: #be123c;');
+    // Pages rendered on request link `?v=<version of the sheet>`: that one is kept a year; an old `v` is not.
+    const versioned = await member.get(`/site-api/brand.css?v=${brandVersion(changed.json.text)}`);
+    expect(versioned.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(versioned.json.text).toContain('--accent: #be123c;');
+    const stale = await member.get('/site-api/brand.css?v=old');
+    expect(stale.headers.get('cache-control')).toContain('no-cache');
+    expect(stale.json.text).toContain('--accent: #be123c;');
 
     expect((await owner.request('PUT', '/site-api/branding', {brandColor: null})).json).toEqual({brandColor: null});
     expect((await member.get('/site-api/brand.css')).json.text ?? '').toBe('');

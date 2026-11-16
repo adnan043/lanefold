@@ -439,6 +439,8 @@
   "errors.unauthorized": "Vuelve a iniciar sesión.",
   "errors.token_expired": "Tu sesión terminó. Vuelve a iniciar sesión.",
   "errors.forbidden": "No tienes permiso para hacer eso.",
+  "errors.email_unverified": "Confirma primero tu dirección de correo y vuelve a intentarlo. Aún puedes compartir tú mismo el enlace de invitación.",
+  "errors.seat_restricted": "Un administrador del tablero fijó tu acceso aquí. Pídele que lo cambie.",
   "errors.not_found": "Eso ya no existe. Puede que se haya eliminado. Vuelve atrás e inténtalo de nuevo.",
   "errors.validation": "Revisa los campos resaltados e inténtalo de nuevo.",
   "errors.rate_limited": "Vas un poco rápido. Espera un momento e inténtalo de nuevo.",

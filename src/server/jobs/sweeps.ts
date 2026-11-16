@@ -1,5 +1,6 @@
 import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {audit} from '../../platform/auth';
+import {config} from '../../platform/config';
 import {forgetEntitlements, startGraceForWorkspaces} from '../entitlements';
 import {cutoff, DEFAULT_RETENTION, DELETE_BATCH, keepDays, MAX_DELETE_BATCHES, MAX_PAGES, nextCursor, PAGE_SIZE} from './logic';
 
@@ -25,7 +26,9 @@ export async function sweepEndedMemberships(db: PrismaClient): Promise<{moved: n
         AND NOT EXISTS (
           SELECT 1 FROM memberships m
           WHERE m.workspace_id = w.id AND m.price_key = p.price_key_monthly
-            AND (m.status IN ('active', 'trialing', 'past_due') OR m.access_ends_at > now()))
+            AND (m.status IN ('active', 'trialing', 'past_due') OR m.access_ends_at > now())
+            -- On the live site only live payments keep a paid plan (payments-hooks.ts modeGrants).
+            AND (${!config.production}::boolean OR m.mode = 'live'))
       ORDER BY w.id LIMIT ${PAGE_SIZE}`;
     if (rows.length) {
       // ONE statement for the page. Conditional on the plan we read: a repeat or a concurrent upgrade changes nothing.

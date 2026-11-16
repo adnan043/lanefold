@@ -128,29 +128,38 @@ export const notificationRoutes = new Hono()
     async (c) => {
       const { db, viewer } = c.var;
       const { before, workspaceId, unread } = c.req.valid("query");
-      const mine = await db.workspaceMember.findMany({
-        where: { userId: viewer.id!, workspace: { archivedAt: null } },
-        select: { workspaceId: true },
-        take: 200,
-      });
-      const ids = mine.map((m) => m.workspaceId);
-      const scope = workspaceId ? ids.filter((id) => id === workspaceId) : ids;
-      if (scope.length === 0) return c.json({ items: [], nextBefore: null });
-      // Bounded scan: at most SCAN candidate rows (newest first, owner + workspace + keyset in the index), each checked
-      // for visibility; rows whose board or chat the visitor lost are skipped, never scanned without limit.
-      const candidates = await db.$queryRaw<(Row & { visible: boolean })[]>`
+      // ONE query. Only workspaces I am a member of (and not archived) are in scope; at most SCAN candidate rows
+      // (newest first, owner + keyset in the index), each checked for visibility; rows whose board or chat the visitor
+      // lost are skipped, never scanned without limit. The actor's name and a digest row's numbers come in the same read.
+      const candidates = await db.$queryRaw<
+        (Row & {
+          visible: boolean;
+          actor_name: string | null;
+          due_count: number | null;
+          overdue_count: number | null;
+          mention_count: number | null;
+        })[]
+      >`
         SELECT n.id, n.workspace_id, n.kind, n.actor_id, n.board_id, n.card_id, n.conversation_id, n.read_at, n.created_at,
-          (${visibleSql(viewer.id!)}) AS visible
+          (${visibleSql(viewer.id!)}) AS visible,
+          u.name AS actor_name, d.due_count, d.overdue_count, d.mention_count
         FROM (
-          SELECT * FROM notifications
-          WHERE user_id = ${viewer.id!} AND workspace_id IN (${Prisma.join(scope)})
-            ${unread ? Prisma.sql`AND read_at IS NULL` : Prisma.empty}
-            ${before ? Prisma.sql`AND id < ${before}` : Prisma.empty}
-          ORDER BY id DESC
+          SELECT * FROM notifications x
+          WHERE x.user_id = ${viewer.id!}
+            ${workspaceId ? Prisma.sql`AND x.workspace_id = ${workspaceId}` : Prisma.empty}
+            AND EXISTS (
+              SELECT 1 FROM workspace_members wm JOIN workspaces w ON w.id = wm.workspace_id AND w.archived_at IS NULL
+              WHERE wm.workspace_id = x.workspace_id AND wm.user_id = ${viewer.id!})
+            ${unread ? Prisma.sql`AND x.read_at IS NULL` : Prisma.empty}
+            ${before ? Prisma.sql`AND x.id < ${before}` : Prisma.empty}
+          ORDER BY x.id DESC
           LIMIT ${SCAN}
         ) n
+        LEFT JOIN users u ON u.id = n.actor_id
+        LEFT JOIN digests d ON n.kind = 'digest' AND d.notification_id = n.id AND d.user_id = ${viewer.id!}
         ORDER BY n.id DESC`;
-      const page: Row[] = [];
+      type Candidate = (typeof candidates)[number];
+      const page: Candidate[] = [];
       let lastSeen: bigint | null = null;
       let stoppedEarly = false;
       for (const r of candidates) {
@@ -163,37 +172,14 @@ export const notificationRoutes = new Hono()
       }
       // More to fetch when the scan was cut by the page size or by the SCAN bound (the next call continues after the last row looked at).
       const hasMore = stoppedEarly || candidates.length === SCAN;
-      const actorIds = [
-        ...new Set(
-          page.map((r) => r.actor_id).filter((id): id is number => id !== null),
-        ),
-      ];
-      const actors = actorIds.length
-        ? await db.user.findMany({
-            where: { id: { in: actorIds } },
-            select: { id: true, name: true },
-            take: PAGE,
-          })
-        : [];
-      const names = new Map(actors.map((a) => [a.id, a.name]));
-      // The morning digest rows carry their numbers (counts and card ids, never titles or names): one read for the page.
-      const digestIds = page.filter((r) => r.kind === "digest").map((r) => r.id);
-      const digests = digestIds.length
-        ? await db.digest.findMany({
-            where: { notificationId: { in: digestIds }, userId: viewer.id! },
-            select: { notificationId: true, dueCount: true, overdueCount: true, mentionCount: true },
-            take: PAGE,
-          })
-        : [];
-      const digestOf = new Map(digests.map((d) => [d.notificationId, d]));
       return c.json({
         items: page.map((r) => ({
           digest:
-            r.kind === "digest" && digestOf.has(r.id)
+            r.kind === "digest" && r.due_count !== null
               ? {
-                  due: digestOf.get(r.id)!.dueCount,
-                  overdue: digestOf.get(r.id)!.overdueCount,
-                  mentions: digestOf.get(r.id)!.mentionCount,
+                  due: r.due_count,
+                  overdue: r.overdue_count!,
+                  mentions: r.mention_count!,
                 }
               : null,
           id: String(r.id),
@@ -202,7 +188,7 @@ export const notificationRoutes = new Hono()
           actor:
             r.actor_id === null
               ? null
-              : { id: r.actor_id, name: names.get(r.actor_id) ?? null },
+              : { id: r.actor_id, name: r.actor_name ?? null },
           boardId: r.board_id,
           // A card is only meaningful with its board.
           cardId: r.board_id === null ? null : r.card_id,
@@ -275,17 +261,19 @@ export const notificationRoutes = new Hono()
         return c.json(problem("not_found", "No such notification."), 404);
       const { db, viewer } = c.var;
       // Owner IN the where: someone else's notification is a 404. Already read stays read (readAt keeps its first value).
-      const found = await db.notification.findFirst({
-        where: { id, userId: viewer.id! },
-        select: { id: true, readAt: true },
+      // The usual case (unread) is ONE statement; only when nothing changed is it looked up (already read, or not theirs).
+      const { count } = await db.notification.updateMany({
+        where: { id, userId: viewer.id!, readAt: null },
+        data: { readAt: new Date() },
       });
-      if (!found)
-        return c.json(problem("not_found", "No such notification."), 404);
-      if (!found.readAt)
-        await db.notification.updateMany({
-          where: { id, userId: viewer.id!, readAt: null },
-          data: { readAt: new Date() },
+      if (count === 0) {
+        const found = await db.notification.findFirst({
+          where: { id, userId: viewer.id! },
+          select: { id: true },
         });
+        if (!found)
+          return c.json(problem("not_found", "No such notification."), 404);
+      }
       return c.json({ id: String(id), read: true });
     },
   );

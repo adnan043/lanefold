@@ -36,6 +36,9 @@ datasource db {
 
 /// A person with an account on this site. `email` is stored trimmed and
 /// lower-cased. Only the user and holders of `site:user:read` ever see it.
+// NOTE: the trigram index `users_name_trgm_idx` (GIN, gin_trgm_ops) exists ONLY in SQL (migration
+// 20261103100000_search_trigram; search reads it). If a later `--create-only` migration drops it, delete that line before
+// applying (docs/agent/database.md › Indexes).
 model User {
   id              Int       @id @default(autoincrement())
   email           String    @unique @db.VarChar(254)
@@ -286,6 +289,10 @@ model RecoveryCode {
   @@map("recovery_codes")
 }
 
+// NOTE: the partial expression index `audit_events_meta_workspace_id_idx` ((meta->>'workspaceId'), id DESC)
+// WHERE target_type IN ('conversation', 'message', 'flow') exists ONLY in SQL (migration
+// 20261116120100_audit_events_workspace_meta_idx; the workspace audit log reads it). If a later `--create-only`
+// migration drops it, delete that line before applying (docs/agent/database.md › Indexes).
 model AuditEvent {
   id          BigInt   @id @default(autoincrement())
   actorUserId Int?     @map("actor_user_id")
@@ -573,6 +580,10 @@ model WorkspaceJoinLink {
   @@map("workspace_join_links")
 }
 
+// NOTE: these exist ONLY in SQL; if a later `--create-only` migration drops one, delete that line before applying
+// (docs/agent/database.md › Indexes):
+//  - `boards_inbox_of_key` UNIQUE (inbox_of) WHERE inbox_of IS NOT NULL (20261102120928_lanefold_mvp: one Inbox per person),
+//  - `boards_name_trgm_idx` GIN (name gin_trgm_ops) (20261103100000_search_trigram: search).
 model Board {
   id             Int       @id @default(autoincrement())
   workspaceId    Int       @map("workspace_id")
@@ -621,6 +632,7 @@ model Board {
   boardMembers BoardMember[]
   boardStars   BoardStar[]
   invites      WorkspaceInvite[]
+  removals     BoardRemoval[]
 
   @@index([workspaceId, archivedAt, id])
   @@index([inboxOf, workspaceId])
@@ -644,6 +656,20 @@ model BoardMember {
   /// The guest count of a workspace (seats of people who are not workspace members).
   @@index([workspaceId, userId])
   @@map("board_members")
+}
+
+/// Someone a board admin removed from a board: the board's invite link, or an email invite made before the removal,
+/// cannot seat them again (board-seats.ts acceptSeat). Deleted when a later invite seats them again.
+model BoardRemoval {
+  boardId   Int      @map("board_id")
+  userId    Int      @map("user_id")
+  removedAt DateTime @default(now()) @map("removed_at") @db.Timestamptz(3)
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@id([boardId, userId])
+  @@index([userId])
+  @@map("board_removals")
 }
 
 model BoardStar {
@@ -703,6 +729,12 @@ model LanePref {
   @@map("lane_prefs")
 }
 
+// NOTE: these exist ONLY in SQL; if a later `--create-only` migration drops one, delete that line before applying
+// (docs/agent/database.md › Indexes):
+//  - `cards_board_id_lane_id_position_id_open_idx` (board_id, lane_id, position, id) WHERE archived_at IS NULL
+//    (20261102124901_cards_board_open_idx: the board load and the public board walk it),
+//  - `cards_board_id_archived_id_idx` (board_id, id DESC) WHERE archived_at IS NOT NULL (20261103053243_query_plan_indexes),
+//  - `cards_title_trgm_idx`, `cards_description_md_trgm_idx` GIN (gin_trgm_ops) (20261103100000_search_trigram: search).
 model Card {
   id              Int       @id @default(autoincrement())
   boardId         Int       @map("board_id")
@@ -1309,6 +1341,9 @@ model Flow {
   config      Json      @db.JsonB
   /// Scheduled flows only: the UTC day the daily job last ran this flow (its claim, so a retry never runs it twice).
   lastRunOn   DateTime? @map("last_run_on") @db.Date
+  /// Scheduled flows only: the day's run stopped at its time budget after this card id; the next run that day
+  /// resumes from the card after it (null = nothing to resume: the day's run finished, or is running now).
+  resumeAfter Int?      @map("resume_after")
   createdBy   Int?      @map("created_by")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)

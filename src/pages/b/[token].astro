@@ -80,6 +80,9 @@ const viewer = {state: 'guest'} as never;
                   </li>
                 ))}
               </ul>
+              {lane.cardCount > lane.cards.length && (
+                <p class="muted">{lane.cardCount - lane.cards.length === 1 ? '1 more card' : `${lane.cardCount - lane.cards.length} more cards`} not shown here.</p>
+              )}
             </section>
           ))}
         </div>

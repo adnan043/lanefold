@@ -10,7 +10,7 @@ import {incomingSince, newestSeq} from './announce';
 import {Composer} from './composer';
 import {dayKey} from './mentions';
 import {MessageItem, PendingItem} from './message-item';
-import {type MessageFeed, useMessageFeed} from './use-message-feed';
+import {MAX_KEPT, type MessageFeed, useMessageFeed} from './use-message-feed';
 import './chat.css';
 
 const GROUP_MS = 5 * 60_000;
@@ -34,15 +34,19 @@ type ListProps = {
   announceIn?: string;
   /** Offers "Create card" on each message. */
   cardTarget?: {workspaceId: number; boardId: number | null};
+  /** Keep every loaded message (an open thread's parent must stay in the list). */
+  holdTrim?: boolean;
 };
 
 /** The scrolling list: oldest first, "Load older" on top, stays at the bottom for new messages unless the reader scrolled up. */
-function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply, onSeen, emptyTitle, emptyBody, announceIn, cardTarget}: ListProps) {
+function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply, onSeen, emptyTitle, emptyBody, announceIn, cardTarget, holdTrim}: ListProps) {
   const t = useT();
   const {errorMessage, formatDate} = useI18n();
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [unseen, setUnseen] = useState(0);
+  /** The reader is at the newest messages (state twin of `stick`, for the trim below). */
+  const [atBottom, setAtBottom] = useState(true);
   const lastCount = useRef(0);
   const anchor = useRef<{height: number} | null>(null);
   const total = feed.items.length + feed.pending.length;
@@ -76,6 +80,7 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
     const el = box.current;
     if (el) el.scrollTop = el.scrollHeight;
     stick.current = true;
+    setAtBottom(true);
     setUnseen(0);
   }, []);
 
@@ -102,6 +107,14 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
   useEffect(() => {
     if (feed.status === 'ready' && stick.current && !document.hidden) onSeen?.(feed.known);
   }, [feed.known, feed.status, onSeen]);
+
+  // A long session (or many "Load older") keeps at most MAX_KEPT rows: once the reader is back at the newest, the
+  // oldest are dropped and "Load older" fetches them again. Never while they read further up.
+  const {trim} = feed;
+  const tooMany = feed.items.length > MAX_KEPT;
+  useEffect(() => {
+    if (tooMany && atBottom && !holdTrim) trim();
+  }, [tooMany, atBottom, holdTrim, trim]);
   useEffect(() => {
     const wake = () => stick.current && !document.hidden && feed.status === 'ready' && onSeen?.(feed.known);
     document.addEventListener('visibilitychange', wake);
@@ -154,6 +167,7 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
           const el = event.currentTarget;
           const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
           stick.current = near;
+          setAtBottom(near);
           if (near) {
             setUnseen(0);
             if (!document.hidden) onSeen?.(feed.known);
@@ -241,11 +255,13 @@ function PinnedStrip({items}: {items: MessageT[]}) {
   );
 }
 
-function ThreadPanel({workspaceId, boardId, conversationId, parent, people, peopleList, me, canModerate, canWriteMain, onParentChange, onClose, onSent}: {
+function ThreadPanel({workspaceId, boardId, conversationId, parent, pulseSeq, people, peopleList, me, canModerate, canWriteMain, onParentChange, onClose, onSent}: {
   workspaceId: number;
   boardId: number | null;
   conversationId: number;
   parent: MessageT;
+  /** The conversation's `lastSeq` from the pulse: a reply moves it, so the thread fetches only when it moved. */
+  pulseSeq: number | undefined;
   people: ReadonlyMap<number, MemberT>;
   peopleList: readonly MemberT[];
   me: number | undefined;
@@ -256,7 +272,9 @@ function ThreadPanel({workspaceId, boardId, conversationId, parent, people, peop
   onSent: () => void;
 }) {
   const t = useT();
-  const feed = useMessageFeed({conversationId, parentId: parent.id, pollMs: 5000, me});
+  // No timer of its own: a reply moves the conversation's `lastSeq`, so the thread asks for new replies only when
+  // the pulse (already running for the open chat) moved; edits in the thread come with its 20 s window refresh.
+  const feed = useMessageFeed({conversationId, parentId: parent.id, pulseSeq, me});
   const cardTarget = useMemo(() => ({workspaceId, boardId}), [workspaceId, boardId]);
   return (
     <aside className="chat-thread" aria-label={t('chat.thread')}>
@@ -386,6 +404,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
             emptyBody={t('chat.emptyConversationBody')}
             announceIn={title}
             cardTarget={cardTarget}
+            holdTrim={thread !== null}
           />
           {feed.status === 'ready' &&
             (feed.canWrite ? (
@@ -401,6 +420,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
             boardId={conversation.boardId ?? null}
             conversationId={conversation.id}
             parent={parent}
+            pulseSeq={pulseSeq}
             people={byId}
             peopleList={peopleList}
             me={me}

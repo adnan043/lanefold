@@ -5,7 +5,7 @@ import {lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState} from 
 import {createPortal} from 'react-dom';
 
 import {useI18n, useT} from '../../i18n';
-import {Button, buttonClass, EmptyState, ErrorNote, Icon, IconButton, Notice, useConfirm, useOverlayHost, useToast} from '../../portal/ui';
+import {Button, buttonClass, EmptyState, ErrorNote, Icon, IconButton, LoadingBlock, Notice, useConfirm, useOverlayHost, useToast} from '../../portal/ui';
 import {ApiError, type CardT, type LaneT} from '../api';
 import {copyCardLink} from '../cards/card-link';
 import {leave, leaveAll} from '../motion';
@@ -20,31 +20,45 @@ import {BoardCanvas} from './canvas';
 import {BoardSkeleton, FailureBar} from './polish';
 import './polish.css';
 import './a11y.css';
-import {MoveCardDialog} from './move-card';
 import {BulkBarHost, SelectToggle} from './bulk-bar';
 import {createSelection, MAX_SELECTED, SelectionContext} from './selection';
 import {selectKeyCardId} from './bulk-run';
 import {letterOf} from '../shortcut-keys';
 import {storedShortcuts} from '../settings/prefs';
 import type {LaneHandlers} from './lane';
-import {EditLaneDialog} from './dialogs';
-import {BoardSettingsDrawer} from './board-settings';
 import {BoardPeople} from './board-people';
-import {JoinBoardButton, ShareBoardButton} from './share-board';
+import {JoinBoardButton, ShareBoardButton} from './share-board-header';
 import {useMe} from '../../portal/shared';
-import {CalendarView} from './views/calendar-view';
-import {DashboardView} from './views/dashboard';
-import {WorkloadView} from './views/workload';
 import {filterToPerson} from './views/workload-logic';
 import {useBoardView, ViewSwitcher} from './views/view-switcher';
 import './views/views.css';
 import './views/dashboard.css';
 import './trello.css';
-import {cardFilter, collectFacets, countMatches, isActive} from './filter-logic';
+import {cardFilter, collectFacets, countMatches, isActive, localISODate} from './filter-logic';
 import {FilterBar, useBoardFilter, useCollapseEmpty} from './filter-bar';
 import {RegionBoundary} from '../region-boundary';
+import {lazyWithRetry} from '../lazy';
 
 const BoardChat = lazy(() => import('../chat/board-chat').then(m => ({default: m.BoardChat})));
+// The other views load when picked (a view stored for this board loads with the screen, behind a skeleton).
+const CalendarView = lazy(() => import('./views/calendar-view').then(m => ({default: m.CalendarView})));
+const DashboardView = lazy(() => import('./views/dashboard').then(m => ({default: m.DashboardView})));
+const WorkloadView = lazy(() => import('./views/workload').then(m => ({default: m.WorkloadView})));
+// Dialogs and drawers: mounted on first open (then kept, so they animate closed and return focus), fetched when the
+// browser is idle after the board shows. A failed chunk never takes the board down (`lazy.ts`).
+const moveCardWidget = lazyWithRetry(() => import('./move-card').then(m => m.MoveCardDialog));
+const editLaneWidget = lazyWithRetry(() => import('./dialogs').then(m => m.EditLaneDialog));
+const settingsWidget = lazyWithRetry(() => import('./board-settings').then(m => m.BoardSettingsDrawer));
+const MoveCardDialog = moveCardWidget.Component;
+const EditLaneDialog = editLaneWidget.Component;
+const BoardSettingsDrawer = settingsWidget.Component;
+
+/** True from the first render where `flag` was true: a lazy dialog stays mounted once it has been opened. */
+function useOpenedOnce(flag: boolean) {
+  const opened = useRef(false);
+  if (flag) opened.current = true;
+  return opened.current;
+}
 
 /** The board's "Undo" bar: one action at a time, gone after 8 s. Announced politely, never a toast that steals focus. */
 function UndoBar({item, onDone}: {item: {label: string; undo: NonNullable<Undoable>} | null; onDone: () => void}) {
@@ -100,11 +114,18 @@ export function BoardScreen() {
   const [view, setView] = useBoardView(useMe().data?.viewer.id ?? null, boardId);
   const [filter, setFilter] = useBoardFilter(useMe().data?.viewer.id ?? null, boardId);
   const [collapseEmpty, setCollapseEmpty] = useCollapseEmpty(boardId);
-  // One shared predicate for the Board, Table and Calendar views ("now" is read when the filter changes or the board data does).
-  const matchFn = useMemo(() => (isActive(filter) ? cardFilter(filter, new Date()) : null), [filter, query.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // One shared predicate for the Board, Table and Calendar views. The filter only compares dates, so it is rebuilt when
+  // the filter or the day changes, never on a board update: a new predicate re-renders every lane and card.
+  const today = localISODate(new Date());
+  const matchFn = useMemo(() => (isActive(filter) ? cardFilter(filter, new Date()) : null), [filter, today]);
   const facets = useMemo(() => collectFacets(query.data?.lanes ?? []), [query.data?.lanes]);
   const counts = useMemo(() => (matchFn ? countMatches(query.data?.lanes ?? [], matchFn) : {shown: 0, total: 0}), [matchFn, query.data?.lanes]);
-  const filteredData = useMemo(() => (query.data && matchFn ? {...query.data, lanes: query.data.lanes.map(l => ({...l, cards: l.cards.filter(matchFn)}))} : query.data), [query.data, matchFn]);
+  // Only the Calendar and Dashboard read a filtered copy; the Board view passes `matchFn` down instead, so it never
+  // pays for copying every lane on each sync.
+  const filteredData = useMemo(
+    () => (view !== 'board' && query.data && matchFn ? {...query.data, lanes: query.data.lanes.map(l => ({...l, cards: l.cards.filter(matchFn)}))} : query.data),
+    [query.data, matchFn, view]
+  );
   // A write that failed never leaves an Undo bar behind.
   const failedToken = actions.failedToken;
   useEffect(() => {
@@ -205,9 +226,17 @@ export function BoardScreen() {
   const data = query.data;
 
   // Bulk select: one store per board (state only). `order` is the on-screen card order, for Shift-click ranges.
-  const order = useRef<number[]>([]);
-  const selection = useMemo(() => createSelection(() => order.current), [boardId]); // eslint-disable-line react-hooks/exhaustive-deps
-  order.current = (filteredData ?? data)?.lanes.flatMap(l => l.cards.map(c => c.id).filter(id => id > 0)) ?? [];
+  // Worked out only when a Shift-click asks (never on each render): the cards shown, in order.
+  const orderSource = useRef({data, matchFn});
+  orderSource.current = {data, matchFn};
+  const selection = useMemo(
+    () =>
+      createSelection(() => {
+        const {data: shown, matchFn: match} = orderSource.current;
+        return shown?.lanes.flatMap(l => l.cards.filter(c => c.id > 0 && (!match || match(c))).map(c => c.id)) ?? [];
+      }),
+    [boardId] // eslint-disable-line react-hooks/exhaustive-deps
+  );
   // A card that left the board (archived, moved, removed by someone else's sync) leaves the selection too.
   useEffect(() => {
     if (data) selection.prune(new Set(data.lanes.flatMap(l => l.cards.map(c => c.id))));
@@ -250,6 +279,26 @@ export function BoardScreen() {
     // A guest is not a member of the board's workspace: keep their own workspace as the current one.
     if (data && !data.board.guest) setCurrentId(data.board.workspaceId);
   }, [data?.board.workspaceId, setCurrentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The dialogs' code, once the board is on screen and the browser has nothing else to do.
+  const ready = !!data;
+  useEffect(() => {
+    if (!ready) return;
+    const preload = () => {
+      moveCardWidget.preload();
+      editLaneWidget.preload();
+      settingsWidget.preload();
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(preload, {timeout: 5000});
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = window.setTimeout(preload, 2000);
+    return () => window.clearTimeout(timer);
+  }, [ready]);
+  const moveOpened = useOpenedOnce(moveCard !== null);
+  const laneOpened = useOpenedOnce(editLane !== null);
+  const settingsOpened = useOpenedOnce(settings);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -358,6 +407,7 @@ export function BoardScreen() {
       )}
       {!board.canWrite && !board.archived && <Notice tone="info">{t('boards.readOnly')}</Notice>}
       <RegionBoundary region="board" key={view}>
+      <Suspense fallback={<LoadingBlock rows={6} />}>
       {view === 'calendar' ? (
         <CalendarView data={filteredData ?? data} actions={actions} onOpenCard={handlers.onEditCard} />
       ) : view === 'dashboard' ? (
@@ -374,6 +424,7 @@ export function BoardScreen() {
           collapseEmpty={collapseEmpty}
         />
       )}
+      </Suspense>
       </RegionBoundary>
       {chatOpen && (
         <Suspense fallback={null}>
@@ -387,9 +438,49 @@ export function BoardScreen() {
       <RegionBoundary region="card panel" key={openCardId ?? 'none'} onClose={() => void navigate({to: '/b/$boardId', params: {boardId: String(board.id)}})}>
         <Outlet />
       </RegionBoundary>
-      <MoveCardDialog card={moveCard} boardId={board.id} workspaceId={board.workspaceId} lanes={data.lanes} actions={actions} onUndoable={showUndo} onClose={() => setMoveCard(null)} />
-      <EditLaneDialog lane={editLane} actions={actions} onClose={() => setEditLane(null)} />
-      {board.canAdmin && <BoardSettingsDrawer board={board} lanes={data.lanes} actions={actions} open={settings} onClose={() => setSettings(false)} onArchive={archiveBoard} />}
+      {moveOpened && (
+        <MoveCardDialog
+          card={moveCard}
+          boardId={board.id}
+          workspaceId={board.workspaceId}
+          lanes={data.lanes}
+          actions={actions}
+          onUndoable={showUndo}
+          onClose={() => setMoveCard(null)}
+          active={moveCard !== null}
+          onLoadError={() => {
+            setMoveCard(null);
+            toast.danger(t('shell.loadFailed'));
+          }}
+        />
+      )}
+      {laneOpened && (
+        <EditLaneDialog
+          lane={editLane}
+          actions={actions}
+          onClose={() => setEditLane(null)}
+          active={editLane !== null}
+          onLoadError={() => {
+            setEditLane(null);
+            toast.danger(t('shell.loadFailed'));
+          }}
+        />
+      )}
+      {board.canAdmin && settingsOpened && (
+        <BoardSettingsDrawer
+          board={board}
+          lanes={data.lanes}
+          actions={actions}
+          open={settings}
+          onClose={() => setSettings(false)}
+          onArchive={archiveBoard}
+          active={settings}
+          onLoadError={() => {
+            setSettings(false);
+            toast.danger(t('shell.loadFailed'));
+          }}
+        />
+      )}
     </div>
     </SelectionContext.Provider>
   );

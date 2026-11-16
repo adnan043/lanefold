@@ -433,6 +433,8 @@
   "errors.unauthorized": "다시 로그인해 주세요.",
   "errors.token_expired": "세션이 종료되었습니다. 다시 로그인해 주세요.",
   "errors.forbidden": "이 작업을 수행할 권한이 없습니다.",
+  "errors.email_unverified": "먼저 이메일 주소를 확인한 뒤 다시 시도하세요. 초대 링크는 직접 공유할 수도 있습니다.",
+  "errors.seat_restricted": "보드 관리자가 이곳의 접근 권한을 정했습니다. 변경하려면 관리자에게 요청하세요.",
   "errors.not_found": "더 이상 존재하지 않습니다. 삭제되었을 수 있습니다. 돌아가서 다시 시도하세요.",
   "errors.validation": "강조된 항목을 확인하고 다시 시도하세요.",
   "errors.rate_limited": "너무 빠르게 요청하고 있습니다. 잠시 기다렸다가 다시 시도하세요.",

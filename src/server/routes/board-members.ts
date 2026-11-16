@@ -12,12 +12,13 @@ import {enqueueInviteEmails, sealInviteItem} from '../jobs/invite-email';
 import {mailConfigured} from '../mail/send';
 import {inviteLink, renderInviteEmail} from '../mail/templates';
 import {notify} from '../notifications';
-import {softHit, softLimited} from '../soft-limit';
+import {softLimited} from '../soft-limit';
 import {idOf, invalid, likeEscape, objectOf} from '../validation';
 import {guestRole, isWorkspaceRole, notFound, resolveBoardRole, type BoardAccess, type BoardRole} from '../workspaces';
 import {boardFor, bumpRev, noStore, refused} from './boards';
 import {createdRecently, emailLimited, inviteEmailHash, newToken} from './members';
 import {sha256Hex} from '../../platform/auth/encoding';
+import {linkOrigin} from '../site-origin';
 
 /**
  * Who is on a board ("Share" in the board header), like the board members of other kanban tools.
@@ -118,12 +119,19 @@ const isRefusal = (r: unknown): r is Refusal => typeof r === 'object' && r !== n
 const FORBIDDEN = () => refuse(403, 'forbidden', 'You do not have access to this.');
 
 /** The board, when the visitor may add people to it right now (404 / 403 / 409 otherwise). */
-async function inviteCtx(db: PrismaClient, userId: number, boardId: number | undefined): Promise<Refusal | {boardId: number; access: BoardAccess}> {
+async function inviteCtx(
+  db: PrismaClient,
+  userId: number,
+  boardId: number | undefined,
+  revoking = false
+): Promise<Refusal | {boardId: number; access: BoardAccess}> {
   const ctx = await boardFor(db, userId, boardId, 'read');
   if (refused(ctx)) return ctx as Refusal;
-  if (ctx.access.archived) return refuse(409, 'board_archived', 'This board is archived.');
   if (ctx.access.inbox) return refuse(409, 'inbox_board', 'A personal Inbox cannot be shared.');
   if (!canInvite(ctx.access)) return FORBIDDEN();
+  // Withdrawing an invite or a link only takes access away: allowed on an archived board and a read-only workspace.
+  if (revoking) return ctx;
+  if (ctx.access.archived) return refuse(409, 'board_archived', 'This board is archived.');
   const ent = await getEntitlements(db, ctx.access.workspaceId);
   if (ent?.readOnly) return refuse(409, 'workspace_read_only', 'This workspace is read-only until its plan limits are fixed.');
   return ctx;
@@ -138,7 +146,7 @@ async function personOn(db: PrismaClient, boardId: number, workspaceId: number, 
   return row ?? {wsRole: null, seat: null, active: null};
 }
 
-const linkUrl = (requestUrl: string, token: string) => inviteLink(config.siteUrl ?? new URL(requestUrl).origin, token);
+const linkUrl = (requestUrl: string, token: string) => inviteLink(linkOrigin(requestUrl), token);
 
 export const boardMemberRoutes = new Hono()
   .get('/boards/:id/members', withViewer, requireAuth, withDb, noStore, async c => {
@@ -266,6 +274,8 @@ export const boardMemberRoutes = new Hono()
     const {inserted, before} = written[0];
     if (inserted) {
       await Promise.all([
+        // A board admin seating someone again lifts an earlier removal (their link re-entry bar).
+        admin ? db.$executeRaw`DELETE FROM board_removals WHERE board_id = ${ctx.boardId} AND user_id = ${targetId}` : null,
         notify(db, [targetId], {workspaceId, kind: 'board_member', actorId: me, boardId: ctx.boardId}),
         db.activity.create({data: {workspaceId, boardId: ctx.boardId, actorId: me, kind: 'board.member_added', meta: {userId: targetId, role}}}),
         audit(db, {actorUserId: me, action: 'board.member.added', target: ['board', ctx.boardId], meta: {userId: targetId, role}}),
@@ -282,7 +292,8 @@ export const boardMemberRoutes = new Hono()
     const targetId = idOf(c.req.param('userId'));
     const self = targetId === me;
     // Leaving needs only to see the board (an archived one too); removing someone else needs board admin.
-    const ctx = await boardFor(db, me, idOf(c.req.param('id')), self ? 'read' : 'admin', true);
+    // Removing someone only takes access away: `revoke` works on a read-only workspace too.
+    const ctx = await boardFor(db, me, idOf(c.req.param('id')), self ? 'read' : 'revoke', true);
     if (refused(ctx)) return c.json(ctx.body, ctx.status);
     if (!targetId) return notFound(c, 'member');
     const {workspaceId} = ctx.access;
@@ -300,6 +311,12 @@ export const boardMemberRoutes = new Hono()
     const out = await db.$transaction(async tx => {
       const gone = await tx.boardMember.deleteMany({where: {boardId, userId: targetId, workspaceId}});
       if (gone.count === 0) return null;
+      // Removed by an admin (not leaving): the board's invite link, or an older invite, cannot seat them again.
+      if (!self) {
+        await tx.$executeRaw`
+          INSERT INTO board_removals (board_id, user_id, removed_at) VALUES (${boardId}, ${targetId}, clock_timestamp())
+          ON CONFLICT (board_id, user_id) DO UPDATE SET removed_at = EXCLUDED.removed_at`;
+      }
       // The board row is locked here (bumpRev), so the visibility read below is the one that stands until commit.
       await bumpRev(tx, boardId, workspaceId);
       const [row] = await tx.$queryRaw<{visibility: string; wsRole: string | null}[]>`
@@ -442,6 +459,10 @@ export const boardMemberRoutes = new Hono()
     }
 
     // Anyone else becomes a GUEST when they accept: an emailed invite bound to this address (only its keyed hash is kept).
+    // That sends an email from the site's own sender: only from an account whose address is confirmed (phishing, spam).
+    if (!c.var.viewer.emailVerified) {
+      return c.json(problem('email_unverified', 'Confirm your email address before sending invite emails.'), 403);
+    }
     // Independent checks, in parallel.
     const [capped, recent, mailed] = await Promise.all([guestCapReached(db, workspaceId), createdRecently(db, workspaceId), emailLimited(db, workspaceId, me)]);
     if (capped) {
@@ -503,7 +524,7 @@ export const boardMemberRoutes = new Hono()
   .delete('/boards/:id/invites/:inviteId', withViewer, requireAuth, withDb, noStore, async c => {
     const db = c.var.db;
     const me = c.var.viewer.id!;
-    const ctx = await inviteCtx(db, me, idOf(c.req.param('id')));
+    const ctx = await inviteCtx(db, me, idOf(c.req.param('id')), true);
     if (isRefusal(ctx)) return c.json(ctx.body, ctx.status);
     const inviteId = idOf(c.req.param('inviteId'));
     if (!inviteId) return notFound(c, 'invite');
@@ -535,7 +556,6 @@ export const boardMemberRoutes = new Hono()
     if (await softLimited(me, 'board-link', LINK_OPS_PER_HOUR, 3600)) {
       return c.json(problem('rate_limited', 'Too many link changes. Try again in an hour.'), 429);
     }
-    await softHit(me, 'board-link', 3600);
     const {role} = c.req.valid('json');
     const token = newToken('bl');
     // A board admin replaces any link; a member (when members may add people) only one they made, or a new one.
@@ -552,7 +572,7 @@ export const boardMemberRoutes = new Hono()
   .delete('/boards/:id/invite-link', withViewer, requireAuth, withDb, noStore, async c => {
     const db = c.var.db;
     const me = c.var.viewer.id!;
-    const ctx = await inviteCtx(db, me, idOf(c.req.param('id')));
+    const ctx = await inviteCtx(db, me, idOf(c.req.param('id')), true);
     if (isRefusal(ctx)) return c.json(ctx.body, ctx.status);
     // A board admin removes any link; a member only one they made.
     const n = await db.board.updateMany({

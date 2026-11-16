@@ -436,6 +436,8 @@
   "errors.unauthorized": "Tafadhali ingia tena.",
   "errors.token_expired": "Kipindi chako kimeisha. Tafadhali ingia tena.",
   "errors.forbidden": "Huna ruhusa ya kufanya hivyo.",
+  "errors.email_unverified": "Thibitisha anwani yako ya barua pepe kwanza, kisha ujaribu tena. Bado unaweza kushiriki kiungo cha mwaliko mwenyewe.",
+  "errors.seat_restricted": "Msimamizi wa ubao aliweka ufikiaji wako hapa. Mwombe aubadilishe.",
   "errors.not_found": "Hiki hakipo tena. Huenda kilifutwa. Rudi nyuma na ujaribu tena.",
   "errors.validation": "Angalia sehemu zilizoangaziwa na ujaribu tena.",
   "errors.rate_limited": "Unaenda haraka kidogo. Subiri kidogo na ujaribu tena.",

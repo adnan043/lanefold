@@ -168,23 +168,52 @@ export function applyChanges(data: BoardData, delta: Delta): BoardData {
   lanes = [...lanes].sort(byPosition);
   const before = lanes;
   // Cards that did not change keep their object, so a memoized card does not re-render.
+  // Where every card sits now (card id -> lane ids), built ONCE per delta: no scan of every lane per incoming card.
   const known = new Map<number, CardT>();
-  for (const lane of lanes) for (const c of lane.cards) known.set(c.id, c);
+  const where = new Map<number, Set<number>>();
+  const laneIndex = new Map<number, number>();
+  lanes.forEach((lane, i) => {
+    laneIndex.set(lane.id, i);
+    for (const c of lane.cards) {
+      known.set(c.id, c);
+      const at = where.get(c.id);
+      if (at) at.add(lane.id);
+      else where.set(c.id, new Set([lane.id]));
+    }
+  });
+  const next = lanes.slice();
+  // A lane's cards are copied once, on its first change; later changes in the same delta edit that copy.
+  const copied = new Set<number>();
+  const own = (i: number) => {
+    if (!copied.has(i)) {
+      next[i] = {...next[i]!, cards: next[i]!.cards.slice()};
+      copied.add(i);
+    }
+    return next[i]!;
+  };
   for (const incoming of delta.cards) {
     const old = known.get(incoming.id);
     const card = old && sameJson(old, incoming) ? old : incoming;
-    lanes = lanes.map(lane => (lane.cards.some(c => c.id === card.id) ? {...lane, cards: lane.cards.filter(c => c.id !== card.id)} : lane));
+    for (const laneId of where.get(card.id) ?? []) {
+      const lane = own(laneIndex.get(laneId)!);
+      lane.cards = lane.cards.filter(c => c.id !== card.id);
+    }
+    where.delete(card.id);
     if (card.archived) continue;
-    lanes = lanes.map(lane => {
-      if (lane.id !== card.laneId || !lane.loaded) return lane;
-      const last = lane.cards.at(-1);
-      if (lane.hasMore && last && byPosition(card, last) > 0) return lane;
-      return {...lane, cards: [...lane.cards, card].sort(byPosition)};
-    });
+    const i = laneIndex.get(card.laneId);
+    if (i === undefined || !next[i]!.loaded) continue;
+    const last = next[i]!.cards.at(-1);
+    if (next[i]!.hasMore && last && byPosition(card, last) > 0) continue;
+    const lane = own(i);
+    lane.cards.push(card);
+    lane.cards.sort(byPosition);
+    where.set(card.id, new Set([lane.id]));
   }
+  lanes = next;
   // A lane whose cards came out the same (same objects, same order) is the lane it was.
+  const beforeById = new Map(before.map(l => [l.id, l]));
   lanes = lanes.map(lane => {
-    const was = before.find(l => l.id === lane.id);
+    const was = beforeById.get(lane.id);
     return was && was !== lane && was.cards.length === lane.cards.length && was.cards.every((c, i) => c === lane.cards[i]) && sameJson({...was, cards: 0}, {...lane, cards: 0}) ? was : lane;
   });
   const b = delta.board;

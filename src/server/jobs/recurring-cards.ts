@@ -3,7 +3,7 @@ import {generateKeyBetween} from 'fractional-indexing';
 import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {isFrequency, nextAfter, type RepeatRule} from '../../lib/recurrence';
 import {reserveCardNumbers} from '../card-number';
-import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
+import {frozenWorkspaces, MAX_CARDS_PER_LANE} from '../entitlements';
 
 /**
  * Recurring cards: the job behind `card_recurrences` (list and hourly schedule `recurring-cards` in background.json).
@@ -42,7 +42,7 @@ export async function runRecurringCards(db: PrismaClient, now: Date = new Date()
   const started = Date.now();
   let cursor: {on: Date; id: number} | null = null;
   while (result.scanned < MAX_RULES_PER_RUN && Date.now() - started < RUN_BUDGET_MS) {
-    const rules: {cardId: number; nextRunOn: Date}[] = await db.cardRecurrence.findMany({
+    const rules: {cardId: number; nextRunOn: Date; card: {workspaceId: number}}[] = await db.cardRecurrence.findMany({
       where: {
         enabled: true,
         nextRunOn: {lte: dayDate(today)},
@@ -50,12 +50,14 @@ export async function runRecurringCards(db: PrismaClient, now: Date = new Date()
       },
       orderBy: [{nextRunOn: 'asc'}, {cardId: 'asc'}],
       take: Math.min(RULES_PER_PAGE, MAX_RULES_PER_RUN - result.scanned),
-      select: {cardId: true, nextRunOn: true},
+      // The card's workspace rides along (one joined query), so the plan check for the whole page is ONE read.
+      select: {cardId: true, nextRunOn: true, card: {select: {workspaceId: true}}},
     });
+    const frozen = rules.length ? await frozenWorkspaces(db, rules.map(rule => rule.card.workspaceId), readOnly) : new Set<number>();
     for (const rule of rules) {
       result.scanned++;
       try {
-        const outcome = await runOne(db, rule.cardId, day(rule.nextRunOn), today, readOnly);
+        const outcome = await runOne(db, rule.cardId, day(rule.nextRunOn), today, frozen.has(rule.card.workspaceId));
         result[outcome]++;
       } catch (error) {
         result.failed++;
@@ -70,19 +72,8 @@ export async function runRecurringCards(db: PrismaClient, now: Date = new Date()
   return result;
 }
 
-async function workspaceReadOnly(db: PrismaClient, workspaceId: number, memo: Map<number, boolean>): Promise<boolean> {
-  const known = memo.get(workspaceId);
-  if (known !== undefined) return known;
-  const ent = await getEntitlements(db, workspaceId);
-  const value = !ent || ent.readOnly;
-  memo.set(workspaceId, value);
-  return value;
-}
-
-async function runOne(db: PrismaClient, cardId: number, due: string, today: string, readOnly: Map<number, boolean>): Promise<'created' | 'skipped' | 'disabled'> {
-  // Cheap reads first (outside the transaction): who owns it and may it be written to at all.
-  const head = await db.card.findFirst({where: {id: cardId}, select: {workspaceId: true}});
-  const frozen = head ? await workspaceReadOnly(db, head.workspaceId, readOnly) : false;
+/** `frozen`: the card's workspace makes nothing today (read-only plan, or gone), checked for the whole page up front. */
+async function runOne(db: PrismaClient, cardId: number, due: string, today: string, frozen: boolean): Promise<'created' | 'skipped' | 'disabled'> {
   return db.$transaction(async tx => {
     const locked = await tx.$queryRaw<
       {frequency: string; interval_count: number; anchor_on: Date; ends_on: Date | null; created_by: number | null}[]

@@ -35,12 +35,20 @@ export function formatDateTime(ctx: FormatContext, value: Date | string | number
   return formatDate(ctx, value, {dateStyle: 'medium', timeStyle: 'short'});
 }
 
+const numberFormats = new Map<string, Intl.NumberFormat>();
+
 export function formatNumber(ctx: FormatContext, value: number, options?: Intl.NumberFormatOptions): string {
-  try {
-    return new Intl.NumberFormat(ctx.locale, options).format(value);
-  } catch {
-    return new Intl.NumberFormat('en', options).format(value);
+  const key = `${ctx.locale}|${options ? JSON.stringify(options) : ''}`;
+  let format = numberFormats.get(key);
+  if (!format) {
+    try {
+      format = new Intl.NumberFormat(ctx.locale, options);
+    } catch {
+      format = new Intl.NumberFormat('en', options);
+    }
+    numberFormats.set(key, format);
   }
+  return format.format(value);
 }
 
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
@@ -52,17 +60,27 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['minute', 60],
 ];
 
+const relativeFormats = new Map<string, Intl.RelativeTimeFormat>();
+/** One per locale, reused (chat renders a relative time per message). */
+function relativeFormat(locale: string): Intl.RelativeTimeFormat {
+  let rtf = relativeFormats.get(locale);
+  if (!rtf) {
+    try {
+      rtf = new Intl.RelativeTimeFormat(locale, {numeric: 'auto'});
+    } catch {
+      rtf = new Intl.RelativeTimeFormat('en', {numeric: 'auto'});
+    }
+    relativeFormats.set(locale, rtf);
+  }
+  return rtf;
+}
+
 /** "3 minutes ago", "tomorrow", "in 2 weeks"; under a minute is "now". */
 export function formatRelative(ctx: FormatContext, value: Date | string | number, now: number = Date.now()): string {
   const date = toDate(value);
   if (Number.isNaN(date.getTime())) return '';
   const seconds = Math.round((date.getTime() - now) / 1000);
-  let rtf: Intl.RelativeTimeFormat;
-  try {
-    rtf = new Intl.RelativeTimeFormat(ctx.locale, {numeric: 'auto'});
-  } catch {
-    rtf = new Intl.RelativeTimeFormat('en', {numeric: 'auto'});
-  }
+  const rtf = relativeFormat(ctx.locale);
   for (const [unit, size] of UNITS) {
     if (Math.abs(seconds) >= size) return rtf.format(Math.trunc(seconds / size), unit);
   }

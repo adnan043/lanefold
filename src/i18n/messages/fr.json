@@ -439,6 +439,8 @@
   "errors.unauthorized": "Veuillez vous reconnecter.",
   "errors.token_expired": "Votre session a expiré. Veuillez vous reconnecter.",
   "errors.forbidden": "Vous n’avez pas la permission de faire cela.",
+  "errors.email_unverified": "Confirmez d’abord votre adresse e-mail, puis réessayez. Vous pouvez toujours partager vous-même le lien d’invitation.",
+  "errors.seat_restricted": "Un administrateur du tableau a fixé votre accès ici. Demandez-lui de le modifier.",
   "errors.not_found": "Cet élément n’existe plus. Il a peut-être été supprimé. Revenez en arrière et réessayez.",
   "errors.validation": "Vérifiez les champs en surbrillance et réessayez.",
   "errors.rate_limited": "Vous allez un peu vite. Patientez un moment et réessayez.",

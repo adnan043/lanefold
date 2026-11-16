@@ -1,6 +1,6 @@
 import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {JobRejected, sendJob} from '../../platform/background';
-import {getEntitlements} from '../entitlements';
+import {frozenWorkspaces, getEntitlements} from '../entitlements';
 
 /**
  * Due date reminders: the job behind the hourly schedule `due-reminders` (background.json).
@@ -98,9 +98,11 @@ export async function runDueReminders(db: PrismaClient, now: Date = new Date(), 
     if (page.length === 0) break;
     result.scanned += page.length;
     cursor = page[page.length - 1]!.id;
+    // The plan check for every workspace of the page in ONE read (memoized for the run).
+    const stopped = await frozenWorkspaces(db, page.map(card => card.workspace_id), readOnly);
     const ids: number[] = [];
     for (const card of page) {
-      if (await frozen(db, card.workspace_id, readOnly)) result.skipped++;
+      if (stopped.has(card.workspace_id)) result.skipped++;
       else ids.push(card.id);
     }
     if (ids.length > 0) {
@@ -177,9 +179,10 @@ async function runItemReminders(db: PrismaClient, now: Date, maxItems: number, s
     if (page.length === 0) break;
     result.scanned += page.length;
     cursor = page[page.length - 1]!.id;
+    const stopped = await frozenWorkspaces(db, page.map(item => item.workspace_id), readOnly);
     const ids: number[] = [];
     for (const item of page) {
-      if (await frozen(db, item.workspace_id, readOnly)) result.skipped++;
+      if (stopped.has(item.workspace_id)) result.skipped++;
       else ids.push(item.id);
     }
     if (ids.length > 0) {

@@ -4,6 +4,8 @@ import {generateKeyBetween} from 'fractional-indexing';
 import type {PrismaClient} from '../../generated/prisma/client';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {reserveCardNumbers} from '../card-number';
+import {copyCardParts} from '../card-copy';
+import {accessSelect, resolveAccess} from '../board-access-via';
 import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
 import {FIELD_LIMITS, FIELD_ORDER, FIELD_TYPES, type FieldType, type FieldValue, fieldCols, fieldShape, valueCols, valueMap} from '../field-shapes';
 import {boardAccess, notFound, boardReachable} from '../workspaces';
@@ -110,17 +112,28 @@ export const cardFieldRoutes = new Hono()
   /* ---- the board's fields and every card's values (the Table view's columns) ---- */
   .get('/boards/:id/field-values', withViewer, requireAuth, withDb, noStore, async c => {
     const db = c.var.db;
+    const userId = c.var.viewer.id!;
     const boardId = idOf(c.req.param('id'));
-    const access = boardId ? await boardAccess(db, boardId, c.var.viewer.id!) : null;
-    if (!boardId || !access) return notFound(c, 'board');
-    const fields = await db.customField.findMany({where: {boardId, workspaceId: access.workspaceId}, orderBy: [...FIELD_ORDER], take: FIELD_LIMITS.perBoard, select: fieldCols});
+    if (!boardId) return notFound(c, 'board');
+    // ONE round trip: the board with boardAccess()'s columns and its fields, and beside it the values of the board's
+    // fields (the board must be reachable IN that query too). Nothing is answered unless boardAccess()'s rules pass.
+    const [board, valueRows] = await Promise.all([
+      db.board.findFirst({
+        where: {id: boardId, ...boardReachable(userId)},
+        select: {...accessSelect(userId), customFields: {orderBy: [...FIELD_ORDER], take: FIELD_LIMITS.perBoard, select: {...fieldCols, workspaceId: true}}},
+      }),
+      db.cardFieldValue.findMany({
+        where: {field: {boardId, board: boardReachable(userId)}, card: {archivedAt: null}},
+        orderBy: [{cardId: 'asc'}, {fieldId: 'asc'}],
+        take: VALUES_TAKE,
+        select: {cardId: true, workspaceId: true, ...valueCols},
+      }),
+    ]);
+    const access = board ? resolveAccess(board, userId) : null;
+    if (!board || !access) return notFound(c, 'board');
+    const fields = board.customFields.filter(f => f.workspaceId === access.workspaceId);
     if (!fields.length) return c.json({fields: [], values: {}});
-    const rows = await db.cardFieldValue.findMany({
-      where: {workspaceId: access.workspaceId, fieldId: {in: fields.map(f => f.id)}, card: {archivedAt: null}},
-      orderBy: [{cardId: 'asc'}, {fieldId: 'asc'}],
-      take: VALUES_TAKE,
-      select: {cardId: true, ...valueCols},
-    });
+    const rows = valueRows.filter(r => r.workspaceId === access.workspaceId);
     const byCard = new Map<number, typeof rows>();
     for (const r of rows) byCard.set(r.cardId, [...(byCard.get(r.cardId) ?? []), r]);
     const values: Record<string, Record<string, FieldValue>> = {};
@@ -262,13 +275,10 @@ export const cardFieldRoutes = new Hono()
           descriptionMd: src.descriptionMd, priority: src.priority, estimateMinutes: src.estimateMinutes, startDate: src.startDate, dueDate: src.dueDate,
           position: generateKeyBetween(last?.position ?? null, null),
           checklistTotal: items, checklistDone: 0, updatedRev: rev, createdBy: userId,
-          labels: {create: src.labels.map(l => ({labelId: l.labelId}))},
-          members: {create: src.members.map(m => ({userId: m.userId, workspaceId: ctx.workspaceId}))},
-          fieldValues: {create: src.fieldValues.map(v => ({...v, workspaceId: ctx.workspaceId}))},
-          checklists: {create: src.checklists.map(l => ({workspaceId: ctx.workspaceId, title: l.title, position: l.position, items: {create: l.items.map(i => ({workspaceId: ctx.workspaceId, text: i.text, position: i.position}))}}))},
         },
         select: {id: true},
       });
+      await copyCardParts(tx, ctx.workspaceId, copy.id, src);
       await tx.activity.create({data: {workspaceId: ctx.workspaceId, boardId: ctx.boardId, cardId: copy.id, actorId: userId, kind: 'card.created', meta: {title: `${src.title} (copy)`, copiedFrom: ctx.cardId}}});
       return {cardId: copy.id, rev: String(rev)};
     });
@@ -348,3 +358,4 @@ async function optionWrite(c: Context<any>, mode: 'update' | 'delete') {
   const fresh = await db.customFieldOption.findFirst({where: {id: option.id, workspaceId: ctx.workspaceId}, select: {id: true, name: true, colorHex: true}});
   return fresh ? c.json({option: fresh, ...out}) : notFound(c, 'option');
 }
+

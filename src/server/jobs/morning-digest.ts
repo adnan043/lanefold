@@ -1,6 +1,6 @@
 import type {PrismaClient} from '../../generated/prisma/client';
 import {config} from '../../platform/config';
-import {getEntitlements} from '../entitlements';
+import {frozenWorkspaces} from '../entitlements';
 import {escapeHtml} from '../mail/templates';
 import {mailCredentials, sendMail} from '../mail/send';
 
@@ -122,20 +122,24 @@ export async function runMorningDigest(db: PrismaClient, now: Date = new Date())
   return result;
 }
 
-async function frozenIn(db: PrismaClient, userIds: number[], memo: Map<number, boolean>): Promise<number[]> {
+/** Most workspaces one batch of people is checked against (bounds the read; see `openIn`). */
+const MAX_BATCH_WORKSPACES = 2000;
+
+/**
+ * The live workspaces of these people whose plan lets jobs make things (not read-only): ONE bounded read of the
+ * workspaces, then ONE entitlements read per 500 of them not already in `memo`. The digest only counts these
+ * workspaces, so one beyond the bound (a pathological membership count) is left out rather than let through.
+ */
+async function openIn(db: PrismaClient, userIds: number[], memo: Map<number, boolean>): Promise<number[]> {
   const rows = await db.$queryRaw<{workspace_id: number}[]>`
-    SELECT DISTINCT m.workspace_id FROM workspace_members m WHERE m.user_id = ANY(${userIds}::int[])`;
-  const frozen: number[] = [];
-  for (const {workspace_id: id} of rows) {
-    let value = memo.get(id);
-    if (value === undefined) {
-      const ent = await getEntitlements(db, id);
-      value = !ent || ent.readOnly;
-      memo.set(id, value);
-    }
-    if (value) frozen.push(id);
-  }
-  return frozen;
+    SELECT DISTINCT m.workspace_id
+    FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id AND w.archived_at IS NULL
+    WHERE m.user_id = ANY(${userIds}::int[])
+    ORDER BY m.workspace_id
+    LIMIT ${MAX_BATCH_WORKSPACES}`;
+  const ids = rows.map(r => r.workspace_id);
+  const frozen = await frozenWorkspaces(db, ids, memo);
+  return ids.filter(id => !frozen.has(id));
 }
 
 /**
@@ -146,7 +150,7 @@ async function makePage(db: PrismaClient, batch: {p: Person; d: {day: string}}[]
   const ids = batch.map(x => x.p.user_id);
   const days = batch.map(x => x.d.day);
   const since = batch.map(x => new Date(Math.max(x.p.sent_at?.getTime() ?? 0, mentionFloor)).toISOString());
-  const frozen = await frozenIn(db, ids, memo);
+  const open = await openIn(db, ids, memo);
   const nowIso = now.toISOString();
   return db.$queryRaw<Made[]>`
     WITH input AS (
@@ -172,7 +176,7 @@ async function makePage(db: PrismaClient, batch: {p: Person; d: {day: string}}[]
       JOIN cards c ON c.id = p.card_id AND c.archived_at IS NULL AND c.completed_at IS NULL
         AND c.due_date IS NOT NULL AND c.due_date <= cl.local_day AND c.due_date >= cl.local_day - ${OVERDUE_DAYS}::int
       JOIN boards b ON b.id = c.board_id AND b.workspace_id = c.workspace_id AND b.archived_at IS NULL
-      JOIN workspaces w ON w.id = c.workspace_id AND w.archived_at IS NULL AND NOT (w.id = ANY(${frozen}::int[]))
+      JOIN workspaces w ON w.id = c.workspace_id AND w.archived_at IS NULL AND w.id = ANY(${open}::int[])
       JOIN workspace_members m ON m.workspace_id = c.workspace_id AND m.user_id = cl.user_id
       WHERE (b.inbox_of IS NULL OR b.inbox_of = cl.user_id)
         AND (b.visibility <> 'private' OR m.role IN ('owner', 'admin')
@@ -190,7 +194,7 @@ async function makePage(db: PrismaClient, batch: {p: Person; d: {day: string}}[]
       SELECT n.user_id, n.workspace_id
       FROM notifications n
       JOIN claimed cl ON cl.user_id = n.user_id
-      JOIN workspaces w ON w.id = n.workspace_id AND w.archived_at IS NULL AND NOT (w.id = ANY(${frozen}::int[]))
+      JOIN workspaces w ON w.id = n.workspace_id AND w.archived_at IS NULL AND w.id = ANY(${open}::int[])
       JOIN workspace_members m ON m.workspace_id = n.workspace_id AND m.user_id = n.user_id
       WHERE n.read_at IS NULL AND n.kind IN ('mentioned', 'message_mention', 'assigned') AND n.created_at > cl.since
         AND (n.board_id IS NULL OR EXISTS (

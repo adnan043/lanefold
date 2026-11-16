@@ -10,16 +10,26 @@ import type {BoardActions} from '../actions';
  * (the card cap) loads its FIRST page once when the view opens; later pages come only from "Load more", which asks
  * each lane for its next page (the same keyset route the board's lanes use).
  */
+/** Lane requests in flight at once: a 50-lane board never sends 40 requests (and re-renders 40 times) together. */
+const AT_ONCE = 4;
+
+/** `load` for each id, at most AT_ONCE at a time (`loadLane` never throws: a failure marks the lane). */
+export async function loadLimited(ids: readonly number[], load: (id: number) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < ids.length) await load(ids[next++]!);
+  };
+  await Promise.all(Array.from({length: Math.min(AT_ONCE, ids.length)}, worker));
+}
+
 export function useFirstPages(lanes: LaneT[], actions: BoardActions) {
   const asked = useRef(new Set<number>());
   const {loadLane} = actions;
   useEffect(() => {
-    for (const lane of lanes) {
-      if (!lane.loaded && !asked.current.has(lane.id)) {
-        asked.current.add(lane.id);
-        void loadLane(lane.id);
-      }
-    }
+    const wanted = lanes.filter(lane => !lane.loaded && !asked.current.has(lane.id)).map(lane => lane.id);
+    if (wanted.length === 0) return;
+    for (const id of wanted) asked.current.add(id);
+    void loadLimited(wanted, loadLane);
   }, [lanes, loadLane]);
 }
 
@@ -34,7 +44,7 @@ export function LoadMoreBar({lanes, actions}: {lanes: LaneT[]; actions: BoardAct
   return (
     <div className="lf-vw-more">
       {failed.length > 0 && (
-        <Notice tone="warning" action={<Button size="sm" variant="secondary" onClick={() => failed.forEach(l => void actions.loadLane(l.id))}>{t('common.retry')}</Button>}>
+        <Notice tone="warning" action={<Button size="sm" variant="secondary" onClick={() => void loadLimited(failed.map(l => l.id), actions.loadLane)}>{t('common.retry')}</Button>}>
           {t('views.loadFailed')}
         </Notice>
       )}
@@ -42,7 +52,7 @@ export function LoadMoreBar({lanes, actions}: {lanes: LaneT[]; actions: BoardAct
       {pending.length > 0 && (
         <>
           <p className="lf-vw-note">{t('views.partial', {shown, total})}</p>
-          <Button variant="secondary" onClick={() => pending.forEach(l => void actions.loadLane(l.id))}>
+          <Button variant="secondary" onClick={() => void loadLimited(pending.map(l => l.id), actions.loadLane)}>
             {t('views.loadMore')}
           </Button>
         </>

@@ -31,6 +31,14 @@ export const refParts = (ref: string | null | undefined): [number | null, number
 const userIdOf = (ref: string | null | undefined): number | null => refParts(ref)[0];
 const dateOf = (value: string | null | undefined): Date | null => (value ? new Date(value) : null);
 
+/**
+ * Whether a membership of this payment mode may grant a workspace plan. On the live site only `live` payments do:
+ * a site still in test mode (or a stray test checkout) must never hand out a paid plan for a test card, and a test
+ * subscription recorded before going live must not keep counting afterwards. In development and the Preview, test
+ * payments grant as usual. `undefined` (mode not known) grants only outside production.
+ */
+export const modeGrants = (mode: string | null | undefined): boolean => !config.production || mode === 'live';
+
 function database() {
   const db = getDb();
   // No Site Database: throwing makes the platform try again once there is one.
@@ -121,7 +129,7 @@ export async function recordMembership(membership: PlatformMembership, mode: str
  * workspace is still on the event's plan (a plan set another way stays). Idempotent: nothing changes when the plan
  * is already right. Nothing is deleted: a workspace over its new limits gets the grace clock.
  */
-export async function applyWorkspacePlan(membership: PlatformMembership): Promise<{changed: boolean}> {
+export async function applyWorkspacePlan(membership: PlatformMembership, mode?: string): Promise<{changed: boolean}> {
   const workspaceId = refParts(membership.customerRef)[1];
   if (!workspaceId) return {changed: false};
   const db = database();
@@ -134,11 +142,12 @@ export async function applyWorkspacePlan(membership: PlatformMembership): Promis
       FROM memberships m JOIN plan_limits p ON p.price_key_monthly = m.price_key
       WHERE m.workspace_id = ${workspaceId} AND m.subscription_id <> ${membership.id}
         AND (m.status IN ('active', 'trialing', 'past_due') OR m.access_ends_at > now())
+        AND (${!config.production}::boolean OR m.mode = 'live')
       ORDER BY p.storage_quota_bytes DESC
       LIMIT 1`,
   ]);
   if (!bought || !workspace) return {changed: false};
-  const grants = grantsAccess(membership.status, membership.accessEndsAt);
+  const grants = modeGrants(mode) && grantsAccess(membership.status, membership.accessEndsAt);
   const candidates = [...(grants ? [{plan: bought.plan, storage: bought.storageQuotaBytes}] : []), ...others];
   const best = candidates.reduce<{plan: string; storage: bigint} | null>((top, c) => (!top || c.storage > top.storage ? c : top), null);
   const target = best ? best.plan : workspace.plan === bought.plan ? 'free' : workspace.plan;
@@ -165,9 +174,11 @@ const platformUrl = () => config.siteUrl ?? 'http://localhost';
  * stays valid, nothing renews, no double billing). `applyWorkspacePlan` already keeps the higher plan meanwhile.
  * Throws when the platform fails (not for "already gone") so the event is tried again; idempotent.
  */
-export async function cancelSupersededMemberships(membership: PlatformMembership): Promise<number> {
+export async function cancelSupersededMemberships(membership: PlatformMembership, mode?: string): Promise<number> {
   const workspaceId = refParts(membership.customerRef)[1];
   if (!workspaceId || (membership.status !== 'active' && membership.status !== 'trialing')) return 0;
+  // A test-mode "upgrade" on the live site grants nothing, so it must never stop a real, paid subscription.
+  if (!modeGrants(mode)) return 0;
   const db = database();
   const lower = await db.$queryRaw<{id: string; mode: string}[]>`
     SELECT m.subscription_id AS id, m.mode AS mode
@@ -219,7 +230,7 @@ async function cancelRefundedPlan(order: {priceKey: string; userId: number | nul
     throw new Error(`Could not cancel the refunded plan (${done.code}): tried again later.`);
   }
   await recordMembership(done.data, sub.mode);
-  await applyWorkspacePlan(done.data);
+  await applyWorkspacePlan(done.data, sub.mode);
 }
 
 export const paymentHooks = definePaymentHooks({
@@ -238,17 +249,17 @@ export const paymentHooks = definePaymentHooks({
     const {stale} = await recordMembership(membership, event.mode, event.createdAt);
     // An older event (a retry arriving after a newer one) never changes the plan.
     if (!stale) {
-      await applyWorkspacePlan(membership);
+      await applyWorkspacePlan(membership, event.mode);
       if (event.source === 'confirm') {
         // The thanks-page confirm must not report "not recorded" because the platform could not cancel an old
         // subscription: the writes above stand; the live event (which throws, so it is retried) does the cancel.
         try {
-          await cancelSupersededMemberships(membership);
+          await cancelSupersededMemberships(membership, event.mode);
         } catch (error) {
           console.error(`[payments] confirm: replaced plan not cancelled yet (subscription ${membership.id}): ${error instanceof Error ? error.message : 'error'}`.slice(0, 300));
         }
       } else {
-        await cancelSupersededMemberships(membership);
+        await cancelSupersededMemberships(membership, event.mode);
       }
     }
   },

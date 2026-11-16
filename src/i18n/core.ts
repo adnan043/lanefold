@@ -34,13 +34,28 @@ function pluralRule(locale: string): Intl.PluralRules {
 /** The plural category of `count` in `locale`. */
 export const pluralCategory = (locale: string, count: number): PluralSuffix => pluralRule(locale).select(count) as PluralSuffix;
 
+const numberFormats = new Map<string, Intl.NumberFormat>();
+/** One `Intl.NumberFormat` per locale, reused: `t()` runs many times per card on every board render. */
+function numberFormat(locale: string): Intl.NumberFormat {
+  let format = numberFormats.get(locale);
+  if (!format) {
+    try {
+      format = new Intl.NumberFormat(locale);
+    } catch {
+      format = new Intl.NumberFormat('en');
+    }
+    numberFormats.set(locale, format);
+  }
+  return format;
+}
+
 /** Fills `{name}` from params. A number is formatted for the locale; an unknown name stays as written. */
 export function interpolate(template: string, params: Params | undefined, locale = 'en'): string {
   if (!params) return template;
   return template.replace(/\{(\w+)\}/g, (whole, name: string) => {
     const value = params[name];
     if (value === undefined) return whole;
-    return typeof value === 'number' ? new Intl.NumberFormat(locale).format(value) : value;
+    return typeof value === 'number' ? numberFormat(locale).format(value) : value;
   });
 }
 

@@ -169,6 +169,33 @@ export function forgetEntitlements(db: PrismaClient, workspaceId: number): void 
   memo.get(db)?.delete(workspaceId);
 }
 
+function limitsOf(row: Row): PlanLimits | null {
+  return row.max_members === null
+    ? null
+    : {
+        plan: row.plan,
+        maxMembers: row.max_members,
+        maxFileBytes: Number(row.max_file_bytes),
+        storageQuotaBytes: Number(row.storage_quota_bytes),
+        maxFlows: row.max_flows ?? 0,
+        auditLog: row.audit_log ?? false,
+      };
+}
+
+function buildFrom(row: Row, mode: BillingMode, graceUntil: Date | null): Entitlements {
+  return computeEntitlements({
+    limits: limitsOf(row),
+    mode,
+    workspace: {
+      id: row.id,
+      plan: row.plan,
+      memberCount: row.member_count,
+      storageUsedBytes: Number(row.storage_used_bytes),
+      graceUntil,
+    },
+  });
+}
+
 async function load(db: PrismaClient, workspaceId: number): Promise<Entitlements | null> {
   const [rows, settings] = await Promise.all([
     db.$queryRaw<Row[]>`
@@ -180,29 +207,7 @@ async function load(db: PrismaClient, workspaceId: number): Promise<Entitlements
   ]);
   const row = rows[0];
   if (!row) return null;
-  const limits: PlanLimits | null =
-    row.max_members === null
-      ? null
-      : {
-          plan: row.plan,
-          maxMembers: row.max_members,
-          maxFileBytes: Number(row.max_file_bytes),
-          storageQuotaBytes: Number(row.storage_quota_bytes),
-          maxFlows: row.max_flows ?? 0,
-          auditLog: row.audit_log ?? false,
-        };
-  const build = (graceUntil: Date | null) =>
-    computeEntitlements({
-      limits,
-      mode: settings.billingMode,
-      workspace: {
-        id: row.id,
-        plan: row.plan,
-        memberCount: row.member_count,
-        storageUsedBytes: Number(row.storage_used_bytes),
-        graceUntil,
-      },
-    });
+  const build = (graceUntil: Date | null) => buildFrom(row, settings.billingMode, graceUntil);
   const result = build(row.grace_until);
   // Over a PAID limit with no clock running (a failed sweep, a missed hook): start it now, so the workspace can never
   // stay over its limit forever. One idempotent UPDATE, only in that state; a failure never breaks the read.
@@ -232,6 +237,68 @@ export function getEntitlements(db: PrismaClient, workspaceId: number): Promise<
     pending.catch(() => perDb.get(workspaceId) === pending && perDb.delete(workspaceId));
   }
   return found;
+}
+
+/** Most workspaces one `getEntitlementsMany` call reads (the jobs page through workspaces in batches below this). */
+export const MAX_ENTITLEMENTS_BATCH = 500;
+
+/**
+ * `getEntitlements` for many workspaces in ONE read (the scheduled jobs, which otherwise ask once per workspace in a
+ * loop). Same answers: a workspace missing from the map does not exist. The rare workspace over a PAID limit with no
+ * grace clock yet goes through `getEntitlements` (which starts the clock). Answers are memoized like single reads.
+ * Does not check access: call it for workspaces the caller already scoped. At most MAX_ENTITLEMENTS_BATCH ids.
+ */
+export async function getEntitlementsMany(db: PrismaClient, workspaceIds: readonly number[]): Promise<Map<number, Entitlements>> {
+  const ids = [...new Set(workspaceIds)].slice(0, MAX_ENTITLEMENTS_BATCH);
+  const out = new Map<number, Entitlements>();
+  if (ids.length === 0) return out;
+  const [rows, settings] = await Promise.all([
+    db.$queryRaw<Row[]>`
+      SELECT w.id, w.plan, w.member_count, w.storage_used_bytes, w.grace_until,
+             p.max_members, p.max_file_bytes, p.storage_quota_bytes, p.max_flows, p.audit_log
+      FROM workspaces w LEFT JOIN plan_limits p ON p.plan = w.plan
+      WHERE w.id = ANY(${ids}::int[])
+      LIMIT ${ids.length}`,
+    getAppSettings(db),
+  ]);
+  let perDb = memo.get(db);
+  if (!perDb) memo.set(db, (perDb = new Map()));
+  const slow: number[] = [];
+  for (const row of rows) {
+    const ent = buildFrom(row, settings.billingMode, row.grace_until);
+    if (ent.overLimit && row.grace_until === null) {
+      slow.push(row.id);
+      continue;
+    }
+    out.set(row.id, ent);
+    if (!perDb.has(row.id)) perDb.set(row.id, Promise.resolve(ent));
+  }
+  for (const id of slow) {
+    const ent = await getEntitlements(db, id);
+    if (ent) out.set(id, ent);
+  }
+  return out;
+}
+
+/**
+ * For the scheduled jobs: of `workspaceIds`, the ones that make nothing (missing, or read-only: over a plan limit,
+ * grace over). Ids already in `memo` (workspace id -> frozen) cost nothing; the rest are read in ONE query per
+ * MAX_ENTITLEMENTS_BATCH ids and added to it.
+ */
+export async function frozenWorkspaces(db: PrismaClient, workspaceIds: Iterable<number>, memo: Map<number, boolean> = new Map()): Promise<Set<number>> {
+  const ids = [...new Set(workspaceIds)];
+  const unknown = ids.filter(id => !memo.has(id));
+  for (let i = 0; i < unknown.length; i += MAX_ENTITLEMENTS_BATCH) {
+    const chunk = unknown.slice(i, i + MAX_ENTITLEMENTS_BATCH);
+    const found = await getEntitlementsMany(db, chunk);
+    for (const id of chunk) {
+      const ent = found.get(id);
+      memo.set(id, !ent || ent.readOnly);
+    }
+  }
+  const out = new Set<number>();
+  for (const id of ids) if (memo.get(id)) out.add(id);
+  return out;
 }
 
 /**
