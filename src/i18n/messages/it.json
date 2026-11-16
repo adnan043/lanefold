@@ -439,6 +439,8 @@
   "errors.unauthorized": "Accedi di nuovo.",
   "errors.token_expired": "La sessione è terminata. Accedi di nuovo.",
   "errors.forbidden": "Non hai il permesso di farlo.",
+  "errors.email_unverified": "Conferma prima il tuo indirizzo email, poi riprova. Puoi comunque condividere tu stesso il link di invito.",
+  "errors.seat_restricted": "Un amministratore della bacheca ha impostato qui il tuo accesso. Chiedigli di modificarlo.",
   "errors.not_found": "Non esiste più. Potrebbe essere stato eliminato. Torna indietro e riprova.",
   "errors.validation": "Controlla i campi evidenziati e riprova.",
   "errors.rate_limited": "Stai andando un po’ veloce. Attendi un momento e riprova.",

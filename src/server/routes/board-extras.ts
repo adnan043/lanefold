@@ -9,6 +9,7 @@ import {getEntitlements} from '../entitlements';
 import {boardAccess, membership, notFound, rankOf, boardReachable} from '../workspaces';
 import {idOf, invalid, objectOf, textField} from '../validation';
 import {seatFilter} from './card-detail';
+import {boardCapReached} from './boards';
 
 /**
  * Phase 1 board extras. Mounted ONCE at `/` in `app.ts`.
@@ -289,6 +290,7 @@ export const boardExtraRoutes = new Hono()
     }
     const name = (c.req.valid('json').name ?? `${source.name.slice(0, 73)} (copy)`).slice(0, 80);
     const board = await db.$transaction(async tx => {
+      if (await boardCapReached(tx, workspaceId, userId)) return null;
       const row = await tx.board.create({
         data: {
           workspaceId,
@@ -310,6 +312,10 @@ export const boardExtraRoutes = new Hono()
       await tx.activity.create({data: {workspaceId, boardId: row.id, actorId: userId, kind: 'board.created', meta: {name, copiedFrom: boardId}}});
       return row;
     });
+    if (!board) {
+      c.header('Retry-After', '600');
+      return c.json(problem('board_rate_limited', 'You created many boards in the last hour. Try again later.'), 429);
+    }
     return c.json({board}, 201);
   });
 

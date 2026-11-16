@@ -433,6 +433,8 @@
   "errors.unauthorized": "Silakan masuk lagi.",
   "errors.token_expired": "Sesi Anda berakhir. Silakan masuk lagi.",
   "errors.forbidden": "Anda tidak memiliki izin untuk melakukannya.",
+  "errors.email_unverified": "Konfirmasikan alamat email Anda terlebih dahulu, lalu coba lagi. Anda tetap bisa membagikan tautan undangan sendiri.",
+  "errors.seat_restricted": "Admin papan menetapkan akses Anda di sini. Minta mereka untuk mengubahnya.",
   "errors.not_found": "Itu sudah tidak ada. Mungkin telah dihapus. Kembali dan coba lagi.",
   "errors.validation": "Periksa kolom yang ditandai lalu coba lagi.",
   "errors.rate_limited": "Anda terlalu cepat. Tunggu sebentar lalu coba lagi.",

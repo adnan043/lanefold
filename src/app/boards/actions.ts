@@ -23,7 +23,7 @@ import {
   replaceTemps,
 } from '../board-state';
 import {markEnter} from '../motion';
-import {tracked} from '../use-board-sync';
+import {syncBoardNow, tracked} from '../use-board-sync';
 import {type BulkAnswer, type BulkUndoStep, runUndoSteps} from './bulk-run';
 
 /** What a move or an archive hands back so the screen can offer "Undo". */
@@ -315,7 +315,7 @@ export function useBoardActions(boardId: number) {
     /** Lane menu: every open card to the end of another lane. Rejects (lane full, lane gone) so the dialog can say why. */
     const moveLaneCards = async (laneId: number, toLaneId: number): Promise<number> => {
       const res = await tracked(() => call<{moved: number}>('POST', `/lanes/${laneId}/move-cards`, {toLaneId}));
-      await queryClient.invalidateQueries({queryKey: key});
+      await syncBoardNow(queryClient, boardId);
       return res.moved;
     };
 
@@ -333,19 +333,19 @@ export function useBoardActions(boardId: number) {
     };
 
     /**
-     * Bulk bar: ONE action on the selected cards, all or nothing. Not optimistic: the board reloads from the server's
-     * answer. Rejects so the bar can say why. The answer carries `undo` (the server's exact inverse steps) when there is one.
+     * Bulk bar: ONE action on the selected cards, all or nothing. Not optimistic: the changed cards come in as a
+     * delta right after (`syncBoardNow`), not a full reload. Rejects so the bar can say why. The answer carries `undo` (the server's exact inverse steps) when there is one.
      */
     const bulkCards = async (cardIds: number[], action: BulkAction): Promise<BulkAnswer> => {
       const res = await tracked(() => call<BulkAnswer>('POST', `/boards/${boardId}/cards/bulk`, {cardIds, ...action}));
-      await queryClient.invalidateQueries({queryKey: key});
+      await syncBoardNow(queryClient, boardId);
       return res;
     };
 
     /** Take a bulk action back: the server's inverse steps one after the other; a card changed since is skipped. Never rejects. */
     const undoBulk = async (steps: readonly BulkUndoStep[]) => {
       const result = await runUndoSteps(steps, step => tracked(() => call<BulkAnswer>('POST', `/boards/${boardId}/cards/bulk`, step)));
-      await queryClient.invalidateQueries({queryKey: key});
+      await syncBoardNow(queryClient, boardId);
       return result;
     };
 

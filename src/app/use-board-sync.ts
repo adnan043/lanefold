@@ -1,4 +1,4 @@
-import {useQueryClient} from '@tanstack/react-query';
+import {type QueryClient, useQueryClient} from '@tanstack/react-query';
 import {useEffect} from 'react';
 
 import {ApiError, type BoardData, call, type Delta} from './api';
@@ -25,13 +25,57 @@ export async function tracked<T>(run: () => Promise<T>): Promise<T> {
   } finally {
     inflight -= 1;
     writeGen += 1;
+    if (inflight === 0) for (const done of settledWaiters.splice(0)) done();
   }
+}
+
+let settledWaiters: (() => void)[] = [];
+/** Resolves once no write is in flight (at once if none is), or after `maxMs` so a stuck request never blocks a sync. */
+function writesSettled(maxMs = 10_000): Promise<void> {
+  if (inflight === 0) return Promise.resolve();
+  return new Promise(resolve => {
+    const done = () => {
+      window.clearTimeout(timer);
+      settledWaiters = settledWaiters.filter(w => w !== done);
+      resolve();
+    };
+    const timer = window.setTimeout(done, maxMs);
+    settledWaiters.push(done);
+  });
 }
 
 /** True from drag start to drop/cancel: no delta is applied while a card or lane is held (the draft would jump). */
 let paused = false;
 export function pauseBoardSync(on: boolean) {
   paused = on;
+}
+
+/**
+ * Right after one of our own writes that the client cannot apply by itself (bulk actions, moving a lane's cards):
+ * fetch the delta now instead of reloading the whole board. A reload re-caps every lane at its first page (the
+ * "Load more" pages are lost) and re-fires a page request per lane; the delta changes only what moved.
+ * Another write in flight, or one that started while the delta was on its way (its answer could predate it): wait
+ * for the writes to settle and ask again, a few times; then reload, as do a too-big delta and an error. Never leaves
+ * the result to the poll, which can be 15 s away on a quiet board. Call it AFTER `tracked(...)` has settled.
+ */
+export async function syncBoardNow(queryClient: QueryClient, boardId: number) {
+  const key = ['board', boardId];
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await writesSettled();
+    const data = queryClient.getQueryData<BoardData>(key);
+    if (!data) return;
+    const gen = writeGen;
+    try {
+      const delta = await call<Delta>('GET', `/boards/${boardId}/changes?since=${data.board.rev}`);
+      if (inflight > 0 || gen !== writeGen) continue;
+      if (delta.truncated) await queryClient.invalidateQueries({queryKey: key});
+      else queryClient.setQueryData<BoardData>(key, current => (current ? applyChanges(current, delta) : current));
+      return;
+    } catch {
+      break;
+    }
+  }
+  await queryClient.invalidateQueries({queryKey: key});
 }
 
 const BASE_MS = 5000;
@@ -48,6 +92,8 @@ export function useBoardSync(boardId: number) {
     let failures = 0;
     let running = false;
     let idle = 0;
+    /** When the last poll started: a wake right after it (visibilitychange then focus, or focus from devtools) is skipped. */
+    let lastRun = 0;
 
     const schedule = () => {
       if (stopped) return;
@@ -59,6 +105,7 @@ export function useBoardSync(boardId: number) {
     async function tick() {
       if (stopped || running) return;
       running = true;
+      lastRun = Date.now();
       try {
         await run();
       } finally {
@@ -101,7 +148,7 @@ export function useBoardSync(boardId: number) {
     }
 
     const wake = () => {
-      if (document.hidden || stopped) return;
+      if (document.hidden || stopped || Date.now() - lastRun < 2000) return;
       window.clearTimeout(timer);
       idle = 0;
       void tick();

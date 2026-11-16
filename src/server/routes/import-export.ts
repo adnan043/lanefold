@@ -19,6 +19,7 @@ import type {Viewer} from '../../platform/types';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {reserveCardNumbers} from '../card-number';
 import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
+import {softLimited} from '../soft-limit';
 import {CSV_COLUMNS, csvRow, safeFileBase} from '../export-format';
 import {invalid, idOf, intField, objectOf, textField, type FieldError} from '../validation';
 import {boardAccess, membership, notFound, rankOf} from '../workspaces';
@@ -49,7 +50,8 @@ const BOARDS_PER_HOUR = 20;
 const EXPORTS_PER_HOUR = 20;
 /** Largest export: more cards stop the stream and say `truncated`. */
 const EXPORT_CARD_CAP = 5000;
-const EXPORT_BATCH = 100;
+/** Cards per batch: one round trip each (children read beside the next batch's cards). */
+const EXPORT_BATCH = 250;
 const EXPORT_COMMENTS_PER_CARD = 200;
 
 const noStore = createMiddleware(async (c, next) => {
@@ -133,6 +135,8 @@ const startBody = validator('json', (value, c) => {
 });
 
 type ChunkBody = {importId: string; cards: ImpCard[]};
+const IMPORT_CHUNKS_PER_HOUR = 300;
+
 const chunkBody = validator('json', (value, c) => {
   const v = objectOf(value);
   if (!isImportId(v?.importId)) return invalid(c, {importId: {code: 'invalid', message: 'Start the import again.'}});
@@ -154,6 +158,9 @@ const chunkBody = validator('json', (value, c) => {
 /* ---------------------------------------------------------- import record */
 
 type StartMeta = {workspaceId: number; boardId: number; totalCards: number; lanes: Record<string, number>; labels: Record<string, number>};
+
+/** A map lookup that only sees the map's OWN keys: an export can name a lane `constructor` or `__proto__`. */
+const own = (map: Record<string, number>, key: string): number | undefined => (Object.hasOwn(map, key) ? map[key] : undefined);
 
 const isIdMap = (v: unknown): v is Record<string, number> =>
   typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every(n => Number.isSafeInteger(n));
@@ -205,17 +212,110 @@ type ExportEvent =
 
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
-/** Cards in keyset batches of `EXPORT_BATCH` over the WHOLE board (lane, position, id): empty lanes cost no query; children in 5 parallel reads plus one name read per batch. */
+type ExportRow = {
+  ord: number; id: number; number: number | null; lane_id: number; title: string; description_md: string; position: string; priority: string;
+  start_date: Date | null; due_date: Date | null; completed_at: Date | null; archived_at: Date | null; created_at: Date;
+};
+/** Where the next batch starts: lane `lane` (an index into the lane list), after the card at (position, id), or at its start. */
+type ExportCursor = {lane: number; after: {position: string; id: number} | null};
+
+/**
+ * The next `take` cards of the board in export order (lane order, then position, id) from `cur`: ONE statement, a
+ * UNION ALL of per-lane reads that each walk `cards (workspace_id, lane_id, position, id)` with a keyset, never a sort of
+ * the whole board. Only as many lanes as their card counts say are needed to fill `take`: when the answer comes back
+ * short, every lane in it is finished and the next batch starts at `nextLane`.
+ */
+function exportBatch(
+  db: PrismaClient, workspaceId: number, boardId: number, lanes: {id: number}[], counts: Map<number, number>, readIn: Map<number, number>,
+  cur: ExportCursor, take: number
+): Promise<{rows: ExportRow[]; nextLane: number}> {
+  const branches: Prisma.Sql[] = [];
+  let planned = 0;
+  let i = cur.lane;
+  for (; i < lanes.length && (branches.length === 0 || planned < take); i++) {
+    const lane = lanes[i]!;
+    const after = i === cur.lane ? cur.after : null;
+    planned += Math.max(0, (counts.get(lane.id) ?? 0) - (after ? (readIn.get(lane.id) ?? 0) : 0));
+    branches.push(Prisma.sql`(SELECT ${i}::int AS ord, c.id, c.number, c.lane_id, c.title, c.description_md, c.position, c.priority,
+             c.start_date, c.due_date, c.completed_at, c.archived_at, c.created_at
+      FROM cards c
+      WHERE c.workspace_id = ${workspaceId}::int AND c.lane_id = ${lane.id}::int AND c.board_id = ${boardId}::int
+        ${after ? Prisma.sql`AND (c.position, c.id) > (${after.position}::text COLLATE "C", ${after.id}::int)` : Prisma.empty}
+      ORDER BY c.position, c.id
+      LIMIT ${take}::int)`);
+  }
+  const nextLane = i;
+  return db
+    .$queryRaw<ExportRow[]>`
+      SELECT ord, id, number, lane_id, title, description_md, position, priority, start_date, due_date, completed_at, archived_at, created_at
+      FROM (${Prisma.join(branches, ' UNION ALL ')}) t
+      ORDER BY ord, position COLLATE "C", id
+      LIMIT ${take}::int`
+    .then(rows => ({rows, nextLane}));
+}
+
+/** Labels, people, checklists, comments, attachments and every name they need for one batch: ONE round trip (6 reads side by side). */
+async function exportChildren(db: PrismaClient, workspaceId: number, ids: number[]) {
+  const list = Prisma.join(ids);
+  const [cardLabels, cardMembers, checklists, comments, attachments, users] = await Promise.all([
+    db.cardLabel.findMany({where: {cardId: {in: ids}}, select: {cardId: true, labelId: true}, take: ids.length * 50}),
+    db.cardMember.findMany({where: {workspaceId, cardId: {in: ids}}, select: {cardId: true, userId: true}, take: ids.length * 50}),
+    db.checklist.findMany({
+      where: {workspaceId, cardId: {in: ids}},
+      orderBy: [{position: 'asc'}, {id: 'asc'}],
+      take: ids.length * 20,
+      select: {cardId: true, title: true, items: {orderBy: [{position: 'asc'}, {id: 'asc'}], take: 100, select: {text: true, doneAt: true, assigneeId: true, dueDate: true}}},
+    }),
+    db.$queryRaw<{card_id: number; author_id: number | null; body_md: string; created_at: Date}[]>`
+      SELECT card_id, author_id, body_md, created_at FROM (
+        SELECT card_id, author_id, body_md, created_at, id,
+               row_number() OVER (PARTITION BY card_id ORDER BY id) AS rn
+        FROM comments
+        WHERE workspace_id = ${workspaceId} AND card_id IN (${list})
+      ) t WHERE rn <= ${EXPORT_COMMENTS_PER_CARD} ORDER BY card_id, id`,
+    db.attachment.findMany({
+      where: {workspaceId, cardId: {in: ids}, ready: true},
+      orderBy: {id: 'asc'},
+      take: ids.length * 50,
+      select: {cardId: true, name: true, url: true},
+    }),
+    // Names only, never an email: every person the batch's assignees, comments and checklist items name (a superset
+    // of what is shown, read beside them instead of after them; only looked up by id).
+    db.$queryRaw<{id: number; name: string}[]>`
+      SELECT u.id, u.name FROM users u
+      WHERE u.id IN (
+        SELECT user_id FROM card_members WHERE workspace_id = ${workspaceId} AND card_id IN (${list})
+        UNION SELECT author_id FROM comments WHERE workspace_id = ${workspaceId} AND card_id IN (${list}) AND author_id IS NOT NULL
+        UNION SELECT ci.assignee_id FROM checklist_items ci JOIN checklists cl ON cl.id = ci.checklist_id
+              WHERE cl.workspace_id = ${workspaceId} AND cl.card_id IN (${list}) AND ci.assignee_id IS NOT NULL
+      )
+      LIMIT ${ids.length * 300}::int`,
+  ]);
+  const names = new Map<number, string>(users.map(u => [u.id, u.name]));
+  return {cardLabels, cardMembers, checklists, comments, attachments, names};
+}
+
+/**
+ * Cards in keyset batches of `EXPORT_BATCH` over the WHOLE board (lane, position, id): empty lanes cost no extra
+ * query; a batch's children and names in ONE round trip, side by side with the read of the NEXT batch's cards, so
+ * the export costs about one round trip per batch.
+ */
 async function* exportEvents(db: PrismaClient, workspaceId: number, boardId: number, labelNames: Map<number, string>): AsyncGenerator<ExportEvent> {
-  const lanes = await db.lane.findMany({
-    where: {workspaceId, boardId},
-    orderBy: [{position: 'asc'}, {id: 'asc'}],
-    take: 200,
-    select: {id: true, name: true, archivedAt: true, wipLimit: true},
-  });
+  const [lanes, counts] = await Promise.all([
+    db.lane.findMany({
+      where: {workspaceId, boardId},
+      orderBy: [{position: 'asc'}, {id: 'asc'}],
+      take: 200,
+      select: {id: true, name: true, archivedAt: true, wipLimit: true},
+    }),
+    // How many cards each lane holds (archived ones too: the export has them): only steers how many lanes one batch reads.
+    db.$queryRaw<{lane_id: number; n: number}[]>`
+      SELECT lane_id, count(*)::int AS n FROM cards WHERE workspace_id = ${workspaceId} AND board_id = ${boardId} GROUP BY lane_id LIMIT 1000`,
+  ]);
+  const countOf = new Map(counts.map(r => [r.lane_id, r.n]));
+  const readIn = new Map<number, number>();
   let total = 0;
   let truncated = false;
-  // ONE keyset read over the whole board (cards joined to their lane, in lane order): empty lanes cost no query and a batch is never cut at a lane edge.
   let laneAt = -1;
   const openLane = function* (upTo: number): Generator<ExportEvent> {
     while (laneAt < upTo) {
@@ -226,112 +326,73 @@ async function* exportEvents(db: PrismaClient, workspaceId: number, boardId: num
     }
   };
   const laneIndex = new Map(lanes.map((l, i) => [l.id, i]));
-  const laneIds = lanes.map(l => l.id);
-  let cursor: {lanePosition: string; laneId: number; position: string; id: number} | null = null;
-  while (laneIds.length) {
-    const take = Math.min(EXPORT_BATCH, EXPORT_CARD_CAP - total);
-    if (take <= 0) {
-      truncated = true;
-      break;
-    }
-    const rows: {
-      id: number; number: number | null; lane_id: number; lane_position: string; title: string; description_md: string; position: string; priority: string;
-      start_date: Date | null; due_date: Date | null; completed_at: Date | null; archived_at: Date | null; created_at: Date;
-    }[] = await db.$queryRaw`
-      SELECT c.id, c.number, c.lane_id, l.position AS lane_position, c.title, c.description_md, c.position, c.priority,
-             c.start_date, c.due_date, c.completed_at, c.archived_at, c.created_at
-      FROM cards c JOIN lanes l ON l.id = c.lane_id
-      WHERE c.workspace_id = ${workspaceId} AND c.board_id = ${boardId} AND c.lane_id IN (${Prisma.join(laneIds)})
-        ${cursor ? Prisma.sql`AND (l.position, l.id, c.position, c.id) > (${cursor.lanePosition}::text COLLATE "C", ${cursor.laneId}::int, ${cursor.position}::text COLLATE "C", ${cursor.id}::int)` : Prisma.empty}
-      ORDER BY l.position, l.id, c.position, c.id
-      LIMIT ${take}`;
+  const batch = (cur: ExportCursor, take: number) => {
+    const p = exportBatch(db, workspaceId, boardId, lanes, countOf, readIn, cur, take);
+    p.catch(() => undefined); // awaited below; never an unhandled rejection if the download is cancelled first
+    return p;
+  };
+  let take = Math.min(EXPORT_BATCH, EXPORT_CARD_CAP);
+  let pending = lanes.length ? batch({lane: 0, after: null}, take) : null;
+  while (pending) {
+    const {rows, nextLane} = await pending;
+    pending = null;
+    total += rows.length;
+    // Where the next batch starts: after the last card of a full batch, else at the first lane this one did not read.
+    const last = rows[rows.length - 1];
+    const next: ExportCursor | null =
+      rows.length === take && last ? {lane: last.ord, after: {position: last.position, id: last.id}} : nextLane < lanes.length ? {lane: nextLane, after: null} : null;
+    const nextTake = Math.min(EXPORT_BATCH, EXPORT_CARD_CAP - total);
+    for (const r of rows) readIn.set(r.lane_id, (readIn.get(r.lane_id) ?? 0) + 1);
+    if (next && nextTake <= 0) truncated = true;
+    else if (next) pending = batch(next, nextTake);
+    take = nextTake;
+    if (!rows.length) continue;
     const cards = rows.map(r => ({
       id: r.id, number: r.number, laneId: r.lane_id, title: r.title, descriptionMd: r.description_md, position: r.position, priority: r.priority,
       startDate: r.start_date, dueDate: r.due_date, completedAt: r.completed_at, archivedAt: r.archived_at, createdAt: r.created_at,
     }));
-      if (!cards.length) break;
-      const ids = cards.map(c => c.id);
-      const [cardLabels, cardMembers, checklists, comments, attachments] = await Promise.all([
-        db.cardLabel.findMany({where: {cardId: {in: ids}}, select: {cardId: true, labelId: true}, take: ids.length * 50}),
-        db.cardMember.findMany({where: {workspaceId, cardId: {in: ids}}, select: {cardId: true, userId: true}, take: ids.length * 50}),
-        db.checklist.findMany({
-          where: {workspaceId, cardId: {in: ids}},
-          orderBy: [{position: 'asc'}, {id: 'asc'}],
-          take: ids.length * 20,
-          select: {cardId: true, title: true, items: {orderBy: [{position: 'asc'}, {id: 'asc'}], take: 100, select: {text: true, doneAt: true, assigneeId: true, dueDate: true}}},
-        }),
-        db.$queryRaw<{card_id: number; author_id: number | null; body_md: string; created_at: Date}[]>`
-          SELECT card_id, author_id, body_md, created_at FROM (
-            SELECT card_id, author_id, body_md, created_at, id,
-                   row_number() OVER (PARTITION BY card_id ORDER BY id) AS rn
-            FROM comments
-            WHERE workspace_id = ${workspaceId} AND card_id IN (${Prisma.join(ids)})
-          ) t WHERE rn <= ${EXPORT_COMMENTS_PER_CARD} ORDER BY card_id, id`,
-        db.attachment.findMany({
-          where: {workspaceId, cardId: {in: ids}, ready: true},
-          orderBy: {id: 'asc'},
-          take: ids.length * 50,
-          select: {cardId: true, name: true, url: true},
-        }),
-      ]);
-      // Names only, never an email: members and comment authors in ONE read.
-      const wanted = [
-        ...new Set([
-          ...cardMembers.map(m => m.userId),
-          ...comments.flatMap(c => (c.author_id === null ? [] : [c.author_id])),
-          ...checklists.flatMap(cl => cl.items.flatMap(i => (i.assigneeId === null ? [] : [i.assigneeId]))),
-        ]),
-      ];
-      const names = new Map<number, string>();
-      if (wanted.length) {
-        for (const u of await db.user.findMany({where: {id: {in: wanted}}, select: {id: true, name: true}, take: wanted.length})) names.set(u.id, u.name);
-      }
-      const group = <T extends {cardId: number}>(rows: T[]) => {
-        const m = new Map<number, T[]>();
-        for (const r of rows) (m.get(r.cardId) ?? m.set(r.cardId, []).get(r.cardId)!).push(r);
-        return m;
+    const {cardLabels, cardMembers, checklists, comments, attachments, names} = await exportChildren(db, workspaceId, cards.map(c => c.id));
+    const group = <T extends {cardId: number}>(rows: T[]) => {
+      const m = new Map<number, T[]>();
+      for (const r of rows) (m.get(r.cardId) ?? m.set(r.cardId, []).get(r.cardId)!).push(r);
+      return m;
+    };
+    const labelsBy = group(cardLabels);
+    const membersBy = group(cardMembers);
+    const checklistsBy = group(checklists);
+    const attachmentsBy = group(attachments.flatMap(a => (a.cardId === null ? [] : [{...a, cardId: a.cardId}])));
+    const commentsBy = group(comments.map(c => ({...c, cardId: c.card_id})));
+    for (const card of cards) {
+      const li = laneIndex.get(card.laneId) ?? laneAt;
+      yield* openLane(li);
+      yield {
+        kind: 'card',
+        laneName: lanes[li]!.name,
+        card: {
+          id: card.id,
+          number: card.number,
+          title: card.title,
+          description: card.descriptionMd,
+          priority: card.priority,
+          startDate: day(card.startDate),
+          dueDate: day(card.dueDate),
+          completed: card.completedAt !== null,
+          archived: card.archivedAt !== null,
+          createdAt: card.createdAt.toISOString(),
+          labels: (labelsBy.get(card.id) ?? []).flatMap(l => (labelNames.has(l.labelId) ? [labelNames.get(l.labelId)!] : [])),
+          assignees: (membersBy.get(card.id) ?? []).flatMap(m => (names.has(m.userId) ? [names.get(m.userId)!] : [])),
+          checklists: (checklistsBy.get(card.id) ?? []).map(cl => ({title: cl.title, items: cl.items.map(i => ({text: i.text, done: i.doneAt !== null, assignee: i.assigneeId === null ? null : (names.get(i.assigneeId) ?? null), dueDate: day(i.dueDate)}))})),
+          comments: (commentsBy.get(card.id) ?? []).map(c => ({
+            author: c.author_id === null ? null : (names.get(c.author_id) ?? null),
+            createdAt: c.created_at.toISOString(),
+            text: c.body_md,
+          })),
+          // Uploaded files are private: only their name is exported, never a link to the bytes.
+          attachments: (attachmentsBy.get(card.id) ?? []).map(a => ({name: a.name, url: a.url})),
+        },
       };
-      const labelsBy = group(cardLabels);
-      const membersBy = group(cardMembers);
-      const checklistsBy = group(checklists);
-      const attachmentsBy = group(attachments.flatMap(a => (a.cardId === null ? [] : [{...a, cardId: a.cardId}])));
-      const commentsBy = group(comments.map(c => ({...c, cardId: c.card_id})));
-      for (const card of cards) {
-        const li = laneIndex.get(card.laneId) ?? laneAt;
-        yield* openLane(li);
-        yield {
-          kind: 'card',
-          laneName: lanes[li]!.name,
-          card: {
-            id: card.id,
-            number: card.number,
-            title: card.title,
-            description: card.descriptionMd,
-            priority: card.priority,
-            startDate: day(card.startDate),
-            dueDate: day(card.dueDate),
-            completed: card.completedAt !== null,
-            archived: card.archivedAt !== null,
-            createdAt: card.createdAt.toISOString(),
-            labels: (labelsBy.get(card.id) ?? []).flatMap(l => (labelNames.has(l.labelId) ? [labelNames.get(l.labelId)!] : [])),
-            assignees: (membersBy.get(card.id) ?? []).flatMap(m => (names.has(m.userId) ? [names.get(m.userId)!] : [])),
-            checklists: (checklistsBy.get(card.id) ?? []).map(cl => ({title: cl.title, items: cl.items.map(i => ({text: i.text, done: i.doneAt !== null, assignee: i.assigneeId === null ? null : (names.get(i.assigneeId) ?? null), dueDate: day(i.dueDate)}))})),
-            comments: (commentsBy.get(card.id) ?? []).map(c => ({
-              author: c.author_id === null ? null : (names.get(c.author_id) ?? null),
-              createdAt: c.created_at.toISOString(),
-              text: c.body_md,
-            })),
-            // Uploaded files are private: only their name is exported, never a link to the bytes.
-            attachments: (attachmentsBy.get(card.id) ?? []).map(a => ({name: a.name, url: a.url})),
-          },
-        };
-      }
-      total += cards.length;
-      const lastCard = cards[cards.length - 1]!;
-      const lastRow = rows[rows.length - 1]!;
-      cursor = {lanePosition: lastRow.lane_position, laneId: lastRow.lane_id, position: lastCard.position, id: lastCard.id};
-      if (cards.length < take) break;
     }
+  }
   // Remaining (empty) lanes, then close the last open one.
   yield* openLane(lanes.length - 1);
   if (laneAt >= 0) yield {kind: 'lane_end'};
@@ -417,22 +478,22 @@ async function exportResponse(c: Context<{Variables: {db: PrismaClient; viewer: 
   const ctx = await exportAccess(db, userId, idOf(c.req.param('id')));
   if ('status' in ctx) return c.json(ctx.body, ctx.status);
   const {workspaceId} = ctx.access;
-  // A person may export so many times an hour (each one reads the whole board).
-  const recent = await db.auditEvent.findMany({
-    where: {actorUserId: userId, action: 'board.exported', createdAt: {gt: new Date(Date.now() - 3_600_000)}},
-    orderBy: {id: 'desc'},
-    select: {id: true},
-    take: EXPORTS_PER_HOUR,
-  });
+  // A person may export so many times an hour (each one reads the whole board). The labels are read beside it; the
+  // board's name, visibility and archived flag came with the access check.
+  const [recent, labels] = await Promise.all([
+    db.auditEvent.findMany({
+      where: {actorUserId: userId, action: 'board.exported', createdAt: {gt: new Date(Date.now() - 3_600_000)}},
+      orderBy: {id: 'desc'},
+      select: {id: true},
+      take: EXPORTS_PER_HOUR,
+    }),
+    db.label.findMany({where: {workspaceId, boardId: ctx.boardId}, orderBy: {id: 'asc'}, take: 100, select: {id: true, name: true, colorHex: true}}),
+  ]);
   if (recent.length >= EXPORTS_PER_HOUR) {
     c.header('Retry-After', '600');
     return c.json(problem('export_rate_limited', 'You exported many boards in the last hour. Try again later.'), 429);
   }
-  const [board, labels] = await Promise.all([
-    db.board.findFirst({where: {id: ctx.boardId, workspaceId}, select: {name: true, visibility: true, archivedAt: true}}),
-    db.label.findMany({where: {workspaceId, boardId: ctx.boardId}, orderBy: {id: 'asc'}, take: 100, select: {id: true, name: true, colorHex: true}}),
-  ]);
-  if (!board) return c.json(problem('not_found', 'No such board.'), 404);
+  const board = {name: ctx.access.name, visibility: ctx.access.visibility, archived: ctx.access.archived};
   await audit(db, {actorUserId: userId, action: 'board.exported', target: ['board', ctx.boardId], meta: {format}});
   const events = exportEvents(db, workspaceId, ctx.boardId, new Map(labels.map(l => [l.id, l.name])));
   const parts =
@@ -441,7 +502,7 @@ async function exportResponse(c: Context<{Variables: {db: PrismaClient; viewer: 
           {
             format: 'lanefold.board.v1',
             exportedAt: new Date().toISOString(),
-            board: {name: board.name, visibility: board.visibility, archived: board.archivedAt !== null},
+            board: {name: board.name, visibility: board.visibility, archived: board.archived},
             labels: labels.map(l => ({name: l.name, color: l.colorHex})),
           },
           events
@@ -545,10 +606,10 @@ export const importExportRoutes = new Hono()
         : [];
       // Lanes are matched by their (unique) key; labels by id order, which is the order of `data` (one multi-row INSERT).
       const laneByKey = new Map(lanes.map(l => [l.position, l.id]));
-      const laneMap: Record<string, number> = {};
+      const laneMap: Record<string, number> = Object.create(null);
       body.lanes.forEach((l, i) => (laneMap[l.ext] = laneByKey.get(laneKeys[i]!)!));
       const labelIds = labels.map(l => l.id).sort((a, b) => a - b);
-      const labelMap: Record<string, number> = {};
+      const labelMap: Record<string, number> = Object.create(null);
       body.labels.forEach((l, i) => (labelMap[l.ext] = labelIds[i]!));
       const meta: StartMeta = {workspaceId, boardId: board.id, totalCards: body.totalCards, lanes: laneMap, labels: labelMap};
       await tx.auditEvent.create({
@@ -571,6 +632,11 @@ export const importExportRoutes = new Hono()
     if (!access) return notFound(c, 'board');
     if (!access.canWrite) return forbidden(c);
     if (access.archived) return c.json(problem('board_archived', 'This board is archived.'), 409);
+    // Each chunk can write a few thousand rows (cards, checklist items, comments): a per-user hourly cap (two full
+    // 5,000-card imports' worth) keeps a script from filling the database (security.md A06).
+    if (await softLimited(userId, 'import-chunk', IMPORT_CHUNKS_PER_HOUR, 3600)) {
+      return c.json(problem('rate_limited', 'You imported a lot in the last hour. Try again later.'), 429);
+    }
     const ent = await getEntitlements(db, access.workspaceId);
     if (ent?.readOnly) return readOnly(c);
     const {workspaceId} = access;
@@ -590,11 +656,11 @@ export const importExportRoutes = new Hono()
         if (!fresh.length) return {created: 0, skipped: body.cards.length, rev: access.rev};
         const already = await tx.card.count({where: {boardId, importId: body.importId}});
         if (already + fresh.length > meta.totalCards) throw new TooManyCards();
-        if (fresh.some(card => meta.lanes[card.lane] === undefined)) throw new UnknownLane();
+        if (fresh.some(card => own(meta.lanes, card.lane) === undefined)) throw new UnknownLane();
 
         const rev = await bumpRev(tx, boardId, workspaceId);
         // The last key of every lane this chunk touches: ONE statement.
-        const laneIds = [...new Set(fresh.map(card => meta.lanes[card.lane]!))];
+        const laneIds = [...new Set(fresh.map(card => own(meta.lanes, card.lane)!))];
         const lasts = await tx.$queryRaw<{lane_id: number; last: string}[]>`
           SELECT lane_id, max(position COLLATE "C") AS last FROM cards
           WHERE workspace_id = ${workspaceId} AND board_id = ${boardId} AND archived_at IS NULL AND lane_id IN (${Prisma.join(laneIds)})
@@ -602,7 +668,7 @@ export const importExportRoutes = new Hono()
         const lastOf = new Map<number, string>(lasts.map(r => [r.lane_id, r.last]));
         const keyOf = new Map<string, string>();
         for (const laneId of laneIds) {
-          const inLane = fresh.filter(card => meta.lanes[card.lane] === laneId);
+          const inLane = fresh.filter(card => own(meta.lanes, card.lane) === laneId);
           keysAtEnd(lastOf.get(laneId) ?? null, inLane.length).forEach((key, i) => keyOf.set(inLane[i]!.ext, key));
         }
         const now = new Date();
@@ -612,7 +678,7 @@ export const importExportRoutes = new Hono()
           data: fresh.map((card, i) => ({
             number: firstNumber + i,
             boardId,
-            laneId: meta.lanes[card.lane]!,
+            laneId: own(meta.lanes, card.lane)!,
             workspaceId,
             title: card.title,
             descriptionMd: card.desc,
@@ -650,7 +716,7 @@ export const importExportRoutes = new Hono()
           if (bumped.length !== perLane.size) throw new LaneFull();
         }
 
-        const cardLabels = made.flatMap(m => m.card.labels.flatMap(ext => (meta.labels[ext] === undefined ? [] : [{cardId: m.id, labelId: meta.labels[ext]!}])));
+        const cardLabels = made.flatMap(m => m.card.labels.flatMap(ext => (own(meta.labels, ext) === undefined ? [] : [{cardId: m.id, labelId: own(meta.labels, ext)!}])));
         if (cardLabels.length) await tx.cardLabel.createMany({data: cardLabels, skipDuplicates: true});
 
         const checklistRows = made.flatMap(m => {

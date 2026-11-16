@@ -5,16 +5,19 @@ import Icon, {type IconName} from '../components/home/Icon.astro';
 import {PRICING, withName} from '../content/site';
 import {formatPrice, withLiveLimits} from '../lib/pricing-view';
 import type {PublicPricing} from '../server/pricing';
-import {read} from '../server/backend';
+import {backend, read} from '../server/backend';
 import Base from '../layouts/Base.astro';
 import {pageContext} from '../server/page';
 
 // On demand: the limits are read from the database (through the Site Cache) at request time, so an edit in
 // /dashboard shows at once. Prices appear only when the plan has a price in the catalogue. The copy in
 // src/content/site.ts is the fallback when the read fails.
-const {api, site, viewer} = await pageContext(Astro.request, Astro.response);
+// The plans read does not depend on the visitor: it runs BESIDE pageContext, not after it (performance.md).
+const [{site, viewer}, live] = await Promise.all([
+  pageContext(Astro.request, Astro.response),
+  read<PublicPricing>(backend(Astro.request).billing['public-plans'].$get()),
+]);
 const name = site?.name ?? 'Lanefold';
-const live = await read<PublicPricing>(api.billing['public-plans'].$get());
 const plans = withLiveLimits(PRICING.plans, live);
 const free = live?.billingMode === 'FREE_FOR_ALL';
 const signedIn = viewer.state === 'user';

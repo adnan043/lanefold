@@ -15,6 +15,9 @@ import {FIELD_LIMITS, FIELD_ORDER, fieldCols, fieldShape, valueCols, valueMap} f
 import {boardAccess, notFound, boardReachable} from '../workspaces';
 import {isEmoji} from './chat';
 import {HEX_RE, idOf, intField, invalid, likeEscape, objectOf, textField, type FieldError} from '../validation';
+import {afterResponse, type WithExecutionCtx} from '../after-response';
+import {cardWithAccess, workspaceReadOnly} from '../board-access-via';
+import {softLimited} from '../soft-limit';
 
 /**
  * Phase 2: everything inside a card. Mounted ONCE at `/` in `app.ts`.
@@ -63,6 +66,14 @@ const refuse = (status: Refusal['status'], error: string, message: string): Refu
 export const refused = <T extends object>(r: Refusal | T): r is Refusal => 'status' in r;
 
 /** 'remove' is a write that frees space (delete an attachment or your comment): allowed in a read-only workspace so it can heal. */
+/**
+ * Each changed due time queues a platform job (its key changes with the moment), so a script nudging times would
+ * queue without end: a per-user hourly budget. Past it the job is skipped; the hourly reminder run still covers the
+ * card or item, only less precisely (security.md A06).
+ */
+const REMINDER_JOBS_PER_HOUR = 120;
+const reminderJobsSpent = (userId: number) => softLimited(userId, 'reminder-jobs', REMINDER_JOBS_PER_HOUR, 3600);
+
 type Need = 'read' | 'write' | 'remove';
 
 /**
@@ -72,23 +83,21 @@ type Need = 'read' | 'write' | 'remove';
  */
 export async function cardCtx(db: PrismaClient, userId: number, cardId: number | undefined, need: Need) {
   if (!cardId) return refuse(404, 'not_found', 'No such card.');
-  const card = await db.card.findFirst({
-    where: {id: cardId, board: boardReachable(userId)},
-    select: {id: true, boardId: true, laneId: true, workspaceId: true, archivedAt: true, board: {select: {inboxOf: true}}},
-  });
-  if (!card) return refuse(404, 'not_found', 'No such card.');
-  const access = await boardAccess(db, card.boardId, userId);
+  // ONE query: the card and boardAccess() of its board (board-access-via.ts, the same rules and filter).
+  const found = await cardWithAccess(db, cardId, userId);
+  if (!found) return refuse(404, 'not_found', 'No such card.');
+  const {access, graceUntil} = found;
+  const {inboxOf, ...card} = found.card;
   if (!access || access.workspaceId !== card.workspaceId) return refuse(404, 'not_found', 'No such card.');
   if (need !== 'read') {
     if (!access.canWrite) return refuse(403, 'forbidden', 'You do not have access to this.');
     if (access.archived) return refuse(409, 'board_archived', 'This board is archived.');
     if (card.archivedAt) return refuse(404, 'not_found', 'No such card.');
-    if (need === 'write') {
-      const ent = await getEntitlements(db, access.workspaceId);
-      if (ent?.readOnly) return refuse(409, 'workspace_read_only', 'This workspace is read-only until its plan limits are fixed.');
+    if (need === 'write' && (await workspaceReadOnly(db, access.workspaceId, graceUntil))) {
+      return refuse(409, 'workspace_read_only', 'This workspace is read-only until its plan limits are fixed.');
     }
   }
-  return {card, cardId: card.id, boardId: card.boardId, workspaceId: card.workspaceId, inboxOf: card.board.inboxOf, access};
+  return {card: {...card, board: {inboxOf}}, cardId: card.id, boardId: card.boardId, workspaceId: card.workspaceId, inboxOf, access};
 }
 export type Ctx = Exclude<Awaited<ReturnType<typeof cardCtx>>, Refusal>;
 
@@ -464,12 +473,12 @@ const uploadBody = body(v => {
   }
   const size = intField(v.size, 1, 100 * 1024 * 1024);
   if (!size.ok) return errAt('file', {code: 'E_FILE_TOO_LARGE', message: 'Pick a file from 1 byte up to 100 MB.'});
-  return {ok: true, value: {name: name.value.replace(/[\\/]/g, '_'), contentType: type, size: size.value}};
+  return {ok: true, value: {name: name.value.replace(/[\\/"\u0000-\u001f\u007f]/g, '_'), contentType: type, size: size.value}};
 });
 
 const renameBody = body(v => {
   const t = textField(v.name, 1, 200);
-  return t.ok ? {ok: true, value: {name: t.value}} : errAt('name', t.error);
+  return t.ok ? {ok: true, value: {name: t.value.replace(/[\\/"\u0000-\u001f\u007f]/g, '_')}} : errAt('name', t.error);
 });
 
 const coverBody = body(v => {
@@ -736,11 +745,20 @@ export const cardDetailRoutes = new Hono()
     if (verdict === 'dates') return invalid(c, {startDate: {code: 'invalid', message: 'The start date must not be after the due date.'}});
     if (verdict === 'time') return invalid(c, {dueAt: {code: 'invalid', message: 'Pick a time on the due date.'}});
     if (!out) return notFound(c, 'card');
-    if (out.timeChanged) await scheduleTimedReminder(c.req.url, ctx.cardId, out.savedAt, out.savedRemind);
-    // After the commit, never failing the request: the people who follow the card hear about it.
+    // A platform call (sendJob): after the answer, so the save is not kept waiting on it; the hourly run is the safety net.
+    if (out.timeChanged) {
+      const url = c.req.url;
+      await afterResponse(c, 'due reminder job', async () => {
+        if (!(await reminderJobsSpent(userId))) await scheduleTimedReminder(url, ctx.cardId, out.savedAt, out.savedRemind);
+      });
+    }
+    // After the answer, never failing the request: the people who follow the card hear about it.
     const base = {workspaceId: ctx.workspaceId, boardId: ctx.boardId, cardId: ctx.cardId};
-    if (out.justCompleted) await notifyWatchers(c.var.db, base, userId, 'card_done');
-    else if (out.dueChanged) await notifyWatchers(c.var.db, base, userId, 'card_due');
+    const event = out.justCompleted ? 'card_done' : out.dueChanged ? 'card_due' : null;
+    if (event) {
+      const db = c.var.db;
+      await afterResponse(c, 'card watchers', () => notifyWatchers(db, base, userId, event));
+    }
     return c.json({card: out.card, rev: out.rev});
   })
 
@@ -928,9 +946,16 @@ export const cardDetailRoutes = new Hono()
     if (out === 'limit') return c.json(problem('limit_reached', `A checklist holds up to ${LIMITS.itemsPerChecklist} items.`), 409);
     if (!out) return notFound(c, 'checklist');
     const names = await namesOf(c.var.db, assigneeId ? [assigneeId] : []);
-    if (assigneeId) await tellItemAssignee(c.var.db, ctx, userId, assigneeId);
+    if (assigneeId) await tellItemAssignee(c, c.var.db, ctx, userId, assigneeId);
     // One timed reminder job per new item (at most itemsPerRequest; the hourly run is the safety net for a failed send).
-    if (dueAt && dueRemindMinutes != null) await Promise.all(out.items.map(i => scheduleItemReminder(c.req.url, i.id, i.dueAt, i.dueRemindMinutes)));
+    if (dueAt && dueRemindMinutes != null) {
+      const url = c.req.url;
+      await afterResponse(c, 'item reminder jobs', async () => {
+        const send = [];
+        for (const i of out.items) if (!(await reminderJobsSpent(userId))) send.push(scheduleItemReminder(url, i.id, i.dueAt, i.dueRemindMinutes));
+        await Promise.all(send);
+      });
+    }
     return c.json({...out, items: out.items.map(i => itemShape(i, names))}, 201);
   })
 
@@ -1003,8 +1028,13 @@ export const cardDetailRoutes = new Hono()
     if ((out as unknown) === 'time') return invalid(c, {dueAt: {code: 'invalid', message: 'Pick a time on the due date.'}});
     if (!out) return notFound(c, 'item');
     const {newAssignee, reminder, ...answer} = out;
-    if (newAssignee !== null) await tellItemAssignee(c.var.db, ctx, userId, newAssignee);
-    if (reminder) await scheduleItemReminder(c.req.url, row.id, reminder.at, reminder.minutes);
+    if (newAssignee !== null) await tellItemAssignee(c, c.var.db, ctx, userId, newAssignee);
+    if (reminder) {
+      const url = c.req.url;
+      await afterResponse(c, 'item reminder job', async () => {
+        if (!(await reminderJobsSpent(userId))) await scheduleItemReminder(url, row.id, reminder.at, reminder.minutes);
+      });
+    }
     return c.json(answer);
   })
 
@@ -1054,10 +1084,16 @@ export const cardDetailRoutes = new Hono()
     const ctx = await cardCtx(db, userId, idOf(c.req.param('id')), 'write');
     if (refused(ctx)) return send(c, ctx);
     const input = c.req.valid('json') as {body: string; mentions: number[]};
-    // Rate limit on our own table (security.md A06): a bounded count on the (author_id, created_at) index.
-    const recent = await db.comment.count({where: {authorId: userId, createdAt: {gte: new Date(Date.now() - 60_000)}}});
+    // Three independent reads in ONE round trip: the rate limit (security.md A06: a bounded count on the
+    // (author_id, created_at) index), who of the mentioned may be mentioned, and the names the answer shows
+    // (read for every asked id, used only for the eligible ones; the validator caps the list).
+    const [recent, allowed, names] = await Promise.all([
+      db.comment.count({where: {authorId: userId, createdAt: {gte: new Date(Date.now() - 60_000)}}}),
+      eligible(db, ctx, input.mentions),
+      namesOf(db, [userId, ...input.mentions]),
+    ]);
     if (recent >= LIMITS.commentsPerMinute) return c.json(problem('rate_limited', 'Too many comments. Wait a moment and try again.'), 429);
-    const mentioned = (await eligible(db, ctx, input.mentions)).filter(id => id !== userId);
+    const mentioned = allowed.filter(id => id !== userId);
     const out = await atomically(db, async tx => {
       const rev = await bumpRev(tx, ctx.boardId, ctx.workspaceId);
       const created = await tx.comment.create({
@@ -1076,17 +1112,18 @@ export const cardDetailRoutes = new Hono()
       return {...done, created};
     });
     if (!out) return notFound(c, 'card');
-    // After the commit, and never failing the request: who hears about it.
-    const [members, watchers] = await Promise.all([
-      db.cardMember.findMany({where: {cardId: ctx.cardId, workspaceId: ctx.workspaceId}, select: {userId: true}, take: 50}),
-      db.cardWatcher.findMany({where: {cardId: ctx.cardId}, select: {userId: true}, orderBy: {userId: 'asc'}, take: 100}),
-    ]);
-    const base = {workspaceId: ctx.workspaceId, actorId: userId, boardId: ctx.boardId, cardId: ctx.cardId};
-    const candidates = [...new Set([...members, ...watchers].map(m => m.userId))].filter(id => id !== userId && !mentioned.includes(id));
-    // Board access is re-checked now: a member or watcher may have lost their seat since they joined the card.
-    const others = await eligible(db, ctx, candidates, 150);
-    await Promise.all([notify(db, mentioned, {...base, kind: 'mentioned'}), notify(db, others, {...base, kind: 'comment'})]);
-    const names = await namesOf(db, [userId, ...mentioned]);
+    // After the answer, and never failing the request: who hears about it.
+    await afterResponse(c, 'comment notifications', async () => {
+      const [members, watchers] = await Promise.all([
+        db.cardMember.findMany({where: {cardId: ctx.cardId, workspaceId: ctx.workspaceId}, select: {userId: true}, take: 50}),
+        db.cardWatcher.findMany({where: {cardId: ctx.cardId}, select: {userId: true}, orderBy: {userId: 'asc'}, take: 100}),
+      ]);
+      const base = {workspaceId: ctx.workspaceId, actorId: userId, boardId: ctx.boardId, cardId: ctx.cardId};
+      const candidates = [...new Set([...members, ...watchers].map(m => m.userId))].filter(id => id !== userId && !mentioned.includes(id));
+      // Board access is re-checked now: a member or watcher may have lost their seat since they joined the card.
+      const others = await eligible(db, ctx, candidates, 150);
+      await Promise.all([notify(db, mentioned, {...base, kind: 'mentioned'}), notify(db, others, {...base, kind: 'comment'})]);
+    });
     return c.json({card: out.card, rev: out.rev, comment: commentShape(out.created, names, userId)}, 201);
   })
 
@@ -1117,7 +1154,8 @@ export const cardDetailRoutes = new Hono()
       return {...done, comment, fresh: wanted.filter(id => !had.some(h => h.userId === id))};
     });
     if (!out?.comment) return notFound(c, 'comment');
-    await notify(db, out.fresh, {workspaceId: ctx.workspaceId, actorId: userId, boardId: ctx.boardId, cardId: ctx.cardId, kind: 'mentioned'});
+    const fresh = out.fresh;
+    await afterResponse(c, 'mention notifications', () => notify(db, fresh, {workspaceId: ctx.workspaceId, actorId: userId, boardId: ctx.boardId, cardId: ctx.cardId, kind: 'mentioned'}));
     const [names, reactions] = await Promise.all([namesOf(db, [userId, ...wanted]), commentReactions(db, [row.id], userId)]);
     return c.json({card: out.card, rev: out.rev, comment: commentShape(out.comment, names, userId, reactions.get(row.id))});
   })
@@ -1304,6 +1342,8 @@ export const cardDetailRoutes = new Hono()
     if (!row || row.cardId === null) return notFound(c, 'file');
     const ctx = await viaCard(db, userId, row.cardId, row.workspaceId, 'write');
     if (refused(ctx)) return send(c, ctx);
+    // Like delete: the uploader, or a board admin (a colleague cannot relabel someone else's file or link).
+    if (row.uploadedBy !== userId && !ctx.access.canAdmin) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
     const {name} = c.req.valid('json') as {name: string};
     const out = await atomically(db, async tx => {
       const rev = await bumpRev(tx, ctx.boardId, ctx.workspaceId);
@@ -1371,7 +1411,7 @@ export const cardDetailRoutes = new Hono()
 
 /* ------------------------------------------------------- shared handlers */
 
-type Req = {
+type Req = WithExecutionCtx & {
   var: {db: PrismaClient; viewer: {id?: number | null}};
   req: {param: (name: string) => string};
   json: (body: unknown, status?: 201 | 403 | 404 | 409 | 422 | 429) => Response;
@@ -1455,9 +1495,12 @@ async function cardLabel(c: Req, on: boolean) {
 
 /** Assign or unassign a person. Only active workspace members who can see the board can be assigned. */
 /** After the commit: the person given a checklist item hears about it (never the actor) and follows the card. */
-async function tellItemAssignee(db: PrismaClient, ctx: Ctx, actorId: number, assignee: number) {
-  await notify(db, [assignee], {workspaceId: ctx.workspaceId, actorId, boardId: ctx.boardId, cardId: ctx.cardId, kind: 'assigned'});
-  await addWatcher(db, ctx.cardId, assignee);
+async function tellItemAssignee(c: WithExecutionCtx, db: PrismaClient, ctx: Ctx, actorId: number, assignee: number) {
+  // Both after the answer: the item's answer does not show who follows the card.
+  await afterResponse(c, 'assign notification', async () => {
+    await addWatcher(db, ctx.cardId, assignee);
+    await notify(db, [assignee], {workspaceId: ctx.workspaceId, actorId, boardId: ctx.boardId, cardId: ctx.cardId, kind: 'assigned'});
+  });
 }
 
 async function assign(c: Req, on: boolean) {
@@ -1482,10 +1525,15 @@ async function assign(c: Req, on: boolean) {
   if ((out as unknown) === 'limit') return c.json(problem('limit_reached', `A card holds up to ${LIMITS.assignees} assignees.`), 409);
   if (!out) return notFound(c, 'card');
   if (on) {
-    await notify(db, [target], {workspaceId: ctx.workspaceId, actorId: userId, boardId: ctx.boardId, cardId: ctx.cardId, kind: 'assigned'});
-    // Whoever is assigned follows the card from then on; the others who follow hear who was added.
+    // Whoever is assigned follows the card from then on (before answering: the card shows it); after the answer,
+    // they hear about it and the others who follow hear who was added.
     await addWatcher(db, ctx.cardId, target);
-    await notifyWatchers(db, {workspaceId: ctx.workspaceId, boardId: ctx.boardId, cardId: ctx.cardId}, userId, 'card_member', [target]);
+    await afterResponse(c, 'assign notifications', () =>
+      Promise.all([
+        notify(db, [target], {workspaceId: ctx.workspaceId, actorId: userId, boardId: ctx.boardId, cardId: ctx.cardId, kind: 'assigned'}),
+        notifyWatchers(db, {workspaceId: ctx.workspaceId, boardId: ctx.boardId, cardId: ctx.cardId}, userId, 'card_member', [target]),
+      ])
+    );
   }
   return c.json(out);
 }

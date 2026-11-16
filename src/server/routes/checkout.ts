@@ -19,7 +19,7 @@ import {
   membershipOf,
   type PaymentEventInfo,
 } from '../../platform/payments';
-import {softLimited} from '../soft-limit';
+import {ipLimited, softLimited} from '../soft-limit';
 import {membership} from '../workspaces';
 import {applyWorkspacePlan, paymentHooks, recordMembership} from '../payments-hooks';
 
@@ -164,6 +164,12 @@ export const checkoutRoutes = new Hono()
       c.header('Retry-After', '60');
       return c.json(problem('rate_limited', 'Too many checkout attempts. Wait a few minutes and try again.'), 429);
     }
+    // Not signed in: each start calls the payments platform, so it is limited per address instead.
+    if (!signedIn && (await ipLimited(c.req.header('cf-connecting-ip'), 'checkout-start', 20, 600))) {
+      if (c.var.form) return c.redirect(`${CHECKOUT_PAGE}?error=E_RATE_LIMITED`, 303);
+      c.header('Retry-After', '60');
+      return c.json(problem('rate_limited', 'Too many checkout attempts. Wait a few minutes and try again.'), 429);
+    }
     const planPrice = await getDb()?.planLimit.findFirst({where: {priceKeyMonthly: input.price}, select: {plan: true}});
     if (planPrice) {
       if (c.var.form) return c.redirect(`${CHECKOUT_PAGE}?error=E_PRICE_NOT_FOUND`, 303);
@@ -232,6 +238,11 @@ export const checkoutRoutes = new Hono()
   .get('/:id', async c => {
     const id = c.req.param('id');
     if (!CHECKOUT_ID.test(id)) return c.json(problem('not_found', 'No such checkout.'), 404);
+    // Public (the thanks page polls it): each call reaches the payments platform and may write, so it is limited.
+    if (await ipLimited(c.req.header('cf-connecting-ip'), 'checkout-confirm', 120, 600)) {
+      c.header('Retry-After', '60');
+      return c.json(problem('rate_limited', 'Too many requests. Wait a minute and try again.'), 429);
+    }
     const found = await getCheckout(c.req.url, id);
     if (!found.ok) {
       if (found.status === 404) return c.json(problem('not_found', 'No such checkout.'), 404);
@@ -320,13 +331,14 @@ export const membershipRoutes = new Hono()
     const subscriptionId = c.req.param('id');
     const mine = await c.var.db.membership.findFirst({
       where: {subscriptionId, ...(await visibleTo(c.var.db, c.var.viewer))},
-      select: {subscriptionId: true, mode: true, workspaceId: true},
+      select: {subscriptionId: true, mode: true, workspaceId: true, userId: true},
     });
     if (!mine) return c.json(problem('not_found', 'No such membership.'), 404);
-    // A workspace's plan is cancelled only by someone who is still an admin or owner there (not a removed or demoted buyer).
+    // A workspace's plan is cancelled by its owner, or by the buyer while still an admin there. Another admin
+    // (who can see the plan) must not end what the owner pays for: the owner is king.
     if (mine.workspaceId) {
       const member = await membership(c.var.db, mine.workspaceId, c.var.viewer.id!);
-      let allowed = member !== null && member.rank >= 3;
+      let allowed = member !== null && (member.role === 'owner' || (member.rank >= 3 && mine.userId === c.var.viewer.id));
       if (!member) {
         // An ARCHIVED workspace is closed to everyone (membership() is null), but its owner must still be able to stop paying.
         const owner = await c.var.db.workspaceMember.findFirst({
@@ -341,6 +353,6 @@ export const membershipRoutes = new Hono()
     if (!done.ok) return c.json(problem(done.code.toLowerCase(), done.message), done.status === 404 ? 404 : 502);
     await recordMembership(done.data, mine.mode);
     // An immediate cancel ends access now: the workspace falls back to free without waiting for an event.
-    await applyWorkspacePlan(done.data);
+    await applyWorkspacePlan(done.data, mine.mode);
     return c.json({ok: true, accessEndsAt: done.data.accessEndsAt});
   });

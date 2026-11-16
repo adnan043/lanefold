@@ -5,11 +5,14 @@ import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {reserveCardNumbers} from '../card-number';
 import {notifyWatchers} from '../card-watch';
-import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
-import {boardAccess, notFound} from '../workspaces';
+import {MAX_CARDS_PER_LANE} from '../entitlements';
+import {boardAccessGated, workspaceReadOnly} from '../board-access-via';
+import {notFound} from '../workspaces';
 import {idOf} from '../validation';
 import {atomically, body, cardCtx, errAt, Gone, noStore, refused, seatFilter, send} from './card-detail';
-import {bumpRev, cardFinder, keyAfter, type Tx} from './boards';
+import {bumpRev, cardFinder, cardKeyAfter, type Tx} from './boards';
+import {copyCardParts} from '../card-copy';
+import {afterResponse} from '../after-response';
 
 /**
  * A card to ANOTHER board of the same workspace: move it (it keeps its id, so every link to it still works) or copy it.
@@ -60,7 +63,7 @@ const targetBody = (withAfter: boolean) =>
 
 /** Right after sibling `afterId`, or LAST in the lane when it is missing (the move route's null means first; here it means end). */
 async function keyFor(db: PrismaClient | Tx, workspaceId: number, laneId: number, afterId: number | null) {
-  if (afterId !== null) return keyAfter(cardFinder(db, workspaceId, laneId), afterId, null);
+  if (afterId !== null) return cardKeyAfter(db, workspaceId, laneId, afterId, null);
   const last = await cardFinder(db, workspaceId, laneId)({}, 'desc');
   return generateKeyBetween(last?.position ?? null, null);
 }
@@ -71,20 +74,21 @@ const refuseWith = (status: Refuse['status'], error: string, message: string): R
 
 /** The target board and lane, proven writable for this person and in the SAME workspace as the card. */
 async function targetFor(db: PrismaClient, userId: number, workspaceId: number, boardId: number, laneId: number): Promise<Target | Refuse> {
-  const access = await boardAccess(db, boardId, userId);
-  if (!access || access.workspaceId !== workspaceId) return refuseWith(404, 'not_found', 'No such board.');
+  // boardAccess() and the grace clock in one query (board-access-via.ts); its `inbox` replaces a second board read.
+  const gated = await boardAccessGated(db, boardId, userId);
+  const access = gated?.access;
+  if (!gated || !access || access.workspaceId !== workspaceId) return refuseWith(404, 'not_found', 'No such board.');
   if (!access.canWrite) return refuseWith(403, 'forbidden', 'You do not have access to this.');
   if (access.archived) return refuseWith(409, 'board_archived', 'This board is archived.');
-  const [ent, lane, board] = await Promise.all([
-    getEntitlements(db, workspaceId),
+  const [readOnly, lane] = await Promise.all([
+    workspaceReadOnly(db, workspaceId, gated.graceUntil),
     db.lane.findFirst({where: {id: laneId, boardId, workspaceId, archivedAt: null}, select: {id: true}}),
-    db.board.findFirst({where: {id: boardId, workspaceId}, select: {inboxOf: true}}),
   ]);
-  if (ent?.readOnly) return refuseWith(409, 'workspace_read_only', 'This workspace is read-only until its plan limits are fixed.');
-  if (!lane || !board) return refuseWith(404, 'not_found', 'No such lane.');
+  if (readOnly) return refuseWith(409, 'workspace_read_only', 'This workspace is read-only until its plan limits are fixed.');
+  if (!lane) return refuseWith(404, 'not_found', 'No such lane.');
   // A personal Inbox is never a target (its own cap and rules live in the Inbox routes): it does not exist for this call.
-  if (board.inboxOf !== null) return refuseWith(404, 'not_found', 'No such board.');
-  return {boardId, laneId, visibility: access.visibility, inboxOf: board.inboxOf};
+  if (access.inbox) return refuseWith(404, 'not_found', 'No such board.');
+  return {boardId, laneId, visibility: access.visibility, inboxOf: null};
 }
 const isRefuse = (r: Target | Refuse): r is Refuse => 'status' in r;
 
@@ -108,8 +112,7 @@ export const cardMoveBoardRoutes = new Hono()
     const {workspaceId} = ctx;
     const from = ctx.card.laneId;
     const srcBoard = ctx.boardId;
-    // Early answer only; the key that is written is computed again inside the transaction, under both board locks.
-    if ((await keyFor(db, workspaceId, laneId, afterId)) === 'stale') return stale(c);
+    // No early key check: a stale `afterId` is answered from inside the transaction (Stale: 409, everything rolled back).
 
     const out = await db
       .$transaction(async tx => {
@@ -190,7 +193,7 @@ export const cardMoveBoardRoutes = new Hono()
     if (out === 'full') return c.json(problem('lane_card_limit', `A lane holds up to ${MAX_CARDS_PER_LANE} cards.`), 409);
     if (out === 'gone') return c.json(problem('not_found', 'No such lane.'), 404);
     if (out === 'stale') return stale(c);
-    await notifyWatchers(db, {workspaceId, boardId, cardId: ctx.cardId}, userId, 'card_moved');
+    await afterResponse(c, 'card watchers', () => notifyWatchers(db, {workspaceId, boardId, cardId: ctx.cardId}, userId, 'card_moved'));
     return c.json({ok: true, boardId, laneId, position: out.position, number: out.number, rev: String(out.rev), sourceRev: String(out.sourceRev)});
   })
 
@@ -202,10 +205,9 @@ export const cardMoveBoardRoutes = new Hono()
     if (refused(ctx)) return send(c, ctx);
     if (ctx.card.archivedAt) return notFound(c, 'card');
     const {boardId, laneId} = c.req.valid('json');
-    const target = await targetFor(db, userId, ctx.workspaceId, boardId, laneId);
-    if (isRefuse(target)) return c.json(target.body, target.status);
     const {workspaceId} = ctx;
-    const src = await db.card.findFirst({
+    // The target check and the source read side by side (the source is already proven readable by cardCtx).
+    const [target, src] = await Promise.all([targetFor(db, userId, ctx.workspaceId, boardId, laneId), db.card.findFirst({
       where: {id: ctx.cardId, boardId: ctx.boardId, workspaceId, archivedAt: null},
       select: {
         title: true, descriptionMd: true, priority: true, estimateMinutes: true, startDate: true, dueDate: true,
@@ -213,7 +215,8 @@ export const cardMoveBoardRoutes = new Hono()
         members: {select: {userId: true}, take: 50},
         checklists: {orderBy: [{position: 'asc'}, {id: 'asc'}], take: 20, select: {title: true, position: true, items: {orderBy: [{position: 'asc'}, {id: 'asc'}], take: 100, select: {text: true, position: true}}}},
       },
-    });
+    })]);
+    if (isRefuse(target)) return c.json(target.body, target.status);
     if (!src) return notFound(c, 'card');
     const out = await atomically(db, async tx => copyInto(tx, {workspaceId, userId, sourceCardId: ctx.cardId, src, target}))
       .catch(err => { if (err instanceof LaneFull) return 'full' as const; throw err; });
@@ -267,11 +270,15 @@ async function copyInto(tx: Tx, a: {workspaceId: number; userId: number; sourceC
       descriptionMd: src.descriptionMd, priority: src.priority, estimateMinutes: src.estimateMinutes, startDate: src.startDate, dueDate: src.dueDate,
       position: generateKeyBetween(last?.position ?? null, null),
       checklistTotal: items, checklistDone: 0, updatedRev: rev, createdBy: userId,
-      labels: {create: labelIds.map(l => ({labelId: l.id}))},
-      members: {create: people.map(p => ({userId: p.id, workspaceId}))},
-      checklists: {create: src.checklists.map(l => ({workspaceId, title: l.title, position: l.position, items: {create: l.items.map(i => ({workspaceId, text: i.text, position: i.position}))}}))},
     },
     select: {id: true},
+  });
+  // One statement per table, not one INSERT per row (card-copy.ts).
+  await copyCardParts(tx, workspaceId, copy.id, {
+    labels: labelIds.map(l => ({labelId: l.id})),
+    members: people.map(p => ({userId: p.id})),
+    fieldValues: [],
+    checklists: src.checklists,
   });
   await tx.cardWatcher.createMany({data: [{cardId: copy.id, userId}], skipDuplicates: true});
   await tx.activity.create({data: {workspaceId, boardId: target.boardId, cardId: copy.id, actorId: userId, kind: 'card.created', meta: {title, copiedFrom: a.sourceCardId}}});

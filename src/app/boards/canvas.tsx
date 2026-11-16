@@ -117,9 +117,11 @@ export function BoardCanvas({
     if (laneId !== null) {
       const cards = lanesRef.current.find(l => l.id === laneId)?.cards ?? [];
       if (cards.length) {
+        // A Set, not cards.some() per container: this runs on every pointer move during a drag.
+        const inLane = new Set<string | number>(cards.map(card => `card-${card.id}`));
         const nearest = closestCenter({
           ...args,
-          droppableContainers: args.droppableContainers.filter(c => cards.some(card => `card-${card.id}` === c.id)),
+          droppableContainers: args.droppableContainers.filter(c => inLane.has(c.id)),
         });
         overId = nearest[0]?.id ?? overId;
       }
@@ -263,7 +265,16 @@ export function BoardCanvas({
     [handlers, loadLane, addCards]
   );
 
-  const activeCard: CardT | null = active?.type === 'card' ? (lanes.flatMap(l => l.cards).find(c => c.id === active.id) ?? null) : null;
+  // Once per drag start or board change, not on every pointer move's render.
+  const activeCardId = active?.type === 'card' ? active.id : null;
+  const activeCard: CardT | null = useMemo(() => {
+    if (activeCardId === null) return null;
+    for (const lane of lanes) {
+      const found = lane.cards.find(c => c.id === activeCardId);
+      if (found) return found;
+    }
+    return null;
+  }, [lanes, activeCardId]);
   // Lanes the card is not over share ONE object (overLaneId null), so only the lane being entered or left re-renders.
   const heldId = active?.type === 'card' ? active.id : null;
   const dragIdle = useMemo<DragState>(() => (heldId === null ? null : {cardId: heldId, overLaneId: null}), [heldId]);

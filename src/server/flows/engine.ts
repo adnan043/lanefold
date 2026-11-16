@@ -95,7 +95,21 @@ type Ctx = {
   flow: {id: number; name: string};
   kind: TriggerKind;
   run: Run;
+  /** Reads that are the same for every card of one applyFlow call (who may be assigned, the flow's label), read once. */
+  memo: Map<string, Promise<unknown>>;
 };
+
+/** `load()` once per applyFlow call for `key`; every card of the batch shares the answer. */
+function once<T>(ctx: Ctx, key: string, load: () => Promise<T>): Promise<T> {
+  let found = ctx.memo.get(key) as Promise<T> | undefined;
+  if (!found) {
+    found = load();
+    ctx.memo.set(key, found);
+    // A failed read is not kept: the next card tries again.
+    found.catch(() => ctx.memo.get(key) === found && ctx.memo.delete(key));
+  }
+  return found;
+}
 
 const meta = (ctx: Ctx, extra: Record<string, unknown> = {}): Prisma.InputJsonValue => ({...extra, flowId: ctx.flow.id, flowName: ctx.flow.name}) as Prisma.InputJsonValue;
 
@@ -125,7 +139,7 @@ type Outcome = {moved?: number; from?: number} | void;
 
 async function doAssign(ctx: Ctx, userId: number): Promise<Outcome> {
   const {db, board, cardId} = ctx;
-  const [ok] = await eligible(db, board, [userId]);
+  const [ok] = await once(ctx, `eligible:${userId}`, () => eligible(db, board, [userId]));
   if (!ok) return;
   const has = await db.cardMember.findMany({where: {cardId, workspaceId: board.workspaceId}, select: {userId: true}, take: MAX_ASSIGNEES});
   if (has.some(m => m.userId === userId) || has.length >= MAX_ASSIGNEES) return;
@@ -142,7 +156,9 @@ async function doAssign(ctx: Ctx, userId: number): Promise<Outcome> {
 
 async function doLabel(ctx: Ctx, labelId: number): Promise<Outcome> {
   const {db, board, cardId} = ctx;
-  const label = await db.label.findFirst({where: {id: labelId, boardId: board.id, workspaceId: board.workspaceId}, select: {id: true, name: true}});
+  const label = await once(ctx, `label:${labelId}`, () =>
+    db.label.findFirst({where: {id: labelId, boardId: board.id, workspaceId: board.workspaceId}, select: {id: true, name: true}})
+  );
   if (!label) return;
   if (await db.cardLabel.findFirst({where: {cardId, labelId}, select: {cardId: true}})) return;
   await inTx(ctx, async tx => {
@@ -219,19 +235,27 @@ async function perform(ctx: Ctx, action: FlowAction): Promise<Outcome> {
   }
 }
 
-/** True when the card passes the flow's conditions right now (one small read, only when a condition is set). */
-async function passes(db: PrismaClient, board: BoardInfo, cardId: number, config: FlowConfig): Promise<boolean> {
-  if (!config.conditions.labelId) return true;
-  const has = await db.cardLabel.findFirst({
-    where: {cardId, labelId: config.conditions.labelId, label: {boardId: board.id, workspaceId: board.workspaceId}},
+/**
+ * Of `cardIds`, the ones that pass the flow's conditions right now: ONE read for the whole batch, only when a
+ * condition is set (null = every card passes). An action only ever changes its own card, so checking them all up
+ * front gives the same answer as checking each just before it runs.
+ */
+async function passing(db: PrismaClient, board: BoardInfo, cardIds: readonly number[], config: FlowConfig): Promise<Set<number> | null> {
+  if (!config.conditions.labelId) return null;
+  const rows = await db.cardLabel.findMany({
+    where: {cardId: {in: [...cardIds]}, labelId: config.conditions.labelId, label: {boardId: board.id, workspaceId: board.workspaceId}},
     select: {cardId: true},
+    take: cardIds.length,
   });
-  return !!has;
+  return new Set(rows.map(r => r.cardId));
 }
 
 /**
  * Runs ONE flow on the given cards (already known to be on the board). Used by the event runner and the daily job.
  * `onMove` lets the event runner chain card_moved flows for cards a `move` action relocated.
+ * `deadline` (epoch ms, the daily job's time budget): checked BETWEEN cards, never inside one, so a card is either
+ * fully handled or not started. Returns the id of the first card it did not start because the deadline passed
+ * (the caller resumes from there), or null when it went through the list (or the action budget ran out).
  */
 export async function applyFlow(
   db: PrismaClient,
@@ -240,18 +264,24 @@ export async function applyFlow(
   kind: TriggerKind,
   cardIds: readonly number[],
   run: Run,
-  onMove?: (event: FlowEvent) => Promise<void>
-): Promise<void> {
+  onMove?: (event: FlowEvent) => Promise<void>,
+  deadline?: number
+): Promise<number | null> {
   const config = readConfig(flow.config);
-  if (!config) return;
-  for (const cardId of cardIds) {
+  if (!config) return null;
+  const fresh = cardIds.filter(cardId => !run.seen.has(`${flow.id}:${cardId}`));
+  if (fresh.length === 0) return null;
+  const pass = await passing(db, board, fresh, config);
+  const memo = new Map<string, Promise<unknown>>();
+  for (const cardId of fresh) {
     const key = `${flow.id}:${cardId}`;
     if (run.seen.has(key)) continue;
+    if (deadline !== undefined && Date.now() >= deadline) return cardId;
     run.seen.add(key);
-    if (!(await passes(db, board, cardId, config))) continue;
-    const ctx: Ctx = {db, board, cardId, flow: {id: flow.id, name: flow.name}, kind, run};
+    if (pass && !pass.has(cardId)) continue;
+    const ctx: Ctx = {db, board, cardId, flow: {id: flow.id, name: flow.name}, kind, run, memo};
     for (const action of config.actions) {
-      if (run.budget.left <= 0) return;
+      if (run.budget.left <= 0) return null;
       run.budget.left--;
       try {
         const out = await perform(ctx, action);
@@ -263,6 +293,7 @@ export async function applyFlow(
       }
     }
   }
+  return null;
 }
 
 /**
@@ -281,15 +312,17 @@ export async function runFlows(db: PrismaClient, events: readonly FlowEvent[], r
       take: MAX_FLOWS_PER_BOARD,
     });
     if (flows.length === 0) return;
-    if (!(await mayRun(db, first.workspaceId))) return;
-    const board = await loadBoard(db, first.boardId, first.workspaceId);
-    if (!board) return;
-    // The cards must still be live on this board (one read for the whole batch).
-    const live = await db.card.findMany({
-      where: {id: {in: batch.map(e => e.cardId)}, boardId: board.id, workspaceId: board.workspaceId, archivedAt: null},
-      select: {id: true, laneId: true},
-      take: MAX_EVENT_CARDS,
-    });
+    // Independent reads, side by side. The cards must still be live on this board (one read for the whole batch).
+    const [allowed, board, live] = await Promise.all([
+      mayRun(db, first.workspaceId),
+      loadBoard(db, first.boardId, first.workspaceId),
+      db.card.findMany({
+        where: {id: {in: batch.map(e => e.cardId)}, boardId: first.boardId, workspaceId: first.workspaceId, archivedAt: null},
+        select: {id: true, laneId: true},
+        take: MAX_EVENT_CARDS,
+      }),
+    ]);
+    if (!allowed || !board) return;
     const lane = new Map(live.map(c => [c.id, c.laneId]));
     const next = {...run, depth: run.depth + 1};
     for (const flow of flows) {

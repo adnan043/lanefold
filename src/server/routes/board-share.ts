@@ -10,6 +10,7 @@ import {PERMISSIONS} from '../permissions';
 import {idOf, invalid, objectOf} from '../validation';
 import {boardAccess, notFound} from '../workspaces';
 import {sha256Hex} from './public-board';
+import {linkOrigin} from '../site-origin';
 
 /**
  * Owner side of the public board link (docs/product/public-board-design.md). Mounted ONCE at `/` in `app.ts`.
@@ -107,7 +108,7 @@ export const boardShareRoutes = new Hono()
     const rotated = rows[0].had !== null;
     await cache.delPrefix(`pubboard:${boardId}:`);
     await audit(db, {actorUserId: userId, action: rotated ? 'board.share.rotate' : 'board.share.create', target: ['board', boardId], meta: {workspaceId, expiresInDays: typeof days === "number" ? days : null}});
-    const origin = config.siteUrl ?? new URL(c.req.url).origin;
+    const origin = linkOrigin(c.req.url);
     return c.json({active: true, rotated, expiresAt: expiresAt?.toISOString() ?? null, url: shareUrl(origin, token)}, rotated ? 200 : 201);
   })
 
@@ -118,8 +119,7 @@ export const boardShareRoutes = new Hono()
     const access = boardId ? await boardAccess(db, boardId, userId) : null;
     if (!boardId || !access) return notFound(c, 'board');
     if (!access.canAdmin) return forbidden(c);
-    const ent = await getEntitlements(db, access.workspaceId);
-    if (ent?.readOnly) return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
+    // No read-only gate: ending a public link only takes access away, and a workspace over its limits must still be able to.
     const {workspaceId} = access;
     // Idempotent: the hash is cleared whatever the state; visibility only leaves `public`.
     const rows = await db.$queryRaw<{id: number}[]>`

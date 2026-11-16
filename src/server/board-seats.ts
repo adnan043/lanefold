@@ -1,4 +1,4 @@
-import type {PrismaClient} from '../generated/prisma/client';
+import type {Prisma, PrismaClient} from '../generated/prisma/client';
 import {audit} from '../platform/auth';
 import {getEntitlements} from './entitlements';
 import {boardAccess, guestRole, type BoardAccess, type BoardRole} from './workspaces';
@@ -30,7 +30,11 @@ export function seatRoleFor(wsRole: string | null, asked: BoardRole): BoardRole 
 export async function guestCapReached(db: PrismaClient, workspaceId: number): Promise<boolean> {
   const ent = await getEntitlements(db, workspaceId);
   if (!ent) return true;
-  const cap = ent.limits.maxMembers;
+  return guestsAtCap(db, workspaceId, ent.limits.maxMembers);
+}
+
+/** The guest count against `cap` on any client (a transaction holding the workspace lock, for the deciding count). */
+async function guestsAtCap(db: Pick<Prisma.TransactionClient, '$queryRaw'>, workspaceId: number, cap: number): Promise<boolean> {
   const [row] = await db.$queryRaw<{n: number}[]>`
     SELECT count(*)::int AS n FROM (
       SELECT DISTINCT bm.user_id FROM board_members bm
@@ -45,6 +49,12 @@ export type SeatResult =
   | {ok: false; status: 404 | 409; code: string; message: string};
 
 const INVALID = {ok: false as const, status: 404 as const, code: 'invalid_invite', message: 'This invite link is not valid any more.'};
+const GUEST_LIMIT = {
+  ok: false as const,
+  status: 409 as const,
+  code: 'guest_limit_reached',
+  message: 'This workspace has reached its guest limit. Ask an admin to upgrade the plan.',
+};
 
 /**
  * Seats `userId` on `boardId` from an accepted invite or link. `consume` marks the invite used (or checks the link)
@@ -66,10 +76,11 @@ export async function acceptSeat(
 ): Promise<SeatResult> {
   const {boardId, workspaceId, userId} = input;
   // The board must be a live shared board of a live workspace; the person's workspace role and seat in the same read.
-  const [row] = await db.$queryRaw<{wsRole: string | null; seat: string | null; removedAt: Date | null}[]>`
+  const [row] = await db.$queryRaw<{wsRole: string | null; seat: string | null; removedAt: Date | null; boardRemovedAt: Date | null}[]>`
     SELECT (SELECT role FROM workspace_members WHERE workspace_id = b.workspace_id AND user_id = ${userId}) AS "wsRole",
            (SELECT role FROM board_members WHERE board_id = b.id AND user_id = ${userId}) AS seat,
-           (SELECT removed_at FROM workspace_removals WHERE workspace_id = b.workspace_id AND user_id = ${userId}) AS "removedAt"
+           (SELECT removed_at FROM workspace_removals WHERE workspace_id = b.workspace_id AND user_id = ${userId}) AS "removedAt",
+           (SELECT removed_at FROM board_removals WHERE board_id = b.id AND user_id = ${userId}) AS "boardRemovedAt"
     FROM boards b JOIN workspaces w ON w.id = b.workspace_id AND w.archived_at IS NULL
     WHERE b.id = ${boardId} AND b.workspace_id = ${workspaceId} AND b.archived_at IS NULL AND b.inbox_of IS NULL`;
   if (!row) return INVALID;
@@ -80,6 +91,10 @@ export async function acceptSeat(
     await db.$transaction(async tx => void (await consume(tx)));
     return done(true, (row.seat as BoardRole | null) ?? null);
   }
+  let guestCap: number | null = null;
+  // Removed from THIS board by an admin: the board's link, or an invite made before the removal, cannot seat them again.
+  const reAdmitted = row.boardRemovedAt !== null && input.madeAt !== null && input.madeAt > row.boardRemovedAt;
+  if (row.boardRemovedAt && !reAdmitted) return INVALID;
   if (row.wsRole === null) {
     // Removed from (or left) this workspace: an older invite, or any link, cannot bring them back as a guest. Only an
     // email invite made AFTER the removal (a deliberate re-invite) works, as for workspace links and invites.
@@ -87,21 +102,28 @@ export async function acceptSeat(
     const ent = await getEntitlements(db, workspaceId);
     if (!ent) return INVALID;
     if (ent.readOnly) return {ok: false, status: 409, code: 'workspace_read_only', message: 'This workspace is read-only until its plan limits are fixed.'};
-    if (await guestCapReached(db, workspaceId)) {
-      return {ok: false, status: 409, code: 'guest_limit_reached', message: 'This workspace has reached its guest limit. Ask an admin to upgrade the plan.'};
-    }
+    guestCap = ent.limits.maxMembers;
+    if (await guestsAtCap(db, workspaceId, guestCap)) return GUEST_LIMIT;
   }
   const added = await db.$transaction(async tx => {
+    // A guest seat is a hard quota: the count that decides runs under the workspace row lock, so parallel accepts
+    // queue here and the last free seat is taken once (the count above is only the fast refusal).
+    if (guestCap !== null) {
+      await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${workspaceId} FOR UPDATE`;
+      if (await guestsAtCap(tx, workspaceId, guestCap)) return 'cap' as const;
+    }
     if (!(await consume(tx))) return null;
     const n = await tx.$executeRaw`
       INSERT INTO board_members (board_id, user_id, workspace_id, role) VALUES (${boardId}, ${userId}, ${workspaceId}, ${role}::varchar)
       ON CONFLICT (board_id, user_id) DO NOTHING`;
+    if (n > 0 && reAdmitted) await tx.$executeRaw`DELETE FROM board_removals WHERE board_id = ${boardId} AND user_id = ${userId}`;
     if (n > 0) {
       await tx.activity.create({data: {workspaceId, boardId, actorId: userId, kind: 'board.member_joined', meta: {via: input.via, role}}});
     }
     return n > 0;
   });
   if (added === null) return INVALID;
+  if (added === 'cap') return GUEST_LIMIT;
   if (added) {
     await audit(db, {actorUserId: userId, action: 'board.member.joined', target: ['board', boardId], meta: {via: input.via, role, guest: row.wsRole === null}});
   }

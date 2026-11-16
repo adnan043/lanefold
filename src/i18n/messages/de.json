@@ -436,6 +436,8 @@
   "errors.unauthorized": "Bitte melde dich erneut an.",
   "errors.token_expired": "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
   "errors.forbidden": "Dafür fehlt dir die Berechtigung.",
+  "errors.email_unverified": "Bestätige zuerst deine E-Mail-Adresse und versuche es dann erneut. Den Einladungslink kannst du weiterhin selbst teilen.",
+  "errors.seat_restricted": "Ein Board-Admin hat deinen Zugriff hier festgelegt. Bitte ihn, ihn zu ändern.",
   "errors.not_found": "Das gibt es nicht mehr. Vielleicht wurde es gelöscht. Geh zurück und versuche es erneut.",
   "errors.validation": "Prüfe die markierten Felder und versuche es erneut.",
   "errors.rate_limited": "Du bist etwas zu schnell. Warte einen Moment und versuche es erneut.",

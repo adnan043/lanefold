@@ -36,6 +36,7 @@ import {
   ROLE_RANK,
   type WorkspaceRole,
 } from "../workspaces";
+import { linkOrigin } from "../site-origin";
 
 /**
  * Phase 4: members, join links, invites, roles (docs/product/SPEC.md §7, HANDOFF.md §4: links only, no emails).
@@ -173,6 +174,10 @@ const refusal = (
 };
 
 const FORBIDDEN_BODY = problem("forbidden", "You do not have access to this.");
+const UNVERIFIED_BODY = problem(
+  "email_unverified",
+  "Confirm your email address before sending invite emails. You can still share the invite link yourself.",
+);
 
 /** Workspace row locked for the rest of the transaction: serializes joins, leaves and removals. */
 const lockWorkspace = (tx: Prisma.TransactionClient, workspaceId: number) =>
@@ -409,7 +414,7 @@ async function previewFor(
     workspaceName: ws.name,
     role,
     expiresAt,
-    link: inviteLink(config.siteUrl ?? new URL(c.req.url).origin, token),
+    link: inviteLink(linkOrigin(c.req.url), token),
   });
   return { subject: mail.subject, text: mail.text };
 }
@@ -442,27 +447,41 @@ export const memberRoutes = new Hono()
     async (c) => {
       const { db, workspaceId, member, viewer } = c.var;
       const { after } = c.req.valid("query");
-      const rows = await db.workspaceMember.findMany({
-        where: { workspaceId, ...(after ? { userId: { gt: after } } : {}) },
-        orderBy: { userId: "asc" },
-        take: PAGE + 1,
-        select: { userId: true, role: true, createdAt: true },
-      });
-      const page = rows.slice(0, PAGE);
-      const users = page.length
-        ? await db.user.findMany({
-            where: { id: { in: page.map((r) => r.userId) } },
-            select: { id: true, name: true, email: true },
-            take: PAGE,
-          })
-        : [];
-      const byId = new Map(users.map((u) => [u.id, u]));
+      // ONE read for the page and the people in it (workspace_members has no Prisma relation to users), side by side
+      // with the visitor's site-wide permission (which decides whether full addresses are shown).
+      const [rows, scope] = await Promise.all([
+        db.$queryRaw<
+          {
+            user_id: number;
+            role: string;
+            created_at: Date;
+            name: string | null;
+            email: string | null;
+          }[]
+        >`
+          SELECT m.user_id, m.role, m.created_at, u.name, u.email
+          FROM workspace_members m LEFT JOIN users u ON u.id = m.user_id
+          WHERE m.workspace_id = ${workspaceId}
+            ${after ? Prisma.sql`AND m.user_id > ${after}` : Prisma.empty}
+          ORDER BY m.user_id ASC
+          LIMIT ${PAGE + 1}`,
+        permissionScope(c, PERMISSIONS.USER_READ),
+      ]);
+      const page = rows.slice(0, PAGE).map((r) => ({
+        userId: r.user_id,
+        role: r.role,
+        createdAt: r.created_at,
+        user:
+          r.email === null
+            ? undefined
+            : { id: r.user_id, name: r.name ?? "", email: r.email },
+      }));
       const seesMasked = member.rank >= ROLE_RANK.admin;
       // A full address leaves the server only to its owner or a site admin the server checked (AGENTS.md › Never).
-      const seesFull = (await permissionScope(c, PERMISSIONS.USER_READ)) === "all";
+      const seesFull = scope === "all";
       return c.json({
         items: page.map((r) => {
-          const user = byId.get(r.userId);
+          const user = r.user;
           const role = isWorkspaceRole(r.role) ? r.role : "viewer";
           return {
             userId: r.userId,
@@ -822,6 +841,8 @@ export const memberRoutes = new Hono()
       const { db, workspaceId, member, viewer } = c.var;
       const { role, expiresInDays, email, sendEmail } = c.req.valid("json");
       if (!canGrant(member.role, role)) return c.json(FORBIDDEN_BODY, 403);
+      // The site's own sender must not carry text from an account nobody has proven they own (phishing, spam).
+      if (sendEmail && !viewer.emailVerified) return c.json(UNVERIFIED_BODY, 403);
       const ent = await getEntitlements(db, workspaceId);
       if (!ent) return notFound(c);
       if (ent.readOnly)
@@ -969,13 +990,16 @@ export const memberRoutes = new Hono()
         select: { id: true, role: true, emailHash: true, emailStatus: true, emailAttempts: true, expiresAt: true, createdBy: true },
       });
       if (!invite) return notFound(c, "invite");
+      if (!viewer.emailVerified) return c.json(UNVERIFIED_BODY, 403);
       const matches =
         invite.emailHash !== null &&
         (invite.emailHash === (await inviteEmailHash(email)) ||
           invite.emailHash === (await sha256Hex(email)));
-      // Only the inviter (who knows the address) hears about a mismatch; anyone else gets the same 404 as an
-      // unknown invite, so a guessed address cannot be tested against it.
-      if (!matches && invite.createdBy !== viewer.id) return notFound(c, "invite");
+      const resendable = invite.emailStatus === "failed" || invite.emailStatus === "not_configured";
+      // Only the inviter (who knows the address) hears about a mismatch or a not-resendable invite; anyone else
+      // gets the same 404 as an unknown invite unless the address matches AND it can be resent, so a guessed
+      // address cannot be tested against it (a 409 would otherwise confirm the guess).
+      if (invite.createdBy !== viewer.id && (!matches || !resendable)) return notFound(c, "invite");
       if (!matches)
         return invalid(c, {
           email: {

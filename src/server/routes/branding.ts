@@ -2,6 +2,7 @@ import {Hono} from 'hono';
 import {validator} from 'hono/validator';
 
 import {audit} from '../../platform/auth';
+import {getDb} from '../../platform/db';
 import {requireAuth, requirePermission, withDb, withViewer} from '../../platform/guards';
 import {normalizeHex} from '../../portal/ui/contrast';
 import {brandCss} from '../../lib/brand';
@@ -12,21 +13,52 @@ import {invalid, objectOf} from '../validation';
 /**
  * The site's brand colour (one value in `app_settings`, read through the Site Cache by `getAppSettings`).
  *
- *   GET /site-api/brand.css   public: the accent tokens for that colour ('' when none), revalidated on every load
- *                             (ETag), so a change is instant. Linked from every layout
+ *   GET /site-api/brand.css   public: the accent tokens for that colour ('' when none). Linked from every layout
  *                             (Base, App), so the website, the dashboard and the app follow it. Holds nothing
  *                             personal, never reads the visitor: shared caching is fine.
+ *                             `?v=<version of the sheet>` (`brandCssHref`, pages rendered on request): cached a year,
+ *                             immutable, so the page's first paint never waits on it after the first visit; a saved
+ *                             colour is a new `v`. Without `v` (prerendered pages, built once): revalidated on every
+ *                             load (ETag), so a change still shows at once there.
  * `site:branding:manage` (/dashboard Branding):
  *   GET /site-api/branding    {brandColor}
  *   PUT /site-api/branding    {brandColor: '#rrggbb' | null}  null = back to the default green
  */
 
 /**
- * brand.css is revalidated on every page load (`no-cache` + an ETag of the colour), so a saved colour shows at
- * once everywhere; an unchanged colour costs a bodiless 304.
+ * The unversioned brand.css is revalidated on every page load (`no-cache` + an ETag of the sheet), so a saved colour
+ * shows at once everywhere; an unchanged one costs a bodiless 304. The versioned one never changes: a year, immutable.
  */
 const CSS_CACHE = 'public, no-cache';
-const etagOf = (brandColor: string | null) => `"brand-${brandColor ? brandColor.slice(1) : 'default'}"`;
+const CSS_CACHE_VERSIONED = 'public, max-age=31536000, immutable';
+export const BRAND_CSS_PATH = '/site-api/brand.css';
+
+/** A short, stable version of a stylesheet's text (FNV-1a, 32 bits): the colour AND how tokens are made from it. */
+export function brandVersion(css: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < css.length; i++) {
+    h ^= css.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * The brand.css link for a page rendered on request: `?v=` of the current sheet, so the browser keeps it for good and
+ * the page paints without asking the Worker again. One Site Cache read (`getAppSettings`). Never for a prerendered
+ * page: its link would be frozen at build time (those link `BRAND_CSS_PATH`, revalidated). Falls back to that same
+ * plain link when the settings cannot be read.
+ */
+export async function brandCssHref(): Promise<string> {
+  const db = getDb();
+  if (!db) return BRAND_CSS_PATH;
+  try {
+    const {brandColor} = await getAppSettings(db);
+    return `${BRAND_CSS_PATH}?v=${brandVersion(brandCss(brandColor))}`;
+  } catch {
+    return BRAND_CSS_PATH;
+  }
+}
 
 const brandingBody = validator('json', (value, c) => {
   const body = objectOf(value);
@@ -46,10 +78,15 @@ export const brandingRoutes = new Hono()
       // Database or cache down: no brand sheet (and no ETag, so nothing stale is kept). The default green stays.
       return c.body('', 200, {'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-store'});
     }
-    const etag = etagOf(brandColor);
-    const headers = {'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': CSS_CACHE, ETag: etag};
+    const css = brandCss(brandColor);
+    const version = brandVersion(css);
+    const etag = `"brand-${version}"`;
+    // A `v` that is not the current sheet (a page rendered before the colour changed): today's sheet, revalidated,
+    // never stored for a year under the old version.
+    const cacheControl = c.req.query('v') === version ? CSS_CACHE_VERSIONED : CSS_CACHE;
+    const headers = {'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': cacheControl, ETag: etag};
     if (c.req.header('If-None-Match') === etag) return c.body(null, 304, headers);
-    return c.body(brandCss(brandColor), 200, headers);
+    return c.body(css, 200, headers);
   })
 
   .get('/branding', withViewer, requireAuth, requirePermission(PERMISSIONS.BRANDING_MANAGE), withDb, async c => {

@@ -31,6 +31,10 @@ import type {Site, Viewer} from '../lib/types';
 import {initials} from '../lib/format';
 import {absoluteUrl, DEFAULT_SOCIAL_IMAGE, type JsonLd, jsonLdText, siteJsonLd} from '../lib/seo';
 import {config} from '../platform/config';
+// The latin Inter file every page draws its first text with: fetched with the HTML, not after the CSS (same hashed URL
+// the @font-face in @fontsource-variable/inter points at).
+import interLatin from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
+import {BRAND_CSS_PATH, brandCssHref} from '../server/routes/branding';
 
 interface Props {
   site: Site | null;
@@ -99,7 +103,8 @@ const canonical = noindex || secretInUrl ? null : absoluteUrl(withSlash(path));
 const socialImage = absoluteUrl(image ?? DEFAULT_SOCIAL_IMAGE);
 const active = (href: string) => (href === '/' ? path === '/' : withSlash(path).startsWith(withSlash(href)));
 // Back to this page after signing in. A PATH only (`safeNext` refuses anything else).
-const back = encodeURIComponent(path.startsWith('/account') ? '/app' : `${path}${isStatic ? '' : Astro.url.search}`);
+// A page whose URL is a secret (a public share link) never copies it into the sign-in link (history, logs).
+const back = encodeURIComponent(path.startsWith('/account') || secretInUrl ? '/app' : `${path}${isStatic ? '' : Astro.url.search}`);
 // The editor Preview's gateway drops cookies: the server never sees the session
 // there, so every page fills the visitor in in the browser, like a prerendered one.
 const hydrate = isStatic || (config.preview && viewer.state !== 'user');
@@ -108,6 +113,9 @@ const indexable = !noindex && !secretInUrl;
 const structured = indexable
   ? [...(path === '/' ? [siteJsonLd({name, logo: site?.logo}, description, SITE.lang)] : []), ...(jsonLd ? [jsonLd] : [])]
   : [];
+// The brand colour's sheet. On request: a versioned link, cached for good (no Worker trip before first paint). A
+// prerendered page is built once, so it links the plain URL, revalidated on each load, and still follows a new colour.
+const brandHref = Astro.isPrerendered ? BRAND_CSS_PATH : await brandCssHref();
 ---
 
 <!doctype html>
@@ -117,6 +125,7 @@ const structured = indexable
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preload" href={interLatin} as="font" type="font/woff2" crossorigin />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     {canonical && <link rel="canonical" href={canonical} />}
@@ -141,7 +150,7 @@ const structured = indexable
     <meta name="color-scheme" content="light" />
     {site?.favIcon ? <link rel="icon" href={site.favIcon} /> : <link rel="icon" href="/favicon.svg" type="image/svg+xml" />}
     {/* The admin's brand colour (/dashboard Branding, src/server/routes/branding.ts); empty when none is set. */}
-    <link rel="stylesheet" href="/site-api/brand.css" />
+    <link rel="stylesheet" href={brandHref} />
     <link rel="alternate" type="application/rss+xml" title={`${name} blog`} href="/rss.xml" />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
     {structured.map(data => <script type="application/ld+json" set:html={jsonLdText(data)} />)}

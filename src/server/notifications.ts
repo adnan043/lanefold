@@ -57,23 +57,24 @@ export async function notify(db: PrismaClient, userIds: readonly number[], input
   try {
     const wanted = recipientsOf(userIds, input.actorId);
     if (wanted.length === 0) return 0;
-    const members = await db.workspaceMember.findMany({
-      where: {workspaceId: input.workspaceId, userId: {in: wanted}, workspace: {archivedAt: null}},
-      select: {userId: true},
-      take: MAX_RECIPIENTS,
-    });
-    if (members.length === 0) return 0;
-    // ONE bounded query: per recipient, their newest CAP rows (index notifications(user_id, id desc)), counted
-    // for the last hour in all and from this actor; never a scan of their whole history.
+    // ONE bounded query: the wanted people who are members of the (live) workspace, and per member their newest CAP
+    // rows (index notifications(user_id, id desc)), counted for the last hour in all and from this actor; never a
+    // scan of their whole history.
     const since = new Date(Date.now() - 3600_000);
-    const ids = members.map(m => m.userId);
     const counts = await db.$queryRaw<{user_id: number; total: number; by_actor: number}[]>`
-      SELECT u AS user_id,
-             (SELECT count(*) FROM (SELECT created_at FROM notifications WHERE user_id = u ORDER BY id DESC LIMIT ${NOTIFICATIONS_PER_HOUR}) r
-              WHERE r.created_at > ${since})::int AS total,
-             (SELECT count(*) FROM (SELECT created_at, actor_id FROM notifications WHERE user_id = u ORDER BY id DESC LIMIT ${NOTIFICATIONS_PER_HOUR}) r
-              WHERE r.created_at > ${since} AND r.actor_id IS NOT DISTINCT FROM ${input.actorId}::int)::int AS by_actor
-      FROM unnest(${ids}::int[]) AS u`;
+      SELECT m.user_id, rc.total, rc.by_actor
+      FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id AND w.archived_at IS NULL
+      CROSS JOIN LATERAL (
+        -- Their newest CAP rows read ONCE, both counts from the same rows.
+        SELECT (count(*) FILTER (WHERE r.created_at > ${since}))::int AS total,
+               (count(*) FILTER (WHERE r.created_at > ${since} AND r.actor_id IS NOT DISTINCT FROM ${input.actorId}::int))::int AS by_actor
+        FROM (SELECT created_at, actor_id FROM notifications WHERE user_id = m.user_id ORDER BY id DESC LIMIT ${NOTIFICATIONS_PER_HOUR}) r
+      ) rc
+      WHERE m.workspace_id = ${input.workspaceId} AND m.user_id = ANY(${wanted}::int[])
+      LIMIT ${MAX_RECIPIENTS}`;
+    if (counts.length === 0) return 0;
+    const members = counts.map(r => ({userId: r.user_id}));
+    const ids = members.map(m => m.userId);
     const open = new Set(underCap(ids, new Map(counts.map(r => [r.user_id, {total: r.total, byActor: r.by_actor}]))));
     const allowed = members.filter(m => open.has(m.userId));
     if (allowed.length === 0) return 0;

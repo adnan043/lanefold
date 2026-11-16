@@ -5,7 +5,7 @@ import {putFile} from '../../platform/files-browser';
 import {ApiError, type BoardData, call, type CardT} from '../api';
 import {patchCard} from '../board-state';
 import type {ReactionT} from '../emoji';
-import {tracked} from '../use-board-sync';
+import {syncBoardNow, tracked} from '../use-board-sync';
 
 /** Wire shapes of `src/server/routes/card-detail.ts`. */
 export type LabelT = {id: number; name: string; colorHex: string};
@@ -370,10 +370,10 @@ export function useCardActions(boardId: number, cardId: number) {
         return {...d, fieldValues: next, fields: d.fields.map(f => (f.id === fieldId ? {...f, options: f.options.filter(o => o.id !== optionId)} : f))};
       });
     };
-    /** A copy lands last in the same lane; the board behind reloads to show it. */
+    /** A copy lands last in the same lane; the board behind picks it up as a delta (not a full reload). */
     const copyCard = async () => {
       const res = await tracked(() => call<{cardId: number}>('POST', `/cards/${cardId}/copy`));
-      void qc.invalidateQueries({queryKey: ['board', boardId]});
+      void syncBoardNow(qc, boardId);
       return res.cardId;
     };
 

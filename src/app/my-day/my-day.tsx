@@ -44,9 +44,10 @@ export function MyDay() {
   const done = useMutation({
     mutationFn: (card: DayCard) => call('PATCH', `/cards/${card.id}`, {completed: true}),
     onMutate: card => setBusyId(card.id),
-    onSuccess: async () => {
+    onSuccess: async (_data, card) => {
       toast.success(t('myDay.done'));
-      await Promise.all([queryClient.invalidateQueries({queryKey: ['my-day']}), queryClient.invalidateQueries({queryKey: ['board']})]);
+      // Only the card's own board is stale, not every board in the cache.
+      await Promise.all([queryClient.invalidateQueries({queryKey: ['my-day']}), queryClient.invalidateQueries({queryKey: ['board', card.boardId]})]);
     },
     onError: error => toast.danger(errorMessage(error)),
     onSettled: () => setBusyId(null),

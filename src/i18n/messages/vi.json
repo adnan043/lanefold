@@ -433,6 +433,8 @@
   "errors.unauthorized": "Vui lòng đăng nhập lại.",
   "errors.token_expired": "Phiên của bạn đã kết thúc. Vui lòng đăng nhập lại.",
   "errors.forbidden": "Bạn không có quyền thực hiện việc đó.",
+  "errors.email_unverified": "Hãy xác nhận địa chỉ email của bạn trước rồi thử lại. Bạn vẫn có thể tự chia sẻ liên kết mời.",
+  "errors.seat_restricted": "Quản trị viên bảng đã đặt quyền truy cập của bạn ở đây. Hãy nhờ họ thay đổi.",
   "errors.not_found": "Mục này không còn nữa. Có thể nó đã bị xóa. Hãy quay lại và thử lại.",
   "errors.validation": "Hãy kiểm tra các trường được đánh dấu rồi thử lại.",
   "errors.rate_limited": "Bạn thao tác hơi nhanh. Hãy chờ một chút rồi thử lại.",

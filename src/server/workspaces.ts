@@ -216,10 +216,13 @@ export async function boardAccess(
   } else {
     if (!isWorkspaceRole(rawRole)) return null;
     wsRole = rawRole;
-    // A personal Inbox belongs to its owner whatever the workspace role.
+    // A personal Inbox belongs to its owner, but never above their workspace role: a member demoted to viewer
+    // keeps reading their Inbox and loses writing to it (new cards, uploads into the workspace's storage).
     boardRole =
       board.inboxOf === userId
-        ? "admin"
+        ? rawRole === "viewer"
+          ? "viewer"
+          : "admin"
         : resolveBoardRole(rawRole, board.visibility, override);
   }
   if (!boardRole) return null;

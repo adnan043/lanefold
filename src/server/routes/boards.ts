@@ -9,7 +9,6 @@ import {dropNotificationsForPrivateBoard} from '../notification-cleanup';
 import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {withFaces} from '../card-faces';
-import {reserveCardNumbers} from '../card-number';
 import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
 import {notifyWatchers} from '../card-watch';
 import {runFlows} from '../flows/engine';
@@ -17,6 +16,8 @@ import {ensureGeneralChannel} from '../general-channel';
 import {boardAccess, membership, notFound, rankOf, type BoardAccess, boardReachable} from '../workspaces';
 import {bgImageUrl} from '../bg-image';
 import {HEX_RE, idOf, intField, invalid, objectOf, textField, type FieldError} from '../validation';
+import {afterResponse} from '../after-response';
+import {boardAccessGated, cardWithAccess, laneWithAccess, workspaceReadOnly, type Gated} from '../board-access-via';
 
 /**
  * Phase 1: workspaces (mine, create), boards, lanes and cards. Mounted ONCE at `/` in `app.ts`.
@@ -393,7 +394,11 @@ const cardPatchBody = validator('json', (value, c) => {
 
 /* ---------------------------------------------------------------- access */
 
-type Need = 'read' | 'write' | 'admin';
+/**
+ * `revoke`: a board admin cutting access (archive, make private, end a share, remove a seat, drop an invite). It skips
+ * the read-only and archived gates: a workspace over its plan limits must still be able to shut a leaked link or a guest out.
+ */
+type Need = 'read' | 'write' | 'admin' | 'revoke';
 
 /**
  * Board access for one request, or the refusal to send. 404 for a board the visitor cannot see (never 403:
@@ -402,46 +407,80 @@ type Need = 'read' | 'write' | 'admin';
  */
 export async function boardFor(db: PrismaClient, userId: number, boardId: number | undefined, need: Need, allowArchived = false) {
   if (!boardId) return refuse(404, 'not_found', 'No such board.');
-  const access = await boardAccess(db, boardId, userId);
-  if (!access) return refuse(404, 'not_found', 'No such board.');
-  if (need === 'admin' && !access.canAdmin) return refuse(403, 'forbidden', 'You do not have access to this.');
+  // boardAccess() plus the workspace's grace clock in the same query (board-access-via.ts).
+  const gated = await boardAccessGated(db, boardId, userId);
+  if (!gated) return refuse(404, 'not_found', 'No such board.');
+  const refusal = await gate(db, gated, need, allowArchived);
+  return refusal ?? {boardId, access: gated.access};
+}
+
+/** boardFor()'s 403 / 409 checks on access already read (no refusal: null). */
+async function gate(db: PrismaClient, {access, graceUntil}: Gated, need: Need, allowArchived = false): Promise<Refusal | null> {
+  if ((need === 'admin' || need === 'revoke') && !access.canAdmin) return refuse(403, 'forbidden', 'You do not have access to this.');
+  if (need === 'revoke') return null;
   if (need !== 'read') {
     if (!access.canWrite) return refuse(403, 'forbidden', 'You do not have access to this.');
     if (access.archived && !allowArchived) return refuse(409, 'board_archived', 'This board is archived.');
-    const ent = await getEntitlements(db, access.workspaceId);
-    if (ent?.readOnly) return refuse(409, 'workspace_read_only', 'This workspace is read-only until its plan limits are fixed.');
+    if (await workspaceReadOnly(db, access.workspaceId, graceUntil)) return refuse(409, 'workspace_read_only', 'This workspace is read-only until its plan limits are fixed.');
   }
-  return {boardId, access};
+  return null;
+}
+
+/**
+ * The deciding check of the hourly board cap (create and copy), inside their transaction under a per-user lock:
+ * parallel requests queue here, so a burst cannot all pass the fast count read before any insert lands.
+ */
+export async function boardCapReached(tx: Tx, workspaceId: number, userId: number): Promise<boolean> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(7102, ${userId}::int)`;
+  const recent = await tx.board.findMany({
+    where: {workspaceId, createdBy: userId, createdAt: {gt: new Date(Date.now() - 3_600_000)}},
+    select: {id: true},
+    take: BOARDS_PER_HOUR,
+  });
+  return recent.length >= BOARDS_PER_HOUR;
 }
 
 export const refused = (r: Refusal | {boardId: number; access: BoardAccess}): r is Refusal => 'status' in r;
 
-/** A lane the visitor may act on: the lane row only selects the board; access decides. */
+/** A lane the visitor may act on: the lane and the access to its board in ONE query; access decides. */
 export async function laneFor(db: PrismaClient, userId: number, laneId: number | undefined, need: Need) {
   if (!laneId) return refuse(404, 'not_found', 'No such lane.');
-  const lane = await db.lane.findFirst({
-    // The visitor's workspace membership is IN the query; boardFor() then decides what they may do.
-    where: {id: laneId, archivedAt: null, board: boardReachable(userId)},
-    select: {id: true, boardId: true, workspaceId: true},
-  });
-  if (!lane) return refuse(404, 'not_found', 'No such lane.');
-  const ctx = await boardFor(db, userId, lane.boardId, need);
-  if (refused(ctx)) return ctx; // 403 / 409 stay what they are: the visitor can already see this board
-  if (ctx.access.workspaceId !== lane.workspaceId) return refuse(404, 'not_found', 'No such lane.');
-  return {...ctx, lane};
+  const found = await laneWithAccess(db, laneId, userId);
+  if (!found) return refuse(404, 'not_found', 'No such lane.');
+  const {access, lane, graceUntil} = found;
+  if (!access) return refuse(404, 'not_found', 'No such board.');
+  const refusal = await gate(db, {access, graceUntil}, need); // 403 / 409 stay what they are: the visitor can already see this board
+  if (refusal) return refusal;
+  if (access.workspaceId !== lane.workspaceId) return refuse(404, 'not_found', 'No such lane.');
+  return {boardId: lane.boardId, access, lane};
 }
 
-async function cardFor(db: PrismaClient, userId: number, cardId: number | undefined, need: Need) {
+/**
+ * A card the visitor may act on (one query, as laneFor). `targetLaneId` also reads that open lane of the board.
+ * `write-later`: every write check except read-only, which comes back as a promise (`readOnly`) for the caller to
+ * await beside its next round trip (a failed read still throws where it is awaited, as before).
+ */
+async function cardFor(db: PrismaClient, userId: number, cardId: number | undefined, need: Need | 'write-later', targetLaneId?: number) {
   if (!cardId) return refuse(404, 'not_found', 'No such card.');
-  const card = await db.card.findFirst({
-    where: {id: cardId, board: boardReachable(userId)},
-    select: {id: true, boardId: true, laneId: true, workspaceId: true, archivedAt: true},
-  });
-  if (!card) return refuse(404, 'not_found', 'No such card.');
-  const ctx = await boardFor(db, userId, card.boardId, need);
-  if (refused(ctx)) return ctx;
-  if (ctx.access.workspaceId !== card.workspaceId) return refuse(404, 'not_found', 'No such card.');
-  return {...ctx, card};
+  const found = await cardWithAccess(db, cardId, userId, targetLaneId);
+  if (!found) return refuse(404, 'not_found', 'No such card.');
+  const {access, graceUntil, targetLane} = found;
+  if (!access) return refuse(404, 'not_found', 'No such board.');
+  const later = need === 'write-later';
+  // 'write-later': gate()'s 'write' checks in the same order, minus the read-only read.
+  const refusal = later
+    ? !access.canWrite
+      ? refuse(403, 'forbidden', 'You do not have access to this.')
+      : access.archived
+        ? refuse(409, 'board_archived', 'This board is archived.')
+        : null
+    : await gate(db, {access, graceUntil}, need);
+  if (refusal) return refusal;
+  if (access.workspaceId !== found.card.workspaceId) return refuse(404, 'not_found', 'No such card.');
+  const {inboxOf: _inbox, ...card} = found.card;
+  const readOnly = later ? workspaceReadOnly(db, access.workspaceId, graceUntil) : Promise.resolve(false);
+  readOnly.catch(() => undefined); // no unhandled rejection if the caller fails before awaiting it
+  return {boardId: card.boardId, access, card, targetLane, readOnly};
 }
 
 /** Thrown inside a transaction to roll it back when the target lane is at MAX_CARDS_PER_LANE. */
@@ -450,6 +489,8 @@ class LaneFull extends Error {}
 class StaleMove extends Error {}
 /** Thrown inside the move transaction when the target lane was archived or removed meanwhile. */
 class LaneGone extends Error {}
+/** Thrown inside the move transaction when the workspace turned out read-only (checked beside the lock). */
+class ReadOnly extends Error {}
 
 export type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
@@ -530,6 +571,39 @@ const laneFinder = (tx: Tx | PrismaClient, workspaceId: number, boardId: number)
   tx.lane.findFirst({where: {workspaceId, boardId, archivedAt: null, ...extra}, select: {id: true, position: true}, orderBy: [...order(dir)]});
 export const cardFinder = (tx: Tx | PrismaClient, workspaceId: number, laneId: number) => (extra: object, dir: 'asc' | 'desc') =>
   tx.card.findFirst({where: {workspaceId, laneId, archivedAt: null, ...extra}, select: {id: true, position: true}, orderBy: [...order(dir)]});
+
+/**
+ * keyAfter(cardFinder(...), afterId, movingId, onExhausted) with the `after` card and its next open sibling read in
+ * ONE statement (keyAfter reads them one after the other). Same answers: 'stale' when `afterId` is the moving card
+ * or no longer an open card of the lane; the end of the lane when the gap is used up ('exhausted' with 'signal').
+ */
+export async function cardKeyAfter(
+  tx: Tx | PrismaClient,
+  workspaceId: number,
+  laneId: number,
+  afterId: number | null,
+  movingId: number | null,
+  onExhausted: 'end' | 'signal' = 'end'
+): Promise<string | 'stale' | 'exhausted'> {
+  if (afterId === null || afterId === movingId) return keyAfter(cardFinder(tx, workspaceId, laneId), afterId, movingId, onExhausted);
+  // (position, id) row order is cardFinder's orderBy (position is COLLATE "C"); walks cards_workspace_id_lane_id_position_id_idx.
+  const rows = await tx.$queryRaw<{position: string; next: string | null}[]>`
+    SELECT a.position,
+           (SELECT n.position FROM cards n
+            WHERE n.workspace_id = ${workspaceId}::int AND n.lane_id = ${laneId}::int AND n.archived_at IS NULL
+              AND (${movingId}::int IS NULL OR n.id <> ${movingId}::int) AND (n.position, n.id) > (a.position, a.id)
+            ORDER BY n.position, n.id LIMIT 1) AS next
+    FROM cards a
+    WHERE a.id = ${afterId}::int AND a.workspace_id = ${workspaceId}::int AND a.lane_id = ${laneId}::int AND a.archived_at IS NULL
+    LIMIT 1`;
+  const after = rows[0];
+  if (!after) return 'stale';
+  const between = keyOrNull(after.position, after.next);
+  if (between !== null) return between;
+  if (onExhausted === 'signal') return 'exhausted';
+  const last = await cardFinder(tx, workspaceId, laneId)(movingId === null ? {} : {id: {not: movingId}}, 'desc');
+  return generateKeyBetween(last?.position ?? null, null);
+}
 
 const stale = (c: {json: (b: unknown, s: 409) => Response}) => c.json(problem('stale', 'That changed while you were working. Reloading the board.'), 409);
 
@@ -651,6 +725,7 @@ export const boardRoutes = new Hono()
     const body = c.req.valid('json') as NewBoard;
     const keys = keysAtEnd(null, body.lanes.length);
     const board = await c.var.db.$transaction(async tx => {
+      if (await boardCapReached(tx, workspaceId, userId)) return null;
       const row = await tx.board.create({
         data: {
           workspaceId,
@@ -676,6 +751,10 @@ export const boardRoutes = new Hono()
       await tx.activity.create({data: {workspaceId, boardId: row.id, actorId: userId, kind: 'board.created', meta: {name: body.name}}});
       return row;
     });
+    if (!board) {
+      c.header('Retry-After', '600');
+      return c.json(problem('board_rate_limited', 'You created many boards in the last hour. Try again later.'), 429);
+    }
     return c.json({board: {id: board.id, name: board.name, visibility: board.visibility}}, 201);
   })
 
@@ -689,11 +768,9 @@ export const boardRoutes = new Hono()
     const workspaceId = access.workspaceId;
     // Board and lanes in parallel, then ONE statement for the cards: a UNION ALL of per-lane LIMIT queries
     // that each walk the partial open index (a window function over the whole board sorts every open card).
-    const [board, lanes, prefs] = await Promise.all([
-      db.board.findFirst({
-        where: {id: ctx.boardId, workspaceId},
-        select: {...boardCols, boardStars: {where: {userId}, select: {userId: true}, take: 1}},
-      }),
+    // The board's own columns came with the access check; only the star is left to read (same round trip as the lanes).
+    const [star, lanes, prefs] = await Promise.all([
+      db.boardStar.findFirst({where: {userId, boardId: ctx.boardId}, select: {userId: true}}),
       db.lane.findMany({
         where: {workspaceId, boardId: ctx.boardId, archivedAt: null},
         orderBy: [...order('asc')],
@@ -727,7 +804,6 @@ export const boardRoutes = new Hono()
           ORDER BY ord, position COLLATE "C", id
           LIMIT ${BOARD_CARD_CAP + 50}`
       : [];
-    if (!board) return notFound(c, 'board');
     const byLane = new Map<number, ReturnType<typeof cardShape>[]>();
     let total = 0;
     for (const r of cards) {
@@ -759,19 +835,19 @@ export const boardRoutes = new Hono()
     const faced = new Map((await withFaces(c.var.db, workspaceId, [...byLane.values()].flat())).map(card => [card.id, card]));
     return c.json({
       board: {
-        id: board.id,
+        id: ctx.boardId,
         workspaceId,
-        name: board.name,
-        visibility: board.visibility,
-        bgKind: board.bgKind,
-        bgColor1: board.bgColor1,
-        bgColor2: board.bgColor2,
-        bgAngle: board.bgAngle,
-        bgPattern: board.bgPattern,
-        bgImage: bgImageUrl(board.id, board.bgFileId),
-        archived: board.archivedAt !== null,
-        rev: String(board.rev),
-        starred: board.boardStars.length > 0,
+        name: access.name,
+        visibility: access.visibility,
+        bgKind: access.bgKind,
+        bgColor1: access.bgColor1,
+        bgColor2: access.bgColor2,
+        bgAngle: access.bgAngle,
+        bgPattern: access.bgPattern,
+        bgImage: bgImageUrl(ctx.boardId, access.bgFileId),
+        archived: access.archived,
+        rev: String(access.rev),
+        starred: star !== null,
         role: access.boardRole,
         canWrite: access.canWrite,
         canAdmin: access.canAdmin,
@@ -789,7 +865,12 @@ export const boardRoutes = new Hono()
   .patch('/boards/:id', boardBody(true), withViewer, requireAuth, withDb, noStore, async c => {
     const userId = c.var.viewer.id!;
     const body = c.req.valid('json') as Partial<NewBoard> & {archived?: boolean};
-    const ctx = await boardFor(c.var.db, userId, idOf(c.req.param('id')), 'admin', body.archived === false);
+    // Archiving or making private only takes access away: allowed even while the workspace is read-only.
+    const keys = Object.keys(body).filter(k => k !== 'lanes');
+    const onlyRevokes =
+      keys.length > 0 &&
+      keys.every(k => (k === 'archived' && body.archived === true) || (k === 'visibility' && body.visibility === 'private'));
+    const ctx = await boardFor(c.var.db, userId, idOf(c.req.param('id')), onlyRevokes ? 'revoke' : 'admin', body.archived === false);
     if (refused(ctx)) return c.json(ctx.body, ctx.status);
     const {workspaceId} = ctx.access;
     const {archived, lanes: _ignored, ...fields} = body;
@@ -806,6 +887,13 @@ export const boardRoutes = new Hono()
       await tx.board.updateMany({where: {id: ctx.boardId, workspaceId}, data});
       // Turned private: people without a seat can never see its notifications again; drop them (the badge never scans dead rows).
       if (fields.visibility === 'private') await dropNotificationsForPrivateBoard(tx, ctx.boardId, workspaceId);
+      // Archiving ends the public link for good, as revoking it does: a restore must not bring a leaked token back.
+      if (archived === true) {
+        await tx.$executeRaw`
+          UPDATE boards SET share_token_hash = NULL, share_expires_at = NULL,
+            visibility = CASE WHEN visibility = 'public' THEN 'workspace' ELSE visibility END
+          WHERE id = ${ctx.boardId} AND workspace_id = ${workspaceId}`;
+      }
       await tx.activity.create({
         data: {workspaceId, boardId: ctx.boardId, actorId: userId, kind: archived === undefined ? 'board.updated' : archived ? 'board.archived' : 'board.restored'},
       });
@@ -950,8 +1038,8 @@ export const boardRoutes = new Hono()
     if (refused(ctx)) return c.json(ctx.body, ctx.status);
     const {workspaceId} = ctx.access;
     const {afterId} = c.req.valid('json');
-    const early = await keyAfter(laneFinder(c.var.db, workspaceId, ctx.boardId), afterId, ctx.lane.id);
-    if (early === 'stale') return stale(c);
+    // No pre-check outside the transaction (it cost 2-3 round trips and is recomputed under the lock anyway): a stale
+    // move throws StaleMove inside it, which rolls the rev bump back, as the card move does.
     const out = await c.var.db
       .$transaction(async tx => {
         const rev = await bumpRev(tx, ctx.boardId, workspaceId);
@@ -1021,7 +1109,14 @@ export const boardRoutes = new Hono()
     const {workspaceId} = ctx.access;
     const {titles} = c.req.valid('json');
     const out = await c.var.db.$transaction(async tx => {
-      const rev = await bumpRev(tx, ctx.boardId, workspaceId);
+      // ONE statement takes the board lock, bumps the rev AND reserves the card numbers (card-number.ts's rule: one
+      // UPDATE boards ... RETURNING under the row lock, so two parallel adds never share numbers).
+      const head = await tx.$queryRaw<{rev: bigint; first: number}[]>`
+        UPDATE boards SET rev = rev + 1, updated_at = now(), next_card_number = next_card_number + ${titles.length}::int
+        WHERE id = ${ctx.boardId} AND workspace_id = ${workspaceId}
+        RETURNING rev, next_card_number - ${titles.length}::int AS first`;
+      if (!head[0]) throw new Error('board vanished');
+      const {rev, first: firstNumber} = head[0];
       // The last key is read AFTER the board lock, so two parallel adds never get the same keys.
       const last = await cardFinder(tx, workspaceId, ctx.lane.id)({}, 'desc');
       const keys = keysAtEnd(last?.position ?? null, titles.length);
@@ -1031,8 +1126,8 @@ export const boardRoutes = new Hono()
         WHERE id = ${ctx.lane.id} AND board_id = ${ctx.boardId} AND workspace_id = ${workspaceId}
           AND card_count + ${titles.length}::int <= ${MAX_CARDS_PER_LANE}::int
         RETURNING id`;
-      if (!room[0]) return null;
-      const firstNumber = await reserveCardNumbers(tx, ctx.boardId, workspaceId, titles.length);
+      // Full: roll it all back, so the numbers reserved above are not used up.
+      if (!room[0]) throw new LaneFull();
       const cards = await tx.card.createManyAndReturn({
         data: titles.map((title, i) => ({
           number: firstNumber + i,
@@ -1052,10 +1147,14 @@ export const boardRoutes = new Hono()
       // Whoever makes a card follows it (one statement for all the new cards).
       await tx.cardWatcher.createMany({data: cards.map(card => ({cardId: card.id, userId})), skipDuplicates: true});
       return {cards, rev};
+    }).catch(err => {
+      if (err instanceof LaneFull) return null;
+      throw err;
     });
     if (!out) return c.json(problem('lane_card_limit', `A lane holds up to ${MAX_CARDS_PER_LANE} cards.`), 409);
-    // Flows (Phase 7) run after the commit and never fail the request.
-    await runFlows(c.var.db, out.cards.map(card => ({kind: 'card_created' as const, workspaceId, boardId: ctx.boardId, cardId: card.id, laneId: ctx.lane.id})));
+    // Flows (Phase 7) run after the answer and never fail the request.
+    const db = c.var.db;
+    await afterResponse(c, 'flows', () => runFlows(db, out.cards.map(card => ({kind: 'card_created' as const, workspaceId, boardId: ctx.boardId, cardId: card.id, laneId: ctx.lane.id}))));
     return c.json({items: out.cards.map(cardShape), rev: String(out.rev)}, 201);
   })
 
@@ -1086,42 +1185,53 @@ export const boardRoutes = new Hono()
       };
     });
     if (!out?.card) return notFound(c, 'card');
-    // After the commit, never failing the request: the people who follow the card hear about it.
+    // After the answer, never failing the request: the people who follow the card hear about it.
     const watched = {workspaceId, boardId: ctx.boardId, cardId: ctx.card.id};
-    if (out.justCompleted) await notifyWatchers(c.var.db, watched, userId, 'card_done');
-    else if (out.dueChanged) await notifyWatchers(c.var.db, watched, userId, 'card_due');
+    const event = out.justCompleted ? 'card_done' : out.dueChanged ? 'card_due' : null;
+    if (event) {
+      const db = c.var.db;
+      await afterResponse(c, 'card watchers', () => notifyWatchers(db, watched, userId, event));
+    }
     return c.json({card: cardShape(out.card), rev: String(out.rev)});
   })
 
   .post('/cards/:id/move', moveBody(true), withViewer, requireAuth, withDb, noStore, async c => {
     const userId = c.var.viewer.id!;
-    const ctx = await cardFor(c.var.db, userId, idOf(c.req.param('id')), 'write');
+    const db = c.var.db;
+    const {laneId, afterId} = c.req.valid('json');
+    // ONE read: the card, the access to its board and the target lane (open, same board). The read-only check
+    // (entitlements) is NOT awaited here: it runs beside the transaction's opening and is checked under the lock.
+    const ctx = await cardFor(db, userId, idOf(c.req.param('id')), 'write-later', laneId);
     if (refused(ctx)) return c.json(ctx.body, ctx.status);
     const {workspaceId} = ctx.access;
-    const {laneId, afterId} = c.req.valid('json');
-    // Validate and compute first (outside the transaction); the rev and its row lock come last.
-    const target = await c.var.db.lane.findFirst({where: {id: laneId, boardId: ctx.boardId, workspaceId, archivedAt: null}, select: {id: true}});
-    if (!target) return c.json(problem('not_found', 'No such lane.'), 404);
+    const readOnly = ctx.readOnly;
+    if (!ctx.targetLane) {
+      // Same order of answers as before: a read-only workspace is a 409 before the missing lane's 404.
+      if (await readOnly) return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
+      return c.json(problem('not_found', 'No such lane.'), 404);
+    }
     const from = ctx.card.laneId;
-    // Early answer only; the key that is written is recomputed inside the transaction, under the board lock.
-    const early = await keyAfter(cardFinder(c.var.db, workspaceId, laneId), afterId, ctx.card.id);
-    if (early === 'stale') return stale(c);
-    const out = await c.var.db
+    const out = await db
       .$transaction(async tx => {
       // ONE statement under the board lock: bump rev, move the card (only while it is still in `from`), move the
       // lane counters (the target only below the cap) and write the activity row. Flags say what did not apply;
       // throwing rolls the whole statement back, so a refused move changes nothing.
       const cross = from !== laneId;
-      // Take the board lock FIRST, then recompute the key against the siblings as they are now: a parallel move
-      // that committed since the pre-check cannot leave us a stale key (two cards sharing one).
-      const locked = await tx.$queryRaw<{rev: bigint}[]>`SELECT rev FROM boards WHERE id = ${ctx.boardId}::int AND workspace_id = ${workspaceId}::int FOR UPDATE`;
+      // Take the board lock FIRST, then compute the key against the siblings as they are now: a parallel move
+      // cannot leave us a stale key (two cards sharing one). A stale `afterId` is answered from here (409, nothing
+      // written: the lock is released by the rollback), so there is no separate pre-check before the transaction.
+      const [locked, ro] = await Promise.all([
+        tx.$queryRaw<{rev: bigint}[]>`SELECT rev FROM boards WHERE id = ${ctx.boardId}::int AND workspace_id = ${workspaceId}::int FOR UPDATE`,
+        readOnly,
+      ]);
+      if (ro) throw new ReadOnly();
       if (!locked[0]) throw new Error('board vanished');
-      let fresh = await keyAfter(cardFinder(tx, workspaceId, laneId), afterId, ctx.card.id, 'signal');
+      let fresh = await cardKeyAfter(tx, workspaceId, laneId, afterId, ctx.card.id, 'signal');
       if (fresh === 'exhausted') {
         // The gap is used up: renumber the lane's cards, stamped with the rev the statement below will commit
         // (the board is locked, so it is exactly rev + 1), then place the card in the fresh gap. One rev bump.
         await rebalance(tx, 'cards', laneId, ctx.boardId, workspaceId, ctx.card.id, locked[0].rev + 1n);
-        fresh = await keyAfter(cardFinder(tx, workspaceId, laneId), afterId, ctx.card.id);
+        fresh = await cardKeyAfter(tx, workspaceId, laneId, afterId, ctx.card.id);
       }
       if (fresh === 'stale' || fresh === 'exhausted') throw new StaleMove();
       const key = fresh;
@@ -1169,13 +1279,22 @@ export const boardRoutes = new Hono()
         if (err instanceof LaneFull) return 'full' as const;
         if (err instanceof StaleMove) return 'stale' as const;
         if (err instanceof LaneGone) return 'gone' as const;
+        if (err instanceof ReadOnly) return 'read_only' as const;
         throw err;
       });
+    if (out === 'read_only') return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
     if (out === 'full') return c.json(problem('lane_card_limit', `A lane holds up to ${MAX_CARDS_PER_LANE} cards.`), 409);
     if (out === 'stale') return stale(c);
     if (out === 'gone') return c.json(problem('not_found', 'No such lane.'), 404);
-    if (from !== laneId) await notifyWatchers(c.var.db, {workspaceId, boardId: ctx.boardId, cardId: ctx.card.id}, userId, 'card_moved');
-    if (from !== laneId) await runFlows(c.var.db, [{kind: 'card_moved', workspaceId, boardId: ctx.boardId, cardId: ctx.card.id, laneId, fromLaneId: from}]);
+    // After the answer, side by side (runFlows never throws): the mover is not kept waiting for either.
+    if (from !== laneId) {
+      await afterResponse(c, 'card moved', () =>
+        Promise.all([
+          notifyWatchers(db, {workspaceId, boardId: ctx.boardId, cardId: ctx.card.id}, userId, 'card_moved'),
+          runFlows(db, [{kind: 'card_moved', workspaceId, boardId: ctx.boardId, cardId: ctx.card.id, laneId, fromLaneId: from}]),
+        ])
+      );
+    }
     return c.json({ok: true, rev: String(out.rev), position: out.key});
   })
 

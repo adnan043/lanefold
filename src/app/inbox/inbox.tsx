@@ -183,12 +183,16 @@ export function Inbox() {
   const form = useForm({title: ''}, {title: [rules.required(t('inbox.titleRequired')), rules.maxLength(200, t('inbox.titleTooLong'))]});
   const clearDraft = useDraft('capture', 0, form.values.title, text => form.set('title', text), '', canWrite);
 
-  const refresh = () =>
-    Promise.all([
+  // Inbox cards live on the Inbox board only: that board is the one a cached board view may hold stale (none
+  // before the first capture creates it, so nothing to refresh then).
+  const refresh = () => {
+    const boardId = query.data?.pages[0]?.boardId ?? null;
+    return Promise.all([
       queryClient.invalidateQueries({queryKey: ['inbox']}),
       queryClient.invalidateQueries({queryKey: ['my-day']}),
-      queryClient.invalidateQueries({queryKey: ['board']}),
+      boardId !== null ? queryClient.invalidateQueries({queryKey: ['board', boardId]}) : undefined,
     ]);
+  };
   const capture = useMutation({
     mutationFn: (title: string) => call('POST', `/workspaces/${workspaceId}/inbox/cards`, {title}),
     onSuccess: async () => {

@@ -1,5 +1,5 @@
 import type {PrismaClient} from '../../generated/prisma/client';
-import {getEntitlements} from '../entitlements';
+import {frozenWorkspaces} from '../entitlements';
 
 /**
  * Stale card warning: the job behind the daily schedule `stale-cards` (background.json).
@@ -38,19 +38,27 @@ export async function runStaleCards(db: PrismaClient, now: Date = new Date(), ma
   const started = Date.now();
   const result: StaleCardsResult = {scanned: 0, sent: 0, skipped: 0, pruned: 0};
   const readOnly = new Map<number, boolean>();
-  let cursor = 0;
+  // Keyset on (board id, card id): the walk is driven by the boards that turned the warning on, and each board's
+  // stale cards come from the index cards(board_id, lane_entered_at), never a walk of every card by id.
+  let cursorBoard = 0;
+  let cursorCard = 0;
   while (result.scanned < maxCards && Date.now() - started < RUN_BUDGET_MS) {
-    // One query per page: the live stale cards of boards that turned the warning on, keyset on the id.
-    const page = await db.$queryRaw<{id: number; workspace_id: number}[]>`
-      SELECT c.id, c.workspace_id
-      FROM cards c
-      JOIN boards b ON b.id = c.board_id AND b.workspace_id = c.workspace_id
-        AND b.archived_at IS NULL AND b.stale_days IS NOT NULL AND b.inbox_of IS NULL
-      JOIN workspaces w ON w.id = c.workspace_id AND w.archived_at IS NULL
+    // One query per page: the live stale cards of boards that turned the warning on.
+    const page = await db.$queryRaw<{id: number; workspace_id: number; board_id: number}[]>`
+      SELECT c.id, c.workspace_id, b.id AS board_id
+      FROM boards b
+      JOIN workspaces w ON w.id = b.workspace_id AND w.archived_at IS NULL
+      CROSS JOIN LATERAL (
+        SELECT c.id, c.workspace_id, c.lane_id, c.lane_entered_at
+        FROM cards c
+        WHERE c.board_id = b.id AND c.workspace_id = b.workspace_id
+          AND c.lane_entered_at <= ${now}::timestamptz - make_interval(days => b.stale_days)
+          AND c.archived_at IS NULL AND c.completed_at IS NULL
+          AND (b.id > ${cursorBoard}::int OR c.id > ${cursorCard}::int)
+      ) c
       JOIN lanes l ON l.id = c.lane_id AND l.archived_at IS NULL
-      WHERE c.archived_at IS NULL AND c.completed_at IS NULL
-        AND c.lane_entered_at <= ${now}::timestamptz - make_interval(days => b.stale_days)
-        AND c.id > ${cursor}::int
+      WHERE b.archived_at IS NULL AND b.stale_days IS NOT NULL AND b.inbox_of IS NULL
+        AND b.id >= ${cursorBoard}::int
         AND EXISTS (
           SELECT 1
           FROM (SELECT user_id FROM card_members WHERE card_id = c.id
@@ -61,14 +69,18 @@ export async function runStaleCards(db: PrismaClient, now: Date = new Date(), ma
             AND (b.visibility <> 'private' OR m.role IN ('owner', 'admin')
                  OR EXISTS (SELECT 1 FROM board_members bm WHERE bm.board_id = b.id AND bm.user_id = p.user_id))
             AND NOT EXISTS (SELECT 1 FROM stale_reminders r WHERE r.card_id = c.id AND r.user_id = p.user_id AND r.entered_at = c.lane_entered_at))
-      ORDER BY c.id
+      ORDER BY b.id, c.id
       LIMIT ${CARDS_PER_PAGE}`;
     if (page.length === 0) break;
     result.scanned += page.length;
-    cursor = page[page.length - 1]!.id;
+    const last = page[page.length - 1]!;
+    cursorBoard = last.board_id;
+    cursorCard = last.id;
+    // The plan check for every workspace of the page in ONE read (memoized for the run).
+    const frozen = await frozenWorkspaces(db, page.map(card => card.workspace_id), readOnly);
     const ids: number[] = [];
     for (const card of page) {
-      if (await frozen(db, card.workspace_id, readOnly)) result.skipped++;
+      if (frozen.has(card.workspace_id)) result.skipped++;
       else ids.push(card.id);
     }
     if (ids.length > 0) {
@@ -76,22 +88,13 @@ export async function runStaleCards(db: PrismaClient, now: Date = new Date(), ma
         result.sent += await remindPage(db, ids, now);
       } catch (error) {
         // The message only. The keys of this page were not claimed (one statement), so the next run tries again.
-        console.error(`stale-cards page after card ${cursor}: ${(error as Error).message}`);
+        console.error(`stale-cards page after card ${cursorCard}: ${(error as Error).message}`);
       }
     }
     if (page.length < CARDS_PER_PAGE) break;
   }
   result.pruned = await prunePast(db);
   return result;
-}
-
-async function frozen(db: PrismaClient, workspaceId: number, memo: Map<number, boolean>): Promise<boolean> {
-  const known = memo.get(workspaceId);
-  if (known !== undefined) return known;
-  const ent = await getEntitlements(db, workspaceId);
-  const value = !ent || ent.readOnly;
-  memo.set(workspaceId, value);
-  return value;
 }
 
 /**

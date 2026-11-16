@@ -8,6 +8,7 @@ import {idOf, type FieldError} from '../validation';
 import {notFound} from '../workspaces';
 import {body, dateOnly, errAt, noStore, type Parsed, seatFilter} from './card-detail';
 import {boardFor, bumpRev, cardFinder, keysAtEnd, refused, type Tx} from './boards';
+import {afterResponse} from '../after-response';
 
 /**
  * Bulk actions on the cards of ONE board (Trello's "select cards" bar).
@@ -363,15 +364,15 @@ export const cardBulkRoutes = new Hono()
   // An Undo whose cards were all written since: nothing to take back, nothing changed (the rev bump rolled back).
   if (out === 'unchanged') return c.json({changed: 0, skipped: cardIds.length});
 
-  // After the commit, never failing the request.
+  // After the answer, never failing the request.
   if (input.action === 'assign' && out.notifyCard) {
-    await notify(db, [input.userId], {workspaceId, actorId: userId, boardId, cardId: out.notifyCard, kind: 'assigned'});
+    const cardId = out.notifyCard;
+    const assignee = input.userId;
+    await afterResponse(c, 'bulk assign', () => notify(db, [assignee], {workspaceId, actorId: userId, boardId, cardId, kind: 'assigned'}));
   }
   if (out.moved.length && input.action === 'move') {
-    await runFlows(
-      db,
-      out.moved.map(m => ({kind: 'card_moved' as const, workspaceId, boardId, cardId: m.id, laneId: input.laneId, fromLaneId: m.from}))
-    );
+    const events = out.moved.map(m => ({kind: 'card_moved' as const, workspaceId, boardId, cardId: m.id, laneId: input.laneId, fromLaneId: m.from}));
+    await afterResponse(c, 'flows', () => runFlows(db, events));
   }
   return c.json({
     changed: out.changed,

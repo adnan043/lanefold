@@ -6,7 +6,6 @@ import {rules} from '../../lib/rules';
 import {
   Badge,
   Button,
-  Drawer,
   ErrorNote,
   Field,
   LoadingBlock,
@@ -22,6 +21,7 @@ import {
 } from '../../portal/ui';
 import {useMe} from '../../portal/shared';
 import {type ApiError, type BoardT, call} from '../api';
+import {boardMembersQuery} from './share-board-header';
 import {useNavigate} from '../nav';
 import {useDebounced} from '../chat/api';
 import './share-board.css';
@@ -43,13 +43,6 @@ export type Members = {
 type Candidate = {id: number; name: string; workspaceRole: string};
 type Pending = {id: number; role: Role; expiresAt: string; emailStatus: string | null; canRevoke: boolean};
 type Invited = {result: 'added' | 'already' | 'invited'; link?: string; emailStatus?: string; emailPreview?: {subject: string; text: string; configured: boolean}};
-
-export const boardMembersQuery = (boardId: number) =>
-  queryOptions({
-    queryKey: ['board-members', boardId],
-    queryFn: () => call<Members>('GET', `/boards/${boardId}/members`),
-    staleTime: 30_000,
-  });
 
 const candidatesQuery = (boardId: number, q: string) =>
   queryOptions({
@@ -93,63 +86,8 @@ async function copyText(text: string, field: HTMLInputElement | null) {
   }
 }
 
-/** "Join board" in the board header: a workspace member takes a seat on a board they can already see. */
-export function JoinBoardButton({board}: {board: BoardT}) {
-  const t = useT();
-  const {errorMessage} = useI18n();
-  const toast = useToast();
-  const queryClient = useQueryClient();
-  const info = useQuery({...boardMembersQuery(board.id), enabled: !board.guest && !board.archived});
-  const [busy, setBusy] = useState(false);
-  if (!info.data?.canJoin) return null;
-  const join = async () => {
-    setBusy(true);
-    try {
-      await call('POST', `/boards/${board.id}/join`, {});
-      await Promise.all([
-        queryClient.invalidateQueries({queryKey: ['board-members', board.id]}),
-        queryClient.invalidateQueries({queryKey: ['board-people', board.id]}),
-        queryClient.invalidateQueries({queryKey: ['board', board.id]}),
-      ]);
-      toast.success(t('boards.share.joined'));
-    } catch (e) {
-      toast.danger(errorMessage(e as ApiError));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Button variant="secondary" size="sm" icon="user-plus" pending={busy} pendingLabel={t('boards.share.joining')} onClick={() => void join()}>
-      {t('boards.share.join')}
-    </Button>
-  );
-}
-
-/**
- * "Share" in the board header: who is on the board and with which role. Board admins (and members, when the board
- * allows it) add workspace people, invite anyone by email (they join as a guest) or share an invite link; admins change
- * roles, remove people and set who may add people. Everyone can leave. The server checks every action again.
- */
-export function ShareBoardButton({board}: {board: BoardT}) {
-  const t = useT();
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Button variant="secondary" size="sm" icon="user-plus" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
-        {t('boards.share.button')}
-      </Button>
-      <Drawer
-        open={open}
-        onClose={() => setOpen(false)}
-        title={t('boards.share.title')}
-        description={board.visibility === 'private' ? t('boards.share.descPrivate') : t('boards.share.descWorkspace')}>
-        {open && <SharePanel board={board} onLeft={() => setOpen(false)} />}
-      </Drawer>
-    </>
-  );
-}
-
-function SharePanel({board, onLeft}: {board: BoardT; onLeft: () => void}) {
+/** The Share drawer's content (lazy: `share-board-header.tsx` loads it on first open). */
+export function SharePanel({board, onLeft}: {board: BoardT; onLeft: () => void}) {
   const t = useT();
   const {errorMessage} = useI18n();
   const toast = useToast();

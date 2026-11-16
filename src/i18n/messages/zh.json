@@ -433,6 +433,8 @@
   "errors.unauthorized": "请重新登录。",
   "errors.token_expired": "你的会话已结束，请重新登录。",
   "errors.forbidden": "你没有执行此操作的权限。",
+  "errors.email_unverified": "请先确认你的电子邮件地址，然后重试。你仍然可以自己分享邀请链接。",
+  "errors.seat_restricted": "看板管理员已设定你在这里的访问权限。请让管理员更改。",
   "errors.not_found": "它已不存在，可能已被删除。请返回后重试。",
   "errors.validation": "请检查高亮的字段后重试。",
   "errors.rate_limited": "你操作得有点快。请稍等片刻后重试。",

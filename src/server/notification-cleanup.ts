@@ -32,9 +32,13 @@ export async function dropNotificationsFor(
 export async function dropNotificationsForPrivateBoard(tx: Prisma.TransactionClient, boardId: number, workspaceId: number): Promise<number> {
   return tx.$executeRaw`
     DELETE FROM notifications n
-    WHERE n.workspace_id = ${workspaceId}
-      AND (n.board_id = ${boardId}
-        OR n.conversation_id IN (SELECT cv.id FROM conversations cv WHERE cv.board_id = ${boardId} AND cv.workspace_id = ${workspaceId}))
+    WHERE n.id IN (
+        -- Two index lookups (notifications_board_id_idx, notifications_conversation_id_idx), not an OR over the whole table.
+        SELECT b.id FROM notifications b WHERE b.board_id = ${boardId}
+        UNION ALL
+        SELECT c.id FROM conversations cv JOIN notifications c ON c.conversation_id = cv.id
+        WHERE cv.board_id = ${boardId} AND cv.workspace_id = ${workspaceId})
+      AND n.workspace_id = ${workspaceId}
       AND NOT EXISTS (SELECT 1 FROM board_members bm WHERE bm.board_id = ${boardId} AND bm.user_id = n.user_id)
       AND NOT EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace_id = ${workspaceId} AND wm.user_id = n.user_id AND wm.role IN ('owner', 'admin'))`;
 }

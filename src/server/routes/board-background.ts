@@ -37,7 +37,7 @@ const uploadBody = validator('json', (value, c) => {
   if (!BG_IMAGE_TYPES.has(contentType)) return invalid(c, {file: BAD_IMAGE});
   const size = intField(v.size, 1, BG_IMAGE_MAX_BYTES);
   if (!size.ok) return invalid(c, {file: BAD_IMAGE});
-  return {name: name.value.replace(/[\\/]/g, '_'), contentType, size: size.value};
+  return {name: name.value.replace(/[\\/"\u0000-\u001f\u007f]/g, '_'), contentType, size: size.value};
 });
 
 export const boardBackgroundRoutes = new Hono()
@@ -134,13 +134,14 @@ export const boardBackgroundRoutes = new Hono()
       c.header('Cache-Control', 'private, no-store');
       return notFound(c, 'file');
     }
-    const link = await fileUrl(c.req.url, fileId, {expiresIn: 3600});
+    const link = await fileUrl(c.req.url, fileId, {expiresIn: 300});
     if (!link.ok) {
       c.header('Cache-Control', 'private, no-store');
       return c.json(problem(link.code, link.message), link.status === 404 ? 404 : 503);
     }
-    // The link lasts an hour; this browser may reuse the redirect for 5 minutes (one person's, never shared).
-    c.header('Cache-Control', 'private, max-age=300');
+    // The link lasts 5 minutes and this browser may reuse the redirect for 1 (one person's, never shared): someone
+    // who loses access to the board stops seeing its photo within minutes, while a board re-render costs no request.
+    c.header('Cache-Control', 'private, max-age=60');
     return c.redirect(link.data.url, 302);
   })
 

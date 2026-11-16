@@ -60,15 +60,15 @@ export const workspaceAuditRoutes = new Hono().get(
     const {before} = c.req.valid('query');
     c.header('Cache-Control', 'private, no-store');
 
-    const entitlements = await getEntitlements(db, workspaceId);
-    if (!entitlements) return notFound(c);
-    if (!entitlements.features.auditLog) return c.json({available: false as const, events: [], nextBefore: null});
-
     const ws = String(workspaceId);
     const older = before ? Prisma.sql`AND e.id < ${before}` : Prisma.empty;
     const take = PAGE_SIZE + 1;
-    // ONE prepared statement: three index-backed branches, each already newest-first and limited, then merged.
-    const rows = await db.$queryRaw<Row[]>`
+    // ONE prepared statement: three index-backed branches, each already newest-first and limited, then merged. It runs
+    // side by side with the plan check (the caller is already a checked admin of this workspace); without the feature
+    // the rows are dropped unread.
+    const [entitlements, rows] = await Promise.all([
+      getEntitlements(db, workspaceId),
+      db.$queryRaw<Row[]>`
       SELECT id, actor_user_id, action, target_type, meta, created_at, label FROM (
         (SELECT e.id, e.actor_user_id, e.action, e.target_type, e.meta, e.created_at, NULL::text AS label
            FROM audit_events e
@@ -87,11 +87,15 @@ export const workspaceAuditRoutes = new Hono().get(
            LEFT JOIN conversations cv ON e.target_type IN ('conversation', 'message') AND cv.workspace_id = ${workspaceId}
                 AND cv.kind = 'channel'
                 AND cv.id::text = CASE WHEN e.target_type = 'conversation' THEN e.target_id ELSE e.meta->>'conversationId' END
+          -- Index audit_events_meta_workspace_id_idx: keep this expression and this exact target_type list in step with it.
           WHERE e.target_type IN ('conversation', 'message', 'flow') AND e.meta->>'workspaceId' = ${ws} ${older}
           ORDER BY e.id DESC LIMIT ${take})
       ) merged
       ORDER BY id DESC
-      LIMIT ${take}`;
+      LIMIT ${take}`,
+    ]);
+    if (!entitlements) return notFound(c);
+    if (!entitlements.features.auditLog) return c.json({available: false as const, events: [], nextBefore: null});
 
     const page = rows.slice(0, PAGE_SIZE);
     const metas = page.map(row => (row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta) ? (row.meta as Record<string, unknown>) : {}));

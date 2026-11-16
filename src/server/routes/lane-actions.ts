@@ -6,6 +6,7 @@ import {evenKeys} from '../../lib/position-key';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {reserveCardNumbers} from '../card-number';
 import {MAX_CARDS_PER_LANE} from '../entitlements';
+import {softLimited} from '../soft-limit';
 import {idOf, invalid, objectOf, textField} from '../validation';
 import {notFound} from '../workspaces';
 import {bumpRev, keysAtEnd, laneFor, MAX_LANES, noStore, order, refused, type Tx} from './boards';
@@ -91,69 +92,77 @@ const refusal = (err: unknown) => {
   throw err;
 };
 
+const LANE_COPIES_PER_HOUR = 30;
+
 export const laneActionRoutes = new Hono()
   .post('/lanes/:id/copy', copyBody, withViewer, requireAuth, withDb, noStore, async c => {
     const userId = c.var.viewer.id!;
     const ctx = await laneFor(c.var.db, userId, idOf(c.req.param('id')), 'write');
     if (refused(ctx)) return c.json(ctx.body, ctx.status);
     const {workspaceId} = ctx.access;
+    // A copy writes up to a full lane of cards and archiving frees the lane cap: a per-user hourly cap bounds it.
+    if (await softLimited(userId, 'lane-copy', LANE_COPIES_PER_HOUR, 3600)) {
+      return c.json(problem('rate_limited', 'You copied many lists in the last hour. Try again later.'), 429);
+    }
     const {name} = c.req.valid('json');
     const out = await c.var.db
       .$transaction(async tx => {
         const rev = await bumpRev(tx, ctx.boardId, workspaceId);
-        // Everything below is read AFTER the board lock: two parallel copies never share a key or pass the cap together.
-        const [source, count, cards] = await Promise.all([
-          tx.lane.findFirst({
-            where: {id: ctx.lane.id, boardId: ctx.boardId, workspaceId, archivedAt: null},
-            select: {position: true, colorHex: true, wipLimit: true, collapsed: true},
-          }),
-          tx.lane.count({where: {workspaceId, boardId: ctx.boardId, archivedAt: null}}),
-          tx.card.findMany({
-            where: {workspaceId, laneId: ctx.lane.id, archivedAt: null},
-            orderBy: [...order('asc')],
-            take: MAX_CARDS_PER_LANE,
-            select: {title: true, descriptionMd: true, priority: true, estimateMinutes: true, startDate: true, dueDate: true},
-          }),
-        ]);
+        // Everything below is read AFTER the board lock: two parallel copies never share a key or pass the cap together,
+        // and the source lane's cards cannot change between the count here and the copy below (every card write locks the board).
+        // ONE read: the source lane, the board's open lanes, the next lane's key and how many cards will be copied.
+        const [source] = await tx.$queryRaw<
+          {position: string; color_hex: string | null; wip_limit: number | null; collapsed: boolean; lanes: number; next: string | null; cards: number}[]
+        >`
+          SELECT s.position, s.color_hex, s.wip_limit, s.collapsed,
+                 (SELECT count(*)::int FROM lanes o
+                  WHERE o.workspace_id = ${workspaceId}::int AND o.board_id = ${ctx.boardId}::int AND o.archived_at IS NULL) AS lanes,
+                 (SELECT n.position FROM lanes n
+                  WHERE n.workspace_id = ${workspaceId}::int AND n.board_id = ${ctx.boardId}::int AND n.archived_at IS NULL
+                    AND (n.position, n.id) > (s.position, s.id)
+                  ORDER BY n.position, n.id LIMIT 1) AS next,
+                 (SELECT count(*)::int FROM (
+                    SELECT 1 FROM cards k
+                    WHERE k.workspace_id = ${workspaceId}::int AND k.board_id = ${ctx.boardId}::int AND k.lane_id = s.id AND k.archived_at IS NULL
+                    LIMIT ${MAX_CARDS_PER_LANE}::int) q) AS cards
+          FROM lanes s
+          WHERE s.id = ${ctx.lane.id}::int AND s.board_id = ${ctx.boardId}::int AND s.workspace_id = ${workspaceId}::int AND s.archived_at IS NULL
+          LIMIT 1`;
         if (!source) throw new Refuse('not_found');
-        if (count >= MAX_LANES) throw new Refuse('limit_reached');
-        const next = await tx.lane.findFirst({
-          where: {workspaceId, boardId: ctx.boardId, archivedAt: null, OR: [{position: {gt: source.position}}, {position: source.position, id: {gt: ctx.lane.id}}]},
-          orderBy: [...order('asc')],
-          select: {position: true},
-        });
+        if (source.lanes >= MAX_LANES) throw new Refuse('limit_reached');
         let position: string;
         try {
-          position = generateKeyBetween(source.position, next?.position ?? null);
+          position = generateKeyBetween(source.position, source.next);
         } catch {
           // No room between the two keys: the copy goes to the end of the board instead.
           const last = await tx.lane.findFirst({where: {workspaceId, boardId: ctx.boardId, archivedAt: null}, orderBy: [...order('desc')], select: {position: true}});
           position = generateKeyBetween(last?.position ?? null, null);
         }
+        const n = source.cards;
         const lane = await tx.lane.create({
-          data: {boardId: ctx.boardId, workspaceId, name, position, colorHex: source.colorHex, wipLimit: source.wipLimit, collapsed: source.collapsed, cardCount: cards.length, updatedRev: rev},
+          data: {boardId: ctx.boardId, workspaceId, name, position, colorHex: source.color_hex, wipLimit: source.wip_limit, collapsed: source.collapsed, cardCount: n, updatedRev: rev},
           select: {id: true},
         });
-        if (cards.length) {
-          const keys = keysAtEnd(null, cards.length);
-          const firstNumber = await reserveCardNumbers(tx, ctx.boardId, workspaceId, cards.length);
-          await tx.card.createMany({
-            data: cards.map((card, i) => ({
-              number: firstNumber + i,
-              boardId: ctx.boardId,
-              laneId: lane.id,
-              workspaceId,
-              title: card.title,
-              descriptionMd: card.descriptionMd,
-              priority: card.priority,
-              estimateMinutes: card.estimateMinutes,
-              startDate: card.startDate,
-              dueDate: card.dueDate,
-              position: keys[i]!,
-              updatedRev: rev,
-              createdBy: userId,
-            })),
-          });
+        if (n) {
+          // The cards are copied by the database (INSERT ... SELECT): their descriptions never travel to the Worker.
+          // Same columns, order (position, id), fresh keys and consecutive new numbers as before.
+          const keys = keysAtEnd(null, n);
+          const firstNumber = await reserveCardNumbers(tx, ctx.boardId, workspaceId, n);
+          const copied = await tx.$executeRaw`
+            INSERT INTO cards (number, board_id, lane_id, workspace_id, title, description_md, priority, estimate_minutes, start_date, due_date,
+                               position, updated_rev, created_by, updated_at)
+            SELECT ${firstNumber}::int + s.rn::int - 1, ${ctx.boardId}::int, ${lane.id}::int, ${workspaceId}::int, s.title, s.description_md, s.priority,
+                   s.estimate_minutes, s.start_date, s.due_date, k.key, ${rev}::bigint, ${userId}::int, now()
+            FROM (
+              SELECT title, description_md, priority, estimate_minutes, start_date, due_date, row_number() OVER (ORDER BY position, id) AS rn
+              FROM cards
+              WHERE workspace_id = ${workspaceId}::int AND board_id = ${ctx.boardId}::int AND lane_id = ${ctx.lane.id}::int AND archived_at IS NULL
+              ORDER BY position, id
+              LIMIT ${n}::int
+            ) s
+            JOIN unnest(${keys}::text[]) WITH ORDINALITY AS k(key, i) ON k.i = s.rn`;
+          // The lane's counter was written as `n`: anything else means the source changed under the lock (it cannot).
+          if (copied !== n) throw new Error('lane copy count mismatch');
         }
         await tx.activity.create({data: {workspaceId, boardId: ctx.boardId, actorId: userId, kind: 'lane.created', meta: {name, copiedFrom: ctx.lane.id}}});
         return {laneId: lane.id, rev};

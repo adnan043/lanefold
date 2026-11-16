@@ -9,7 +9,6 @@ import {useMe, useSite} from '../portal/shared';
 import {browserStorage, clearAllDrafts} from './draft-store';
 import {Avatar, ConfirmProvider, EmptyState, Icon, type IconName, IconButton, initials, Menu, type MenuItem, ToastProvider, UiLabels, buttonClass, useToast} from '../portal/ui';
 import {lazyWithRetry} from './lazy';
-import {ArchivedCardsDrawer} from './boards/archive-panel';
 import {SIDEBAR_VIEWS, useBoardView, VIEW_ICONS} from './boards/views/view-switcher';
 import {PlanLimitWatcher} from './plan-limits';
 import {PreferencesSync} from './settings/sync';
@@ -28,6 +27,9 @@ const AppPalette = paletteWidget.Component;
 const ShortcutsDialog = shortcutsWidget.Component;
 const loadPalette = paletteWidget.preload;
 const loadShortcutsDialog = shortcutsWidget.preload;
+// The board's archived cards: off the first load, fetched on hover/focus of its link or first open, then kept mounted.
+const archivedWidget = lazyWithRetry(() => import('./boards/archive-panel').then(m => m.ArchivedCardsDrawer));
+const ArchivedCardsDrawer = archivedWidget.Component;
 
 type NavItem = {to: string; label: MessageKey; dock: MessageKey; icon: IconName; sidebarOnly?: boolean};
 
@@ -207,6 +209,8 @@ function Shell() {
   };
   const [signingOut, setSigningOut] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const archiveOpened = useRef(false);
+  if (archiveOpen) archiveOpened.current = true;
   const routeMatches = useMatches();
   const boardParam = (routeMatches.find(m => (m.routeId as string) === '/b/$boardId')?.params as {boardId?: string} | undefined)?.boardId;
   const currentBoardId = boardParam ? Number(boardParam) : null;
@@ -325,7 +329,7 @@ function Shell() {
             ))}
             {currentBoardId !== null && Number.isInteger(currentBoardId) && <BoardViewLinks boardId={currentBoardId} />}
             {currentBoardId !== null && Number.isInteger(currentBoardId) && (
-              <button type="button" className="app-nav-link" onClick={() => setArchiveOpen(true)}>
+              <button type="button" className="app-nav-link" onPointerEnter={archivedWidget.preload} onFocus={archivedWidget.preload} onClick={() => setArchiveOpen(true)}>
                 <Icon name="archive" size={18} />
                 <span className="app-nav-text">{t('bx.archive.cards')}</span>
               </button>
@@ -333,7 +337,18 @@ function Shell() {
           </div>
         </nav>
       </aside>
-      {currentBoardId !== null && Number.isInteger(currentBoardId) && <ArchivedCardsDrawer boardId={currentBoardId} open={archiveOpen} onClose={() => setArchiveOpen(false)} />}
+      {archiveOpened.current && currentBoardId !== null && Number.isInteger(currentBoardId) && (
+        <ArchivedCardsDrawer
+          boardId={currentBoardId}
+          open={archiveOpen}
+          onClose={() => setArchiveOpen(false)}
+          active={archiveOpen}
+          onLoadError={() => {
+            setArchiveOpen(false);
+            toast.danger(t('shell.loadFailed'));
+          }}
+        />
+      )}
       <button type="button" className="app-scrim" aria-label={t('nav.closeMenu')} tabIndex={-1} onClick={() => setOpen(false)} />
 
       <div className="app-main">
@@ -405,6 +420,7 @@ function Shell() {
         <AppPalette
           open={paletteOpen}
           setOpen={setPaletteOpen}
+          active={paletteOpen}
           onLoadError={() => {
             setPaletteOpen(false);
             toast.danger(t('shell.loadFailed'));
@@ -415,6 +431,7 @@ function Shell() {
         <ShortcutsDialog
           open={shortcutsOpen}
           setOpen={setShortcutsOpen}
+          active={shortcutsOpen}
           onLoadError={() => {
             setShortcutsOpen(false);
             toast.danger(t('shell.loadFailed'));

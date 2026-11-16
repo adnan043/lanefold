@@ -140,8 +140,15 @@ export const app = new Hono()
 
   .notFound(c => c.json(problem('not_found', 'No such Site API route.'), 404))
   .onError((err, c) => {
-    // The message only: an error object can carry request details.
-    console.error(`site-api ${c.req.method} ${c.req.path}: ${err.message}`);
+    // A database error's message can quote the row's values (an email in a unique-constraint error): log only its
+    // code and the field names it names. Other errors: the message only (an error object can carry request details).
+    const dbCode = (err as {code?: unknown}).code;
+    const target = (err as {meta?: {target?: unknown}}).meta?.target;
+    const detail =
+      typeof dbCode === 'string' && /^P\d{4}$/.test(dbCode)
+        ? `prisma ${dbCode}${Array.isArray(target) ? ` on ${target.filter(t => typeof t === 'string').join(',')}` : ''}`
+        : err.message.slice(0, 300);
+    console.error(`site-api ${c.req.method} ${c.req.path}: ${detail}`);
     return c.json(problem('internal_error', 'Something went wrong.'), 500);
   });
 

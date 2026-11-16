@@ -436,6 +436,8 @@
   "errors.unauthorized": "Lütfen yeniden giriş yap.",
   "errors.token_expired": "Oturumun sona erdi. Lütfen yeniden giriş yap.",
   "errors.forbidden": "Bunu yapmaya iznin yok.",
+  "errors.email_unverified": "Önce e-posta adresinizi doğrulayın, sonra tekrar deneyin. Davet bağlantısını yine de kendiniz paylaşabilirsiniz.",
+  "errors.seat_restricted": "Bir pano yöneticisi buradaki erişiminizi belirledi. Değiştirmesini ondan isteyin.",
   "errors.not_found": "Bu artık yok. Silinmiş olabilir. Geri dönüp tekrar dene.",
   "errors.validation": "Vurgulanan alanları kontrol edip tekrar dene.",
   "errors.rate_limited": "Biraz hızlı gidiyorsun. Bir an bekleyip tekrar dene.",

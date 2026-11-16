@@ -172,11 +172,29 @@ export const LaneColumn = memo(function LaneColumn({
     [handlers.onEditCard, handlers.onArchiveCard, handlers.onMoveCard, handlers.onCopyCardLink]
   );
 
-  // A lane the board answer left empty (its card cap) loads its first cards when it is first shown.
+  // A lane the board answer left empty (its card cap) loads its first cards when it scrolls near the view, not all at
+  // once on open: a 50-lane board would otherwise fire ~40 page requests (and ~40 board re-renders) together.
   const {loaded, id: laneId} = lane;
   const {onLoadMore} = handlers;
   useEffect(() => {
-    if (!loaded) onLoadMore(lane);
+    if (loaded) return;
+    const node = self.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      onLoadMore(lane);
+      return;
+    }
+    const root = node.closest('.lf-lanes');
+    const io = new IntersectionObserver(
+      entries => {
+        if (!entries.some(e => e.isIntersecting)) return;
+        io.disconnect();
+        onLoadMore(lane);
+      },
+      // About one lane ahead on either side, so the next lane is usually ready before it is seen.
+      {root, rootMargin: '0px 400px'}
+    );
+    io.observe(node);
+    return () => io.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, laneId]);
 

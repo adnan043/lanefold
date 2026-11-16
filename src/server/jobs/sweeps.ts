@@ -1,5 +1,6 @@
 import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {audit} from '../../platform/auth';
+import {config} from '../../platform/config';
 import {forgetEntitlements, startGraceForWorkspaces} from '../entitlements';
 import {cutoff, DEFAULT_RETENTION, DELETE_BATCH, keepDays, MAX_DELETE_BATCHES, MAX_PAGES, nextCursor, PAGE_SIZE} from './logic';
 
@@ -25,7 +26,9 @@ export async function sweepEndedMemberships(db: PrismaClient): Promise<{moved: n
         AND NOT EXISTS (
           SELECT 1 FROM memberships m
           WHERE m.workspace_id = w.id AND m.price_key = p.price_key_monthly
-            AND (m.status IN ('active', 'trialing', 'past_due') OR m.access_ends_at > now()))
+            AND (m.status IN ('active', 'trialing', 'past_due') OR m.access_ends_at > now())
+            -- On the live site only live payments keep a paid plan (payments-hooks.ts modeGrants).
+            AND (${!config.production}::boolean OR m.mode = 'live'))
       ORDER BY w.id LIMIT ${PAGE_SIZE}`;
     if (rows.length) {
       // ONE statement for the page. Conditional on the plan we read: a repeat or a concurrent upgrade changes nothing.
@@ -127,17 +130,17 @@ export async function cleanupOld(db: PrismaClient, data: unknown, now = Date.now
     cursor = Math.max(...rows.map(r => r.id));
   }
 
-  let bigCursor = 0n;
+  // Oldest read rows first on notifications_read_at_idx: each batch reads only rows it deletes (deleted rows are gone,
+  // so no cursor), instead of walking the table by id and skipping unread rows.
   for (let i = 0; i < MAX_DELETE_BATCHES; i++) {
     const rows = await db.$queryRaw<{id: bigint}[]>`
       WITH batch AS (
         SELECT id FROM notifications
-        WHERE id > ${bigCursor} AND read_at < ${notifBefore}
-        ORDER BY id LIMIT ${DELETE_BATCH})
+        WHERE read_at < ${notifBefore}
+        ORDER BY read_at LIMIT ${DELETE_BATCH})
       DELETE FROM notifications WHERE id IN (SELECT id FROM batch) RETURNING id`;
     notifications += rows.length;
     if (rows.length < DELETE_BATCH) break;
-    bigCursor = rows.reduce((max, r) => (r.id > max ? r.id : max), 0n);
   }
 
   // Abandoned uploads: a row created at step 1 (files.md) that was never confirmed, older than an hour (the upload route only counts the last hour). The stored

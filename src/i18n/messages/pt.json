@@ -439,6 +439,8 @@
   "errors.unauthorized": "Entre novamente.",
   "errors.token_expired": "Sua sessão terminou. Entre novamente.",
   "errors.forbidden": "Você não tem permissão para fazer isso.",
+  "errors.email_unverified": "Confirme primeiro o seu endereço de email e tente novamente. Ainda pode partilhar o link de convite você mesmo.",
+  "errors.seat_restricted": "Um administrador do quadro definiu seu acesso aqui. Peça a ele para alterá-lo.",
   "errors.not_found": "Isso não existe mais. Pode ter sido excluído. Volte e tente novamente.",
   "errors.validation": "Confira os campos destacados e tente novamente.",
   "errors.rate_limited": "Você está indo um pouco rápido. Aguarde um momento e tente novamente.",

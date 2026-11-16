@@ -2,7 +2,7 @@ import {Hono} from 'hono';
 import {createMiddleware} from 'hono/factory';
 import {validator} from 'hono/validator';
 
-import type {PrismaClient} from '../../generated/prisma/client';
+import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {audit} from '../../platform/auth/audit';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {distinctCardNumbers, MAX_REFS_PER_PAGE} from '../../lib/card-number-refs';
@@ -11,6 +11,7 @@ import {getEntitlements} from '../entitlements';
 import {notify} from '../notifications';
 import {boardAccess, notFound, rankOf, requireWorkspaceRole, type WorkspaceRole} from '../workspaces';
 import {idOf, invalid, objectOf, textField, type FieldError} from '../validation';
+import {afterResponse} from '../after-response';
 
 /**
  * Phase 4b: chat. Mounted ONCE at `/` in `app.ts`. Real time is polling (SPEC §8): `pulse` says which
@@ -91,7 +92,18 @@ const seqOf = (value: unknown): number | undefined => {
   return Number(value);
 };
 
-const isUnique = (error: unknown) => (error as {code?: unknown} | null)?.code === 'P2002';
+/** Prisma's "raw query failed" (never sent to the client). */
+const RAW_QUERY_FAILED = 'P2010';
+
+/** A unique violation: P2002 from a model query, or P2010 carrying Postgres 23505 from a raw one. */
+const isUnique = (error: unknown) => {
+  const e = error as {code?: unknown; message?: unknown; meta?: {driverAdapterError?: {cause?: {kind?: unknown}}}} | null;
+  if (e?.code === 'P2002') return true;
+  return (
+    e?.code === RAW_QUERY_FAILED &&
+    (e.meta?.driverAdapterError?.cause?.kind === 'UniqueConstraintViolation' || /\b23505\b/.test(String(e.message ?? '')))
+  );
+};
 
 /* ------------------------------------------------------------------ access */
 
@@ -115,53 +127,65 @@ type Access = {
   muted: boolean;
 };
 
+type AccessRow = {
+  id: number;
+  workspace_id: number;
+  kind: string;
+  board_id: number | null;
+  last_seq: bigint;
+  role: string;
+  last_read_seq: bigint | null;
+  muted_at: Date | null;
+  joined: boolean;
+};
+
 /**
- * What the visitor may do in one conversation (ONE query, plus `boardAccess` for a board chat), or null:
- * missing, another workspace, a DM or group they are not in, a board they cannot see.
+ * What the visitor may do in one conversation, or null: missing, another workspace (or an archived one), a DM or
+ * group they are not in, a board they cannot see. ONE query (the conversation, my workspace role and my
+ * conversation_members row), plus `boardAccess` for a board chat. `boardHint`: a caller that already knows the board
+ * (or is about to check it) may pass its id so `boardAccess` runs side by side with the read; its answer is used only
+ * when the conversation really is that board's chat.
  */
-export async function conversationAccess(db: PrismaClient, conversationId: number, userId: number): Promise<Access | null> {
-  const conv = await db.conversation.findFirst({
-    where: {id: conversationId},
-    select: {
-      id: true,
-      workspaceId: true,
-      kind: true,
-      boardId: true,
-      lastSeq: true,
-      members: {where: {userId}, select: {lastReadSeq: true, mutedAt: true}, take: 1},
-    },
-  });
+export async function conversationAccess(db: PrismaClient, conversationId: number, userId: number, boardHint?: number): Promise<Access | null> {
+  const [rows, hinted] = await Promise.all([
+    // The workspace membership gates everything: another workspace's conversation is "missing" (INNER JOIN).
+    db.$queryRaw<AccessRow[]>`
+      SELECT cv.id, cv.workspace_id, cv.kind, cv.board_id, cv.last_seq, wm.role,
+             cm.last_read_seq, cm.muted_at, (cm.user_id IS NOT NULL) AS joined
+      FROM conversations cv
+      JOIN workspace_members wm ON wm.workspace_id = cv.workspace_id AND wm.user_id = ${userId}
+      JOIN workspaces w ON w.id = cv.workspace_id AND w.archived_at IS NULL
+      LEFT JOIN conversation_members cm ON cm.conversation_id = cv.id AND cm.user_id = ${userId}
+      WHERE cv.id = ${conversationId}
+      LIMIT 1`,
+    boardHint ? boardAccess(db, boardHint, userId) : null,
+  ]);
+  const conv = rows[0];
   if (!conv) return null;
-  // The workspace membership gates everything below: another workspace's conversation is "missing".
-  const member = await db.workspaceMember.findFirst({
-    where: {workspaceId: conv.workspaceId, userId, workspace: {archivedAt: null}},
-    select: {role: true},
-  });
-  const role = member?.role as WorkspaceRole | undefined;
+  const role = conv.role as WorkspaceRole;
   if (!role) return null;
   const rank = rankOf(role);
-  const mine = conv.members[0];
   const base = {
     conversationId: conv.id,
-    workspaceId: conv.workspaceId,
+    workspaceId: conv.workspace_id,
     kind: conv.kind,
-    boardId: conv.boardId,
-    lastSeq: Number(conv.lastSeq),
+    boardId: conv.board_id,
+    lastSeq: Number(conv.last_seq),
     workspaceRole: role,
     canRead: true as const,
     archived: false,
-    joined: Boolean(mine),
-    lastReadSeq: mine ? Number(mine.lastReadSeq) : 0,
-    muted: Boolean(mine?.mutedAt),
+    joined: conv.joined,
+    lastReadSeq: conv.joined ? Number(conv.last_read_seq) : 0,
+    muted: Boolean(conv.muted_at),
   };
   if (conv.kind === 'channel') return {...base, canWrite: rank >= 2, canModerate: rank >= 3};
   if (conv.kind === 'dm' || conv.kind === 'group') {
-    if (!mine) return null;
+    if (!conv.joined) return null;
     return {...base, canWrite: true, canModerate: false};
   }
-  if (conv.kind === 'board' && conv.boardId) {
-    const access = await boardAccess(db, conv.boardId, userId);
-    if (!access || access.workspaceId !== conv.workspaceId) return null;
+  if (conv.kind === 'board' && conv.board_id) {
+    const access = boardHint === conv.board_id ? hinted : await boardAccess(db, conv.board_id, userId);
+    if (!access || access.workspaceId !== conv.workspace_id) return null;
     return {...base, archived: access.archived, canWrite: access.canWrite && !access.archived, canModerate: access.canAdmin && !access.archived};
   }
   return null;
@@ -169,14 +193,18 @@ export async function conversationAccess(db: PrismaClient, conversationId: numbe
 
 type ChatVars = {viewer: {id: number | null}; db: PrismaClient; access: Access};
 
-/** Route guard: the `:id` conversation must be reachable (else 404); `write` / `moderate` raise it to 403. */
-const requireConversation = (need: 'read' | 'write' | 'moderate' = 'read') =>
+/**
+ * Route guard: the `:id` conversation must be reachable (else 404); `write` / `moderate` raise it to 403.
+ * `send` is `write` WITHOUT the read-only plan check: the route MUST call `readOnlyBlock` (or read the entitlements)
+ * itself before it writes anything, so that read can share a round trip with its other reads.
+ */
+const requireConversation = (need: 'read' | 'write' | 'send' | 'moderate' = 'read') =>
   createMiddleware<{Variables: ChatVars}>(async (c, next) => {
     const id = idOf(c.req.param('id'));
     if (!id) return notFound(c, 'conversation');
     const access = await conversationAccess(c.var.db, id, c.var.viewer.id!);
     if (!access) return notFound(c, 'conversation');
-    if ((need === 'write' && !access.canWrite) || (need === 'moderate' && !access.canModerate)) {
+    if (((need === 'write' || need === 'send') && !access.canWrite) || (need === 'moderate' && !access.canModerate)) {
       return c.json(problem('forbidden', 'You do not have access to this.'), 403);
     }
     if (need === 'write') {
@@ -189,7 +217,11 @@ const requireConversation = (need: 'read' | 'write' | 'moderate' = 'read') =>
 
 /** The 409 of a read-only workspace (plan limits), or null when writing is allowed. */
 async function readOnlyBlock(c: {json: (b: unknown, s: 409) => Response}, db: PrismaClient, workspaceId: number): Promise<Response | null> {
-  const ent = await getEntitlements(db, workspaceId);
+  return readOnlyAnswer(c, await getEntitlements(db, workspaceId));
+}
+
+/** `readOnlyBlock` for entitlements already read (side by side with a route's other reads). */
+function readOnlyAnswer(c: {json: (b: unknown, s: 409) => Response}, ent: {readOnly: boolean} | null): Response | null {
   return ent?.readOnly ? c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409) : null;
 }
 
@@ -575,6 +607,9 @@ export function mentionIdsIn(body: string, names: Map<number, string>, ids: numb
 }
 
 /** Groups and DMs this person started in this workspace in the last hour (bounded read). */
+const CHANNELS_PER_HOUR = 5;
+const MEMBER_CHANNELS = 10;
+
 async function startedTooMany(db: PrismaClient, workspaceId: number, userId: number): Promise<boolean> {
   const rows = await db.conversation.findMany({
     where: {workspaceId, kind: {in: ['dm', 'group']}, createdBy: userId, createdAt: {gt: new Date(Date.now() - 3_600_000)}},
@@ -605,16 +640,37 @@ async function cardsInWorkspace(db: PrismaClient, a: Pick<Access, 'workspaceId' 
   return rows.map(r => r.id);
 }
 
-/** Joins the conversation (channels and board chats join on first use) and moves my read marker forward. */
+/**
+ * Joins the conversation (channels and board chats join on first use) and moves my read marker forward, never back.
+ * ONE statement: insert my row, or raise its marker only when `seq` is higher (no write otherwise).
+ */
 async function markRead(db: PrismaClient | Tx, a: Pick<Access, 'conversationId' | 'workspaceId'>, userId: number, seq: number) {
-  await db.conversationMember.createMany({
-    data: [{conversationId: a.conversationId, userId, workspaceId: a.workspaceId, lastReadSeq: seq}],
-    skipDuplicates: true,
-  });
-  await db.conversationMember.updateMany({
-    where: {conversationId: a.conversationId, workspaceId: a.workspaceId, userId, lastReadSeq: {lt: seq}},
-    data: {lastReadSeq: seq},
-  });
+  await db.$executeRaw`
+    INSERT INTO conversation_members (conversation_id, user_id, workspace_id, last_read_seq)
+    VALUES (${a.conversationId}, ${userId}, ${a.workspaceId}, ${seq})
+    ON CONFLICT (conversation_id, user_id) DO UPDATE SET last_read_seq = EXCLUDED.last_read_seq
+    WHERE conversation_members.workspace_id = EXCLUDED.workspace_id AND conversation_members.last_read_seq < EXCLUDED.last_read_seq`;
+}
+
+/**
+ * Joins the conversation (marker 0 for a new row, an existing one untouched) and returns my row: ONE statement, no
+ * write when I already sit in it.
+ */
+async function joinConversation(db: PrismaClient, conversationId: number, workspaceId: number, userId: number) {
+  const rows = await db.$queryRaw<{last_read_seq: bigint; muted_at: Date | null}[]>`
+    WITH ins AS (
+      INSERT INTO conversation_members (conversation_id, user_id, workspace_id, last_read_seq)
+      VALUES (${conversationId}, ${userId}, ${workspaceId}, 0)
+      ON CONFLICT (conversation_id, user_id) DO NOTHING
+      RETURNING last_read_seq, muted_at
+    )
+    SELECT last_read_seq, muted_at FROM ins
+    UNION ALL
+    SELECT last_read_seq, muted_at FROM conversation_members
+    WHERE conversation_id = ${conversationId} AND user_id = ${userId} AND workspace_id = ${workspaceId} AND NOT EXISTS (SELECT 1 FROM ins)
+    LIMIT 1`;
+  const row = rows[0];
+  return row ? {lastReadSeq: row.last_read_seq, mutedAt: row.muted_at} : undefined;
 }
 
 const conversationShape = (
@@ -717,25 +773,28 @@ export const chatRoutes = new Hono()
     ]);
     // Board chats only for boards I can still see: workspace admins see all, others every non-private board or one they sit on.
     const boardIds = mineRows.filter(r => r.conversation.kind === 'board' && r.conversation.boardId).map(r => r.conversation.boardId!);
-    const visible = new Set<number>();
-    if (boardIds.length) {
-      const seen = await db.board.findMany({
-        where: {
-          workspaceId,
-          id: {in: boardIds},
-          inboxOf: null,
-          ...(c.var.member.rank >= 3 ? {} : {OR: [{visibility: {not: 'private'}}, {boardMembers: {some: {userId: me}}}]}),
-        },
-        select: {id: true, name: true},
-        take: LIST_CAP,
-      });
-      for (const b of seen) visible.add(b.id);
-    }
+    // The names of the people in DMs and groups do not depend on which boards are visible (a board chat has no dmKey):
+    // both reads in ONE round trip.
+    const [seen, names] = await Promise.all([
+      boardIds.length
+        ? db.board.findMany({
+            where: {
+              workspaceId,
+              id: {in: boardIds},
+              inboxOf: null,
+              ...(c.var.member.rank >= 3 ? {} : {OR: [{visibility: {not: 'private'}}, {boardMembers: {some: {userId: me}}}]}),
+            },
+            select: {id: true},
+            take: LIST_CAP,
+          })
+        : Promise.resolve([] as {id: number}[]),
+      namesOf(
+        db,
+        mineRows.flatMap(r => (r.conversation.kind !== 'board' && r.conversation.dmKey ? r.conversation.dmKey.split(':').map(Number) : []))
+      ),
+    ]);
+    const visible = new Set(seen.map(b => b.id));
     const kept = mineRows.filter(r => r.conversation.kind !== 'board' || (r.conversation.boardId && visible.has(r.conversation.boardId)));
-    const names = await namesOf(
-      db,
-      kept.flatMap(r => (r.conversation.dmKey ? r.conversation.dmKey.split(':').map(Number) : []))
-    );
     const items = [
       ...channels.map(r => conversationShape(r, r.members[0], names, me)),
       ...kept.map(r => conversationShape(r.conversation, r, names, me)),
@@ -754,6 +813,19 @@ export const chatRoutes = new Hono()
 
     if (input.kind === 'channel') {
       const isGeneral = input.name!.trim().toLowerCase() === 'general';
+      // Channels can't be deleted yet, so the workspace's 50 slots are guarded: a member (not an admin) starts at
+      // most CHANNELS_PER_HOUR an hour and MEMBER_CHANNELS in all; one bounded read on (workspace, kind, created_by).
+      if (!isGeneral && member.rank < 3) {
+        const mine = await db.conversation.findMany({
+          where: {workspaceId, kind: 'channel', createdBy: me},
+          select: {createdAt: true},
+          orderBy: {id: 'desc'},
+          take: MEMBER_CHANNELS,
+        });
+        const lastHour = mine.filter(r => r.createdAt.getTime() > Date.now() - 3_600_000).length;
+        if (lastHour >= CHANNELS_PER_HOUR) return c.json(problem('conversation_rate_limited', 'You started many channels in the last hour. Try again later.'), 429);
+        if (mine.length >= MEMBER_CHANNELS) return c.json(problem('limit_reached', `You can start up to ${MEMBER_CHANNELS} channels here. Ask an admin for more.`), 409);
+      }
       const existing = await db.conversation.findMany({where: {workspaceId, kind: 'channel'}, select: {id: true, name: true}, take: MAX_CHANNELS});
       if (!isGeneral && existing.length >= MAX_CHANNELS) return c.json(problem('limit_reached', `A workspace can have ${MAX_CHANNELS} channels.`), 409);
       const findGeneral = (client: PrismaClient | Tx) =>
@@ -841,10 +913,18 @@ export const chatRoutes = new Hono()
     const {db} = c.var;
     const boardId = idOf(c.req.param('id'));
     if (!boardId) return notFound(c, 'board');
-    const access = await boardAccess(db, boardId, me);
+    // The board chat is read side by side with the access check (board_id is unique); it is dropped unless the
+    // visitor may see the board and it belongs to that board's workspace.
+    const [access, found] = await Promise.all([
+      boardAccess(db, boardId, me),
+      db.conversation.findFirst({where: {boardId, kind: 'board'}, select: {...convCols, workspaceId: true}}),
+    ]);
     if (!access) return notFound(c, 'board');
     const where = {boardId, workspaceId: access.workspaceId, kind: 'board'} as const;
-    let conv = await db.conversation.findFirst({where, select: convCols});
+    let conv =
+      found && found.workspaceId === access.workspaceId
+        ? {id: found.id, kind: found.kind, name: found.name, boardId: found.boardId, lastSeq: found.lastSeq, dmKey: found.dmKey}
+        : null;
     if (!conv) {
       try {
         conv = await db.conversation.create({
@@ -857,12 +937,9 @@ export const chatRoutes = new Hono()
       }
     }
     if (!conv) return c.json(problem('internal_error', 'Something went wrong.'), 500);
-    await markRead(db, {conversationId: conv.id, workspaceId: access.workspaceId}, me, 0);
-    const mine = await db.conversationMember.findUnique({
-      where: {conversationId_userId: {conversationId: conv.id, userId: me}},
-      select: {lastReadSeq: true, mutedAt: true},
-    });
-    return c.json({conversation: {...conversationShape(conv, mine ?? undefined, new Map(), me), canWrite: access.canWrite && !access.archived}});
+    // I join it (marker 0 when new; an existing row is left as it is) and my row comes back in the same statement.
+    const mine = await joinConversation(db, conv.id, access.workspaceId, me);
+    return c.json({conversation: {...conversationShape(conv, mine, new Map(), me), canWrite: access.canWrite && !access.archived}});
   })
 
   /* ---- messages ------------------------------------------------------------------------------ */
@@ -905,7 +982,7 @@ export const chatRoutes = new Hono()
     });
   })
 
-  .post('/conversations/:id/messages', sendBody, withViewer, requireAuth, withDb, requireConversation('write'), noStore, async c => {
+  .post('/conversations/:id/messages', sendBody, withViewer, requireAuth, withDb, requireConversation('send'), noStore, async c => {
     const me = c.var.viewer.id!;
     const {db, access: a} = c.var;
     const input = c.req.valid('json');
@@ -921,10 +998,12 @@ export const chatRoutes = new Hono()
       const {items} = await shapeMessages(db, [row], a, me);
       return c.json({message: items[0]}, 200);
     };
-    // Independent reads in ONE round trip: replay lookup, rate limit (bounded read of messages(sender_id, created_at)),
-    // the reply target, who may be named (and their names) and the card refs.
+    // Independent reads in ONE round trip: the plan's read-only state, replay lookup, rate limit (bounded read of
+    // messages(sender_id, created_at)), the reply target, who may be named (and their names), the card refs and the
+    // `#number` card refs of the text (they depend only on the body).
     const now = Date.now();
-    const [found, lastMinute, lastHour, parent, allowed, cardIds, names] = await Promise.all([
+    const [ent, found, lastMinute, lastHour, parent, allowed, cardIds, names, numberRefs] = await Promise.all([
+      getEntitlements(db, a.workspaceId),
       find(),
       db.message.findMany({where: {senderId: me, createdAt: {gt: new Date(now - 60_000)}}, select: {id: true}, take: SEND_PER_MINUTE + 1}),
       db.message.findMany({where: {senderId: me, createdAt: {gt: new Date(now - 3_600_000)}}, select: {id: true}, take: SEND_PER_HOUR + 1}),
@@ -939,7 +1018,11 @@ export const chatRoutes = new Hono()
       cardsInWorkspace(db, a, me, input.cardIds),
       // The sender's own name rides along: the new message needs no second names/reactions read.
       namesOf(db, [me, ...input.mentions]),
+      cardNumberRefs(db, a, me, [{bodyMd: input.body, deletedAt: null as Date | null} as MessageRow]),
     ]);
+    // A read-only workspace (plan limits) refuses the send, a retried one included, before anything is written.
+    const blocked = readOnlyAnswer(c, ent);
+    if (blocked) return blocked;
     // Retried send: the same message comes back, nothing is written twice.
     const already = await replay(found);
     if (already) return already;
@@ -952,50 +1035,73 @@ export const chatRoutes = new Hono()
     const mentions = mentionIdsIn(input.body, names, allowed);
 
     try {
-      const row = await db.$transaction(async tx => {
-        // One atomic increment hands out the next seq; concurrent senders queue on the row lock.
-        const conv = await tx.conversation.update({
-          where: {id: a.conversationId},
-          data: {lastSeq: {increment: 1}},
-          select: {lastSeq: true},
-        });
-        const created = await tx.message.create({
-          data: {
-            conversationId: a.conversationId,
-            workspaceId: a.workspaceId,
-            seq: conv.lastSeq,
-            senderId: me,
-            bodyMd: input.body,
-            parentId: input.parentId,
-            clientId: input.clientId,
-            kind: 'user',
-            mentions: {create: mentions.map(userId => ({userId}))},
-            cardRefs: {create: cardIds.map(cardId => ({cardId}))},
-          },
-          select: messageCols,
-        });
-        if (input.parentId !== null) {
-          await tx.message.updateMany({
-            where: {id: input.parentId, conversationId: a.conversationId, workspaceId: a.workspaceId},
-            data: {replyCount: {increment: 1}},
-          });
-        }
-        // Mark only what the sender has seen: up to their known seq (or the marker they had), plus this message
-        // when nothing unseen sits before it. Messages from others in between stay unread.
-        const mine = Number(conv.lastSeq);
-        const seen = Math.min(input.lastSeenSeq ?? a.lastReadSeq, mine - 1);
-        await markRead(tx, a, me, seen >= mine - 1 ? mine : Math.max(seen, 0));
-        return created;
-      });
+      // ONE atomic statement (its own transaction): the conversation's seq increment hands out the next seq
+      // (concurrent senders queue on the row lock, and it bumps updated_at for the poll's order), then the message,
+      // its mentions and card refs, the parent's reply count, and my read marker. A duplicate client id fails it as a
+      // whole (nothing written, the seq not spent), exactly like the rolled-back transaction it replaces.
+      // Read marker: only what the sender has seen, up to their known seq (or the marker they had), plus this message
+      // when nothing unseen sits before it. Messages from others in between stay unread.
+      const lastSeen = input.lastSeenSeq ?? a.lastReadSeq;
+      const mentionRows = mentions.length
+        ? Prisma.sql`, mm AS (INSERT INTO message_mentions (message_id, user_id) SELECT m.id, u FROM m, unnest(${mentions}::int[]) AS u)`
+        : Prisma.empty;
+      const refRows = cardIds.length
+        ? Prisma.sql`, cr AS (INSERT INTO message_card_refs (message_id, card_id) SELECT m.id, x FROM m, unnest(${cardIds}::int[]) AS x)`
+        : Prisma.empty;
+      const replyRow =
+        input.parentId !== null
+          ? Prisma.sql`, rp AS (UPDATE messages SET reply_count = reply_count + 1
+              WHERE id = ${input.parentId} AND conversation_id = ${a.conversationId} AND workspace_id = ${a.workspaceId}
+                AND EXISTS (SELECT 1 FROM m))`
+          : Prisma.empty;
+      const [made] = await db.$queryRaw<{id: bigint; seq: bigint; created_at: Date}[]>`
+        WITH s AS (
+          UPDATE conversations SET last_seq = last_seq + 1, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ${a.conversationId} AND workspace_id = ${a.workspaceId}
+          RETURNING last_seq
+        ), m AS (
+          INSERT INTO messages (conversation_id, workspace_id, seq, sender_id, body_md, parent_id, client_id, kind)
+          SELECT ${a.conversationId}, ${a.workspaceId}, s.last_seq, ${me}, ${input.body}, ${input.parentId}::bigint, ${input.clientId}, 'user'
+          FROM s
+          RETURNING id, seq, created_at
+        )${mentionRows}${refRows}${replyRow}, rd AS (
+          INSERT INTO conversation_members (conversation_id, user_id, workspace_id, last_read_seq)
+          SELECT ${a.conversationId}, ${me}, ${a.workspaceId},
+                 CASE WHEN LEAST(${lastSeen}::bigint, m.seq - 1) >= m.seq - 1 THEN m.seq ELSE GREATEST(LEAST(${lastSeen}::bigint, m.seq - 1), 0) END
+          FROM m
+          ON CONFLICT (conversation_id, user_id) DO UPDATE SET last_read_seq = EXCLUDED.last_read_seq
+          WHERE conversation_members.workspace_id = EXCLUDED.workspace_id AND conversation_members.last_read_seq < EXCLUDED.last_read_seq
+        )
+        SELECT id, seq, created_at FROM m`;
+      if (!made) return notFound(c, 'conversation');
+      const row: MessageRow = {
+        id: made.id,
+        seq: made.seq,
+        senderId: me,
+        bodyMd: input.body,
+        parentId: input.parentId,
+        kind: 'user',
+        editedAt: null,
+        deletedAt: null,
+        pinnedAt: null,
+        replyCount: 0,
+        createdAt: made.created_at,
+        mentions: mentions.map(userId => ({userId})),
+        cardRefs: cardIds.map(cardId => ({cardId})),
+      };
       // Mentions go through notify() AFTER the commit, so its per-sender cap (20 an hour from one person) stops
       // mention spam. Muted members still get the mention; they asked to silence the chat, not people who name them.
+      // They run after the answer: the sender is not kept waiting for them.
       const named = mentions.filter(id => id !== me);
-      if (named.length) {
-        await notify(db, named, {kind: 'message_mention', workspaceId: a.workspaceId, actorId: me, boardId: a.boardId, conversationId: a.conversationId});
+      const everyone = mentionsAll(input.body);
+      if (named.length || everyone) {
+        await afterResponse(c, 'chat mentions', async () => {
+          if (named.length) await notify(db, named, {kind: 'message_mention', workspaceId: a.workspaceId, actorId: me, boardId: a.boardId, conversationId: a.conversationId});
+          if (everyone) await notifyEveryone(db, a, me, mentions);
+        });
       }
-      if (mentionsAll(input.body)) await notifyEveryone(db, a, me, mentions);
       // A brand-new message has no reactions, and its names (sender, mentions) were read above: shape it directly.
-      return c.json({message: messageShape(row, names, [], a.conversationId, await cardNumberRefs(db, a, me, [row]))}, 201);
+      return c.json({message: messageShape(row, names, [], a.conversationId, numberRefs)}, 201);
     } catch (error) {
       if (!isUnique(error)) throw error;
       // Two sends with the same key arrived together: the other one wrote it.
@@ -1015,11 +1121,12 @@ export const chatRoutes = new Hono()
 
   .put('/conversations/:id/mute', withViewer, requireAuth, withDb, requireConversation('read'), noStore, async c => {
     const a = c.var.access;
-    await markRead(c.var.db, a, c.var.viewer.id!, 0);
-    await c.var.db.conversationMember.updateMany({
-      where: {conversationId: a.conversationId, workspaceId: a.workspaceId, userId: c.var.viewer.id!},
-      data: {mutedAt: new Date()},
-    });
+    // Joins (marker 0 when new) and mutes in ONE statement.
+    await c.var.db.$executeRaw`
+      INSERT INTO conversation_members (conversation_id, user_id, workspace_id, last_read_seq, muted_at)
+      VALUES (${a.conversationId}, ${c.var.viewer.id!}, ${a.workspaceId}, 0, CURRENT_TIMESTAMP)
+      ON CONFLICT (conversation_id, user_id) DO UPDATE SET muted_at = EXCLUDED.muted_at
+      WHERE conversation_members.workspace_id = EXCLUDED.workspace_id`;
     return c.json({muted: true});
   })
 

@@ -5,7 +5,8 @@ import {generateKeyBetween} from 'fractional-indexing';
 
 import type {PrismaClient} from '../../generated/prisma/client';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
-import {softLimited} from '../soft-limit';
+import {softCheck} from '../soft-limit';
+import {afterResponse} from '../after-response';
 import {parseCardNumber, reserveCardNumbers} from '../card-number';
 import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
 import {boardAccess, membership, notFound, rankOf} from '../workspaces';
@@ -33,8 +34,9 @@ const SEARCH_CARDS = 20;
 /** Searches per user per minute (the ILIKE scan is the costly read here). */
 const SEARCH_PER_MINUTE = 90;
 
-async function searchLimited(userId: number): Promise<boolean> {
-  return softLimited(userId, 'search', SEARCH_PER_MINUTE, 60);
+/** The limiter's cache read; the count is recorded after the answer (`record` through afterResponse). */
+function searchLimit(userId: number) {
+  return softCheck(userId, 'search', SEARCH_PER_MINUTE, 60);
 }
 const SEARCH_SIDE = 8;
 const MIN_QUERY = 2;
@@ -157,17 +159,21 @@ export const searchRoutes = new Hono()
     const userId = c.var.viewer.id!;
     const workspaceId = idOf(c.req.param('id'));
     if (!workspaceId) return notFound(c);
-    const member = await membership(db, workspaceId, userId);
-    if (!member) return notFound(c);
     const {q, before: rawBefore} = c.req.valid('query');
-    const before = idOf(rawBefore) ?? 2_147_483_647;
     // A one-digit number (`#2`, `2`) is a card number, not a text search: only the numbered probe runs for it.
     const short = q.length < MIN_QUERY;
-    if (short && parseCardNumber(q) === null) return c.json({cards: [], boards: [], people: [], nextBefore: null});
-    if (await searchLimited(userId)) {
+    const empty = short && parseCardNumber(q) === null;
+    // The membership read and the limiter's cache read side by side; nothing is counted unless a search runs.
+    const [member, limit] = await Promise.all([membership(db, workspaceId, userId), empty ? null : searchLimit(userId)]);
+    if (!member) return notFound(c);
+    const before = idOf(rawBefore) ?? 2_147_483_647;
+    if (empty || !limit) return c.json({cards: [], boards: [], people: [], nextBefore: null});
+    if (limit.limited) {
       c.header('Retry-After', '30');
       return c.json(problem('rate_limited', 'Too many searches. Wait a moment and try again.'), 429);
     }
+    // The count is written after the answer: the visitor does not wait for the cache write.
+    await afterResponse(c, 'search limiter', limit.record);
     const pattern = `%${likeEscape(q)}%`;
     const seesAll = rankOf(member.role) >= 3;
     const firstPage = before === 2_147_483_647;
@@ -305,11 +311,12 @@ export const searchRoutes = new Hono()
     const userId = c.var.viewer.id!;
     const workspaceId = idOf(c.req.param('id'));
     if (!workspaceId) return notFound(c);
-    const member = await membership(db, workspaceId, userId);
-    if (!member) return notFound(c);
     const before = idOf(c.req.valid('query').before);
-    // The board and its cards in ONE query (nested select); my Inbox only (`inboxOf: userId`).
-    const board = await db.board.findFirst({
+    // The membership check and, beside it, the board with its cards in ONE query (nested select); my Inbox only
+    // (`inboxOf: userId`). Nothing is answered unless the membership check passes.
+    const [member, board] = await Promise.all([
+      membership(db, workspaceId, userId),
+      db.board.findFirst({
       where: {workspaceId, inboxOf: userId, archivedAt: null},
       orderBy: {id: 'asc'},
       select: {
@@ -321,7 +328,9 @@ export const searchRoutes = new Hono()
           select: inboxCardCols,
         },
       },
-    });
+      }),
+    ]);
+    if (!member) return notFound(c);
     if (!board) return c.json({boardId: null, items: [], nextBefore: null});
     const page = board.cards.slice(0, INBOX_PAGE);
     return c.json({boardId: board.id, items: page.map(inboxShape), nextBefore: board.cards.length > INBOX_PAGE ? page.at(-1)!.id : null});

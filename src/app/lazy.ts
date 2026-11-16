@@ -54,15 +54,19 @@ class Boundary extends Component<{children: ReactNode}, {failed: boolean}> {
   }
 }
 
-export type LazyProps = {onLoadError?: () => void};
+/**
+ * `onLoadError`: both tries failed (close the widget, say so). `active`: whether the widget is wanted now (its dialog is
+ * open); a widget kept mounted after a failure tries again each time it becomes active. Default: always active.
+ */
+export type LazyProps = {onLoadError?: () => void; active?: boolean};
 
 export function lazyWithRetry<P extends object>(importer: () => Promise<ComponentType<P>>) {
   const loader = createLoader(importer);
   function Lazy(props: P & LazyProps) {
     const [Loaded, setLoaded] = useState<ComponentType<P> | null>(() => loader.loaded());
-    const {onLoadError, ...rest} = props;
+    const {onLoadError, active = true, ...rest} = props;
     useEffect(() => {
-      if (Loaded) return;
+      if (Loaded || !active) return;
       let live = true;
       void loader.load().then(component => {
         if (!live) return;
@@ -72,9 +76,9 @@ export function lazyWithRetry<P extends object>(importer: () => Promise<Componen
       return () => {
         live = false;
       };
-      // Retried when the widget is mounted again.
+      // Retried when the widget is mounted again, or opened again while it stays mounted.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [Loaded]);
+    }, [Loaded, active]);
     return Loaded ? createElement(Boundary, null, createElement(Loaded, rest as unknown as P)) : null;
   }
   return {

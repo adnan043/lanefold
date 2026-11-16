@@ -152,6 +152,26 @@ describe.skipIf(!DATABASE_URL)('flows (integration, real Postgres)', () => {
     expect((await cardRow(later)).commentCount).toBe(1);
   });
 
+  it('daily job: a run that stops part-way resumes from the next card the same day, never running one twice', async () => {
+    expect((await flow({trigger: {kind: 'daily_due', dueInDays: 1}, actions: [{type: 'comment', body: 'Due tomorrow'}]})).status).toBe(201);
+    const now = new Date('2026-11-10T06:00:00Z');
+    const first = await addCard();
+    const second = await addCard();
+    for (const id of [first, second]) await db.card.update({where: {id}, data: {dueDate: new Date('2026-11-11T00:00:00Z')}});
+    // One card per run: the first run stops after `first` and records where.
+    expect(await runDailyFlows(db, now, {cardsPerFlow: 1})).toEqual({claimed: 1, cards: 1});
+    expect((await cardRow(first)).commentCount).toBe(1);
+    expect((await cardRow(second)).commentCount).toBe(0);
+    // The next run that day goes on from the next card.
+    expect(await runDailyFlows(db, now, {cardsPerFlow: 1})).toEqual({claimed: 1, cards: 1});
+    expect((await cardRow(second)).commentCount).toBe(1);
+    // Then one more resume finds nothing left, and after that the day is done.
+    expect((await runDailyFlows(db, now, {cardsPerFlow: 1})).cards).toBe(0);
+    expect(await runDailyFlows(db, now, {cardsPerFlow: 1})).toEqual({claimed: 0, cards: 0});
+    expect((await cardRow(first)).commentCount).toBe(1);
+    expect((await cardRow(second)).commentCount).toBe(1);
+  });
+
   it('refuses writes when the plan has no Flows, and never runs them', async () => {
     const made = (await flow({trigger: {kind: 'card_created'}, actions: [{type: 'comment', body: 'x'}]})).json.flow.id;
     await db.appSettings.update({where: {id: 1}, data: {billingMode: 'PAID'}});

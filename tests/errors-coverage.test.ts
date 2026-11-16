@@ -13,6 +13,7 @@ const load = (code: string): Record<string, string> => JSON.parse(readFileSync(j
 const INTERNAL = new Set<string>([
   'P2002', // Prisma error codes, caught in the server and never sent
   'P2025',
+  'P2010', // a raw query's failure (chat send reads Postgres 23505 from it), caught in the server and never sent
   'E_FILE_NOT_FOUND', // the platform's answer to a file delete, matched in the file-cleanup job only
   'empty', // import dry-run problems: shown through importExport.problem.<code>, never as an API error
   'lane_full',
