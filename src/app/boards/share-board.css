@@ -63,8 +63,13 @@
   display: grid;
   gap: 0.5rem;
 }
-.lf-share-group > input[readonly] {
+.lf-share-link-field {
+  min-inline-size: 0;
+}
+.lf-share-link-field input {
   inline-size: 100%;
+  min-inline-size: 0;
+  text-overflow: ellipsis;
 }
 .lf-share-pending-text {
   flex: 1 1 auto;

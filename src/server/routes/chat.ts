@@ -1139,6 +1139,31 @@ export const chatRoutes = new Hono()
     return c.json({muted: false});
   })
 
+  /** Who is in this conversation. DMs and groups list their people (name and workspace role, never emails, current workspace members only);
+   * a channel is the whole workspace and a board chat everyone with the board, so those answer with their scope and no list. */
+  .get('/conversations/:id/members', withViewer, requireAuth, withDb, requireConversation('read'), noStore, async c => {
+    const a = c.var.access;
+    if (a.kind !== 'dm' && a.kind !== 'group') return c.json({scope: a.kind === 'board' ? 'board' : 'workspace', items: []});
+    const {db} = c.var;
+    const rows = await db.conversationMember.findMany({
+      where: {conversationId: a.conversationId, workspaceId: a.workspaceId},
+      select: {userId: true},
+      orderBy: {createdAt: 'asc'},
+      take: MAX_GROUP + 1,
+    });
+    const userIds = rows.map(r => r.userId);
+    const [seated, names] = await Promise.all([
+      db.workspaceMember.findMany({where: {workspaceId: a.workspaceId, userId: {in: userIds}}, select: {userId: true, role: true}, take: MAX_GROUP + 1}),
+      namesOf(db, userIds),
+    ]);
+    const roleOf = new Map(seated.map(s => [s.userId, s.role]));
+    const items = userIds
+      .filter(id => roleOf.has(id) && names.has(id))
+      .map(id => ({id, name: names.get(id)!, role: roleOf.get(id)!}))
+      .sort((x, y) => x.name.localeCompare(y.name));
+    return c.json({scope: 'members', items});
+  })
+
   /* ---- one message: edit, delete, react, pin ---------------------------------------------------- */
   .patch('/messages/:id', editBody, withViewer, requireAuth, withDb, noStore, async c => {
     const me = c.var.viewer.id!;

@@ -469,7 +469,9 @@ function InviteLink({boardId}: {boardId: number}) {
       </p>
       {url && (
         <>
-          <input ref={field} readOnly value={url} aria-label={t('boards.share.linkTitle')} dir="ltr" onFocus={event => event.currentTarget.select()} />
+          <div className="field lf-share-link-field">
+            <input ref={field} readOnly value={url} aria-label={t('boards.share.linkTitle')} dir="ltr" onFocus={event => event.currentTarget.select()} />
+          </div>
           <Notice tone="info">{t('boards.share.linkOnce')}</Notice>
           <div>
             <Button variant="secondary" icon="copy" onClick={() => void copyText(url, field.current).then(ok => ok && toast.success(t('boards.share.copied')))}>
