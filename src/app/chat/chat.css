@@ -317,6 +317,15 @@
 .chat-thread-link {
   margin-block-start: 0.15rem;
 }
+/* Flush with the message text: `.button-sm`'s 12px side padding indented "Replies" when it starts its own line.
+   Three classes: beats `.button.button-sm` / `.button.button-link` (global.css) whatever order the sheets load in. */
+.button.chat-thread-link.chat-thread-link {
+  padding-inline: 0;
+}
+/* After "(edited)" on the same line: a gap instead of the padding. */
+.chat-edited + .chat-thread-link {
+  margin-inline-start: 0.6rem;
+}
 .chat-msg-actions {
   position: absolute;
   inset-block-start: 0.15rem;
