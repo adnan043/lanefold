@@ -199,7 +199,8 @@
   margin-block-start: 0.4rem;
 }
 .chat-msg:hover,
-.chat-msg:focus-within {
+.chat-msg:has(:focus-visible),
+.chat-msg:has([aria-expanded='true']) {
   background: var(--hover);
 }
 .chat-msg-gutter {
@@ -339,8 +340,25 @@
   box-shadow: var(--shadow-sm);
 }
 .chat-msg:hover .chat-msg-actions,
-.chat-msg:focus-within .chat-msg-actions {
+.chat-msg:has(:focus-visible) .chat-msg-actions,
+.chat-msg:has([aria-expanded='true']) .chat-msg-actions {
   display: flex;
+}
+/* content-visibility (below) clips paint to the message box, so the hover toolbar must fit inside even a one-line
+   grouped message: 24px buttons (WCAG 2.5.8 minimum) and a message never shorter than the toolbar plus its offset. */
+@media (hover: hover) {
+  .chat-msg {
+    min-block-size: 2rem; /* toolbar 28px (24 + 1px padding + 1px border, twice) + 2px offset */
+  }
+  .chat-msg-actions {
+    inset-block-start: 0.125rem;
+    padding: 1px;
+  }
+  .chat-msg-actions .button.button-sm.icon-button {
+    min-width: 24px;
+    min-height: 24px;
+    height: 24px;
+  }
 }
 @media (hover: none) {
   .chat-msg-actions {
