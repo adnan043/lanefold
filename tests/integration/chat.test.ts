@@ -136,6 +136,25 @@ describe.skipIf(!DATABASE_URL)('chat (integration, real Postgres)', () => {
     expect((await mia.post(`/site-api/workspaces/${wsA}/conversations`, {kind: 'dm', userIds: [ids.bob]})).status).toBe(422);
   });
 
+  it('members: a group lists its people by name, a channel answers with its scope, outsiders get 404', async () => {
+    const group = await ann.post(`/site-api/workspaces/${wsA}/conversations`, {kind: 'group', name: 'Trio', userIds: [ids.mia, ids.vic]});
+    expect(group.status).toBe(201);
+    const gid = group.json.conversation.id;
+    const listed = await mia.get(`/site-api/conversations/${gid}/members`);
+    expect(listed.status).toBe(200);
+    expect(listed.json.scope).toBe('members');
+    expect((listed.json.items as J[]).map(p => p.name)).toEqual(['ann', 'mia', 'vic']);
+    expect((listed.json.items as J[]).map(p => p.role)).toEqual(['owner', 'member', 'viewer']);
+    expect(JSON.stringify(listed.json)).not.toContain('@example.test');
+    // someone who left the workspace drops off the list
+    await db.workspaceMember.deleteMany({where: {workspaceId: wsA, userId: ids.vic!}});
+    expect(((await ann.get(`/site-api/conversations/${gid}/members`)).json.items as J[]).map(p => p.name)).toEqual(['ann', 'mia']);
+    expect((await bob.get(`/site-api/conversations/${gid}/members`)).status).toBe(404);
+    const chan = await mia.get(`/site-api/conversations/${channel}/members`);
+    expect(chan.json).toEqual({scope: 'workspace', items: []});
+    expect((await bob.get(`/site-api/conversations/${channel}/members`)).status).toBe(404);
+  });
+
   it('threads, mentions and card refs stay inside the workspace', async () => {
     const root = (await send(ann, channel, 'root')).json.message;
     const reply = await send(mia, channel, 'reply @ann', undefined, {parentId: root.id, mentions: [ids.ann, ids.bob]});

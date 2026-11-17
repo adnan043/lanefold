@@ -8,6 +8,7 @@ import {call} from '../api';
 import {chatPeopleQuery, type ConversationT, type MemberT, type MessageT, useMarkRead, usePulse} from './api';
 import {incomingSince, newestSeq} from './announce';
 import {Composer} from './composer';
+import {MembersButton} from './members-dialog';
 import {dayKey} from './mentions';
 import {MessageItem, PendingItem} from './message-item';
 import {MAX_KEPT, type MessageFeed, useMessageFeed} from './use-message-feed';
@@ -384,6 +385,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
           </h2>
         )}
         <span className="chat-view-spacer" />
+        {conversation.kind !== 'board' && <MembersButton key={conversation.id} conversationId={conversation.id} kind={conversation.kind} title={title} workspaceId={workspaceId} />}
         <Button variant="ghost" size="sm" icon="bell" aria-pressed={muted} pending={muting} pendingLabel={muted ? t('chat.unmuting') : t('chat.muting')} onClick={() => void toggleMute()}>
           {muted ? t('chat.unmute') : t('chat.mute')}
         </Button>

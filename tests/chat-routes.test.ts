@@ -29,7 +29,7 @@ describe('chat helpers', () => {
 
 describe('chat routes (signed out)', () => {
   beforeAll(configureEnv);
-  for (const path of ['/chat/pulse', '/workspaces/1/conversations', '/boards/1/conversation', '/conversations/1/messages']) {
+  for (const path of ['/chat/pulse', '/workspaces/1/conversations', '/boards/1/conversation', '/conversations/1/messages', '/conversations/1/members']) {
     it(`GET ${path} is 401`, async () => {
       expect((await new Browser(app).get(`/site-api${path}`)).status).toBe(401);
     });
