@@ -47,8 +47,10 @@ const open = viewer.state === 'user' || config.preview;
           <div class="actions">
             <a class="button" href={`/account/login/?next=${back}`}>Sign in</a>
             <a class="button ghost" href={`/account/register/?next=${back}`}>Create an account</a>
-            <a class="button link" href="/">Back to the website</a>
           </div>
+          <p class="back">
+            <a class="button link" href="/">Back to the website</a>
+          </p>
         </div>
       </main>
     )
