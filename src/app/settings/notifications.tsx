@@ -39,15 +39,13 @@ function DigestCard() {
   const data = query.data;
   const value = save.isPending ? save.variables ?? null : data?.hour ?? null;
   return (
-    <Card>
+    <Card title={t('digest.title')} description={t('digest.description')}>
       {query.isPending ? (
         <LoadingBlock rows={2} />
       ) : query.error || !data ? (
         <Notice tone="danger">{query.error ? (query.error as ApiError).message : t('errors.unknown')}</Notice>
       ) : (
         <div className="lf-form">
-          <h3>{t('digest.title')}</h3>
-          <p className="muted">{t('digest.description')}</p>
           <Field id="f-digest-hour" label={t('digest.label')} hint={t('digest.hint')}>
             <Select
               id="f-digest-hour"
