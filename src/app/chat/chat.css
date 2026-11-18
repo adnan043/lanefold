@@ -527,17 +527,6 @@
   background: var(--accent-soft);
   color: var(--accent-text);
 }
-.chat-reaction-add {
-  border-style: dashed;
-  border-color: var(--line-strong);
-  background: transparent;
-  color: var(--subtle);
-}
-.chat-reaction-add:hover,
-.chat-reaction-add[aria-expanded="true"] {
-  border-color: var(--muted);
-  color: var(--ink);
-}
 .chat-reaction:disabled {
   cursor: not-allowed;
   opacity: 0.6;
