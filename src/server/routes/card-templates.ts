@@ -15,7 +15,8 @@ import {atomically, bumpRev, cardCtx, finish, Gone, noStore, refused, send} from
  *
  *   GET    /workspaces/:id/card-templates   every member: the templates (newest first, at most MAX_CARD_TEMPLATES)
  *   POST   /workspaces/:id/card-templates   {name, payload}: member or above
- *   POST   /cards/:id/save-template         {name}: a template from this card (member or above)
+ *   POST   /cards/:id/save-template         {name, sharePrivate?}: a template from this card (member or above); a card on a
+ *                                           private board needs sharePrivate: true (409 template_private_board without)
  *   POST   /cards/:id/apply-template        {templateId}: fills THIS card (a card you may write to)
  *   DELETE /card-templates/:id              its author, or a workspace admin
  *
@@ -108,9 +109,11 @@ const createBody = validator('json', (value, c) => {
   if (!name.ok || !payload.ok) return invalid(c, errors);
   return {name: name.value, payload: payload.value};
 });
-const nameBody = validator('json', (value, c) => {
-  const name = nameOf(objectOf(value)?.name);
-  return name.ok ? {name: name.value} : invalid(c, {name: name.error});
+const saveBody = validator('json', (value, c) => {
+  const v = objectOf(value);
+  const name = nameOf(v?.name);
+  // `sharePrivate: true`: the person confirmed that a template made from a private board's card is seen by the whole workspace.
+  return name.ok ? {name: name.value, sharePrivate: v?.sharePrivate === true} : invalid(c, {name: name.error});
 });
 const applyBody = validator('json', (value, c) => {
   const id = objectOf(value)?.templateId;
@@ -147,12 +150,17 @@ export const cardTemplateRoutes = new Hono()
     return store(c, workspaceId, userId, c.req.valid('json'));
   })
 
-  .post('/cards/:id/save-template', nameBody, withViewer, requireAuth, withDb, noStore, async c => {
+  .post('/cards/:id/save-template', saveBody, withViewer, requireAuth, withDb, noStore, async c => {
     const db = c.var.db;
     const userId = c.var.viewer.id!;
     const ctx = await cardCtx(db, userId, idOf(c.req.param('id')), 'write');
     if (refused(ctx)) return send(c, ctx);
     if (rankOf(ctx.access.workspaceRole) < rankOf('member')) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
+    // Every member of the workspace sees its templates: copying a private board's card (or an inbox card) into one
+    // needs an explicit confirmation, so its description, checklists and labels never leave the board by surprise.
+    if ((ctx.access.visibility === 'private' || ctx.inboxOf !== null) && !c.req.valid('json').sharePrivate) {
+      return c.json(problem('template_private_board', 'This card is on a private board. Everyone in the workspace will see the template: confirm to save it.'), 409);
+    }
     const L = TEMPLATE_LIMITS;
     const where = {id: ctx.cardId, boardId: ctx.boardId, workspaceId: ctx.workspaceId};
     const card = await db.card.findFirst({

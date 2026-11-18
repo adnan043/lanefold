@@ -233,7 +233,7 @@ const TABLE: Row[] = [
   // ---- card-templates.ts: reading is any seat; saving needs a member; deleting the author or a workspace admin (the fixture's author is the owner) ----
   row('GET /workspaces/:id/card-templates', 'resource', {path: r => `/workspaces/${r.ws}/card-templates`}),
   row('POST /workspaces/:id/card-templates', 'resource', {path: r => `/workspaces/${r.ws}/card-templates`, body: () => ({name: 'ZQXT', payload: {title: 'x'}}), min: 'member'}),
-  row('POST /cards/:id/save-template', 'resource', {path: r => `/cards/${r.card}/save-template`, body: () => ({name: 'ZQXT'}), min: 'member', priv: true}),
+  row('POST /cards/:id/save-template', 'resource', {path: r => `/cards/${r.card}/save-template`, body: () => ({name: 'ZQXT', sharePrivate: true}), min: 'member', priv: true}), // a private board's card needs the confirmation (409 without it, card-templates.test.ts)
   row('POST /cards/:id/apply-template', 'resource', {path: r => `/cards/${r.card}/apply-template`, body: r => ({templateId: Number(r.template)}), min: 'member', priv: true}),
   row('DELETE /card-templates/:id', 'resource', {path: r => `/card-templates/${r.template}`, min: 'admin'}),
   // ---- flows.ts: board:flows (every default member holds it) + board admin (workspace admin and up here); a non-seat on a private board gets 404 ----

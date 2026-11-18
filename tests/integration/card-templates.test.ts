@@ -126,6 +126,22 @@ describe.skipIf(!DATABASE_URL)('card templates (integration, real Postgres)', ()
     expect((await vic.post(`/site-api/cards/${card}/save-template`, {name: 'x'})).status).toBe(403);
   });
 
+  it('a private board card is saved as a template only after confirming the whole workspace will see it', async () => {
+    const card = await newCard('Secret plan');
+    await db.board.update({where: {id: boardA}, data: {visibility: 'private'}});
+    const refused = await ann.post(`/site-api/cards/${card}/save-template`, {name: 'From private'});
+    expect(refused.status).toBe(409);
+    expect(refused.json.error).toBe('template_private_board');
+    expect((await ann.post(`/site-api/cards/${card}/save-template`, {name: 'From private', sharePrivate: 'yes'})).status).toBe(409); // only `true` confirms
+    expect(await db.cardTemplate.count({where: {workspaceId: wsA}})).toBe(0);
+    const saved = await ann.post(`/site-api/cards/${card}/save-template`, {name: 'From private', sharePrivate: true});
+    expect(saved.status).toBe(201);
+    expect(saved.json.item.payload.title).toBe('Secret plan');
+    // A board open to the workspace needs no confirmation.
+    await db.board.update({where: {id: boardA}, data: {visibility: 'workspace'}});
+    expect((await ann.post(`/site-api/cards/${card}/save-template`, {name: 'From open'})).status).toBe(201);
+  });
+
   it('caps templates per workspace', async () => {
     await db.cardTemplate.createMany({data: Array.from({length: MAX_CARD_TEMPLATES}, (_, i) => ({workspaceId: wsA, kind: 'card', name: `t${i}`, payload: {}}))});
     expect((await ann.post(url(), {name: 'one more', payload})).status).toBe(409);
