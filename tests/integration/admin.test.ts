@@ -52,6 +52,21 @@ describe.skipIf(!DATABASE_URL)('admin (integration, real Postgres)', () => {
     expect((found.json.users as unknown[]).length).toBe(1);
   });
 
+  it('search matches part of a name for any admin, and part of an email for the owner only', async () => {
+    const emails = async (who: Browser, q: string) =>
+      ((await who.get(`/site-api/admin/users?q=${encodeURIComponent(q)}`)).json.users as {email: string}[]).map(u => u.email);
+    // Part of a name, any case.
+    expect(await emails(admin, 'MEMB')).toEqual(['m•••@example.test']);
+    expect(await emails(owner, 'memb')).toEqual(['member@example.test']);
+    // Part of an email: the owner finds them, any case.
+    expect(await emails(owner, 'ER@EXAMPLE')).toEqual(['member@example.test']);
+    // Anyone else matches names only, so a hidden address cannot be probed.
+    expect(await emails(admin, '@example.test')).toEqual([]);
+    expect(await emails(admin, 'example')).toEqual([]);
+    // The owner's placeholder address is never a match.
+    expect(await emails(owner, 'owner.invalid')).toEqual([]);
+  });
+
   it('an admin cannot make anyone owner, nor touch an owner', async () => {
     const self = await admin.request('PUT', `/site-api/admin/users/${ids.admin}/roles`, {roles: ['member', 'admin', 'owner']});
     expect(self.status).toBe(403);

@@ -18,7 +18,7 @@ const name = site?.name ?? 'Lanefold';
 const [featured, ...rest] = await publishedPosts();
 ---
 
-<Base site={site} viewer={viewer} isStatic title="Blog" description={`Guides, product news and tips from ${name}: how to run boards, use chat beside your cards and move your team over from other tools.`}>
+<Base site={site} viewer={viewer} smoothScroll isStatic title="Blog" description={`Guides, product news and tips from ${name}: how to run boards, use chat beside your cards and move your team over from other tools.`}>
   <main id="main" tabindex="-1" class="pub">
     <header class="pub-masthead">
       <BrandMark site={site} size={64} />

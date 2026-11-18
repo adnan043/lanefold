@@ -27,7 +27,7 @@ const headline =
     : {before: title.slice(0, at), mark: highlight, after: title.slice(at + highlight.length)};
 ---
 
-<Base site={site} viewer={viewer} isStatic title={FEATURES.title} description={withName(FEATURES.description, name)}>
+<Base site={site} viewer={viewer} smoothScroll isStatic title={FEATURES.title} description={withName(FEATURES.description, name)}>
   <main id="main" tabindex="-1" class="home features">
     <section class="home-hero features-hero">
       <div class="home-hero-glow" aria-hidden="true"></div>

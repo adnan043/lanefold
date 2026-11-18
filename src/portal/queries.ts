@@ -45,7 +45,7 @@ export type AuditPage = {events: AuditRow[]; nextBefore: string | null};
 /** The overview's tiles: the FIRST page of each list, under the lists' own key prefixes. */
 export const firstUsersQuery = queryOptions({
   queryKey: ['users', 'first'],
-  queryFn: () => read<UsersPage>(api.admin.users.$get({query: {before: '', email: '', status: ''}})),
+  queryFn: () => read<UsersPage>(api.admin.users.$get({query: {before: '', q: '', email: '', status: ''}})),
 });
 export const firstAuditQuery = queryOptions({
   queryKey: ['audit', 'first'],
@@ -53,12 +53,12 @@ export const firstAuditQuery = queryOptions({
 });
 
 /** `/dashboard/users`: every account, newest first, filtered by exact email and status. */
-export const usersQuery = (filter: {email: string; status: string}) =>
+export const usersQuery = (filter: {q: string; status: string}) =>
   infiniteQueryOptions({
     queryKey: ['users', filter],
     initialPageParam: undefined as string | undefined,
     queryFn: ({pageParam}) =>
-      read<UsersPage>(api.admin.users.$get({query: {before: pageParam ?? '', email: filter.email, status: filter.status}})),
+      read<UsersPage>(api.admin.users.$get({query: {before: pageParam ?? '', q: filter.q, email: '', status: filter.status}})),
     getNextPageParam: last => (last.nextBefore ? String(last.nextBefore) : undefined),
   });
 

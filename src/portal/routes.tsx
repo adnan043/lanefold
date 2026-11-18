@@ -414,7 +414,7 @@ const usersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/users',
   staticData: {title: 'Users'},
-  loader: ({context: {queryClient}}) => warm(queryClient.ensureInfiniteQueryData(usersQuery({email: '', status: ''}))),
+  loader: ({context: {queryClient}}) => warm(queryClient.ensureInfiniteQueryData(usersQuery({q: '', status: ''}))),
   component: lazyRouteComponent(() => import('./screens/users'), 'Users'),
 });
 const rolesRoute = createRoute({

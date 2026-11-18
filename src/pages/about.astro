@@ -11,7 +11,7 @@ const {site, viewer} = await staticContext(Astro.request);
 const name = site?.name ?? 'Lanefold';
 ---
 
-<Base site={site} viewer={viewer} isStatic title="About" description="Lanefold is a kanban app with built-in chat: boards, cards and team conversation in one workspace. Why we built it and what it does.">
+<Base site={site} viewer={viewer} smoothScroll isStatic title="About" description="Lanefold is a kanban app with built-in chat: boards, cards and team conversation in one workspace. Why we built it and what it does.">
   <main id="main" tabindex="-1" class="wrap narrow section">
     <BrandMark site={site} size={56} />
     <h1 data-brand-text={ABOUT.title}>{withName(ABOUT.title, name)}</h1>

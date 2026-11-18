@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import {type FormEvent, useState} from 'react';
+import {type FormEvent, useEffect, useState} from 'react';
 
 import type {AdminUser} from '../../lib/types';
 import {api, read} from '../api';
@@ -44,7 +44,7 @@ const STATUS_FILTERS: {value: StatusFilter; label: string}[] = [
 
 /**
  * `/users` (site:user:read): every account, newest first, keyset-paged.
- * Find one by its exact email. Actions need site:user:update; the server
+ * Search by part of a name; the site owner can also search by part of an email. Actions need site:user:update; the server
  * refuses anything that would act on someone with more access than you.
  */
 export function Users() {
@@ -54,11 +54,13 @@ export function Users() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const toast = useToast();
-  const [email, setEmail] = useState('');
-  const [filter, setFilter] = useState<{email: string; status: StatusFilter}>({
-    email: '',
+  const [text, setText] = useState('');
+  const [filter, setFilter] = useState<{q: string; status: StatusFilter}>({
+    q: '',
     status: '',
   });
+  // Only the owner sees every address, so only the owner can search by one (the server agrees).
+  const byEmail = Boolean(me.data?.roles.includes('owner'));
   const [editing, setEditing] = useState<AdminUser | null>(null);
 
   const users = useInfiniteQuery(usersQuery(filter));
@@ -89,9 +91,17 @@ export function Users() {
     null;
   const rows = users.data?.pages.flatMap(page => page.users);
 
+  // Search as you type, once the typing pauses; Enter searches at once.
+  useEffect(() => {
+    const q = text.trim();
+    const timer = setTimeout(() => setFilter(current => (current.q === q ? current : {...current, q})), 300);
+    return () => clearTimeout(timer);
+  }, [text]);
+
   const search = (event: FormEvent) => {
     event.preventDefault();
-    setFilter(current => ({...current, email: email.trim()}));
+    const q = text.trim();
+    setFilter(current => (current.q === q ? current : {...current, q}));
   };
 
   const askEndSessions = async (user: AdminUser) => {
@@ -255,7 +265,7 @@ export function Users() {
     });
   }
 
-  const filtered = Boolean(filter.email || filter.status);
+  const filtered = Boolean(filter.q || filter.status);
 
   return (
     <div className="app-page screen-users">
@@ -264,16 +274,15 @@ export function Users() {
       <div className="toolbar">
         <form className="users-search" role="search" onSubmit={search} noValidate>
           <SearchInput
-            label="Find a user by their exact email"
-            placeholder="Exact email, then Enter"
-            value={email}
+            label={byEmail ? 'Find a user by name or email' : 'Find a user by name'}
+            placeholder={byEmail ? 'Search by name or email' : 'Search by name'}
+            value={text}
             maxLength={254}
             autoComplete="off"
             onChange={event => {
-              setEmail(event.target.value);
-              // The box's clear button: show everyone again.
-              if (!event.target.value && filter.email)
-                setFilter(current => ({...current, email: ''}));
+              setText(event.target.value);
+              // The box's clear button: show everyone again at once.
+              if (!event.target.value && filter.q) setFilter(current => ({...current, q: ''}));
             }}
           />
         </form>
@@ -298,19 +307,21 @@ export function Users() {
             filtered ? (
               <EmptyState
                 icon="search"
-                title={filter.email ? 'No user has that email' : 'No users match'}
+                title={filter.q ? `No users match “${filter.q}”` : 'No users match'}
                 action={
                   <Button
                     variant="secondary"
                     onClick={() => {
-                      setEmail('');
-                      setFilter({email: '', status: ''});
+                      setText('');
+                      setFilter({q: '', status: ''});
                     }}>
                     Show everyone
                   </Button>
                 }>
-                {filter.email
-                  ? 'Check the spelling: the search needs the whole address.'
+                {filter.q
+                  ? byEmail
+                    ? 'Check the spelling, or try part of their name or email.'
+                    : 'Check the spelling, or try part of their name.'
                   : 'Try another status.'}
               </EmptyState>
             ) : (
