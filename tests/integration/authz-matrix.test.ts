@@ -233,7 +233,7 @@ const TABLE: Row[] = [
   // ---- card-templates.ts: reading is any seat; saving needs a member; deleting the author or a workspace admin (the fixture's author is the owner) ----
   row('GET /workspaces/:id/card-templates', 'resource', {path: r => `/workspaces/${r.ws}/card-templates`}),
   row('POST /workspaces/:id/card-templates', 'resource', {path: r => `/workspaces/${r.ws}/card-templates`, body: () => ({name: 'ZQXT', payload: {title: 'x'}}), min: 'member'}),
-  row('POST /cards/:id/save-template', 'resource', {path: r => `/cards/${r.card}/save-template`, body: () => ({name: 'ZQXT'}), min: 'member', priv: true}),
+  row('POST /cards/:id/save-template', 'resource', {path: r => `/cards/${r.card}/save-template`, body: () => ({name: 'ZQXT', sharePrivate: true}), min: 'member', priv: true}), // a private board's card needs the confirmation (409 without it, card-templates.test.ts)
   row('POST /cards/:id/apply-template', 'resource', {path: r => `/cards/${r.card}/apply-template`, body: r => ({templateId: Number(r.template)}), min: 'member', priv: true}),
   row('DELETE /card-templates/:id', 'resource', {path: r => `/card-templates/${r.template}`, min: 'admin'}),
   // ---- flows.ts: board:flows (every default member holds it) + board admin (workspace admin and up here); a non-seat on a private board gets 404 ----
@@ -252,11 +252,17 @@ const TABLE: Row[] = [
   row('GET /workspaces/:id/conversations', 'resource', {path: r => `/workspaces/${r.ws}/conversations`}),
   row('POST /workspaces/:id/conversations', 'resource', {path: r => `/workspaces/${r.ws}/conversations`, body: () => ({kind: 'channel', name: 'x'}), min: 'member'}),
   row('GET /boards/:id/conversation', 'resource', {path: r => `/boards/${r.board}/conversation`, priv: true}),
+  row('POST /boards/:id/conversation', 'resource', {path: r => `/boards/${r.board}/conversation`, body: () => ({}), priv: true}),
   row('GET /conversations/:id/messages', 'resource', {path: r => `/conversations/${r.conv}/messages`, priv: true}),
   row('POST /conversations/:id/messages', 'resource', {path: r => `/conversations/${r.conv}/messages`, body: () => ({body: 'x', clientId: 'authz-client-1'}), min: 'member', priv: true}),
   row('POST /conversations/:id/read', 'resource', {path: r => `/conversations/${r.conv}/read`, body: () => ({seq: 0}), priv: true}),
   row('PUT /conversations/:id/mute', 'resource', {path: r => `/conversations/${r.conv}/mute`, body: () => ({}), priv: true}),
   row('DELETE /conversations/:id/mute', 'resource', {path: r => `/conversations/${r.conv}/mute`, priv: true}),
+  // Archive / restore a channel: workspace owners and admins (a board chat is no channel: its readers get 404 anyway).
+  row('PUT /conversations/:id/archive', 'resource', {path: r => `/conversations/${r.conv}/archive`, body: () => ({}), min: 'admin', priv: true}),
+  row('DELETE /conversations/:id/archive', 'resource', {path: r => `/conversations/${r.conv}/archive`, min: 'admin', priv: true}),
+  // A channel and a board chat answer with their scope; DMs and groups: see "DM and group members" below.
+  row('GET /conversations/:id/members', 'resource', {path: r => `/conversations/${r.conv}/members`, priv: true}),
   row('PATCH /messages/:id', 'resource', {path: r => `/messages/${r.msg}`, body: () => ({body: 'x'}), min: 'member', priv: true, below: [403, 404]}),
   row('DELETE /messages/:id', 'resource', {path: r => `/messages/${r.msg}`, min: 'member', priv: true, below: [403, 404]}),
   row('PUT /messages/:id/reactions', 'resource', {path: r => `/messages/${r.msg}/reactions`, body: () => ({emoji: '👍'}), min: 'member', priv: true}),
@@ -267,6 +273,7 @@ const TABLE: Row[] = [
   row('GET /conversations/:id', 'resource', {path: r => `/conversations/${r.conv}`, priv: true}),
   row('GET /cards/refs', 'self', {path: (_r, f) => `/cards/refs?ids=${f.pub.card},${f.priv.card},${f.other.card}`}),
   row('GET /workspaces/:id/members/search', 'resource', {path: r => `/workspaces/${r.ws}/members/search?q=zq`}),
+  row('GET /workspaces/:id/chat-people', 'resource', {path: r => `/workspaces/${r.ws}/chat-people`}),
 
   // ---- branding.ts -------------------------------------------------------------------------
   row('GET /brand.css', 'public', {path: () => '/brand.css', note: 'the brand colour as CSS; nothing personal'}),
@@ -763,6 +770,36 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
     const status = await hit(problems, actors().anon, method, path);
     expectIn(problems, actors().anon, method, path, status, r.signedOut, 'signed out');
     expect(problems, r.key).toEqual([]);
+  });
+
+  it('DM and group members: only their people get the list; a workspace member outside them and an outsider get 404', async () => {
+    const dm = await db.conversation.create({data: {workspaceId: Number(f.pub.ws), kind: 'dm', dmKey: `${Math.min(f.u.ann, f.u.mia)}:${Math.max(f.u.ann, f.u.mia)}`}, select: {id: true}});
+    const group = await db.conversation.create({data: {workspaceId: Number(f.pub.ws), kind: 'group', name: 'ZQXALPHA group'}, select: {id: true}});
+    await db.conversationMember.createMany({
+      data: [
+        ...[f.u.ann, f.u.mia].map(userId => ({conversationId: dm.id, userId, workspaceId: Number(f.pub.ws)})),
+        ...[f.u.adm, f.u.vic].map(userId => ({conversationId: group.id, userId, workspaceId: Number(f.pub.ws)})),
+      ],
+    });
+    try {
+      const problems: string[] = [];
+      const A = actors();
+      const check = async (who: Actor, conv: number, want: number) => {
+        const s = await hit(problems, who, 'GET', `/conversations/${conv}/members`);
+        expectIn(problems, who, 'GET', `/conversations/${conv}/members`, s, [want], want === 200 ? 'member of the conversation' : 'not in the conversation');
+      };
+      for (const who of [A.ann, A.mia]) await check(who, dm.id, 200);
+      for (const who of [A.adm, A.vic, A.nick, A.bob]) await check(who, dm.id, 404);
+      for (const who of [A.adm, A.vic]) await check(who, group.id, 200);
+      for (const who of [A.ann, A.mia, A.nick, A.bob]) await check(who, group.id, 404);
+      const anon = await hit(problems, A.anon, 'GET', `/conversations/${dm.id}/members`);
+      expectIn(problems, A.anon, 'GET', `/conversations/${dm.id}/members`, anon, [401], 'signed out');
+      expect(problems).toEqual([]);
+      const listed = await ann.get(`/site-api/conversations/${dm.id}/members`);
+      expect((listed.json.items as J[]).map(p => p.id).sort()).toEqual([f.u.ann, f.u.mia].sort());
+    } finally {
+      await db.conversation.deleteMany({where: {id: {in: [dm.id, group.id]}}});
+    }
   });
 
   /* ------------------------------------------------------- ids of workspace B in A's routes */

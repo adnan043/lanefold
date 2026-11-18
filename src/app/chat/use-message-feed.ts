@@ -2,7 +2,8 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
 import {useI18n} from '../../i18n';
 import {call} from '../api';
-import {type MessagePage, type MessageT, newClientId, useVisibleInterval} from './api';
+import {idleMs, type MessagePage, type MessageT, newClientId, useVisibleInterval} from './api';
+import {windowDelayMs} from './poll-timing';
 
 export type PendingMessage = {
   clientId: string;
@@ -26,10 +27,14 @@ type Options = {
   me: number | undefined;
 };
 
+/** The window refresh's timer ticks this often; `windowDelayMs` decides whether a tick refreshes (slower when idle). */
 const WINDOW_MS = 20_000;
 /** Every this many window refreshes, ONE older page already open is re-read too (round robin): ~100 s per page. */
 const OLDER_EVERY = 5;
-/** The most messages a list keeps once the reader is back at the newest: older ones are dropped (Load older brings them back). */
+/**
+ * The most messages a list keeps. Back at the newest, the oldest are dropped (Load older brings them back); while
+ * the reader is further up, the newest far below them are dropped (`trimNewest`; scrolling down loads them again).
+ */
 export const MAX_KEPT = 300;
 
 const sameList = <T>(a: readonly T[], b: readonly T[], same: (x: T, y: T) => boolean = Object.is) =>
@@ -59,6 +64,7 @@ export function sameMessage(a: MessageT, b: MessageT): boolean {
     return false;
   }
   if (!sameList(a.mentions, b.mentions) || !sameList(a.cardIds, b.cardIds)) return false;
+  if (!sameList(a.mentionNames ?? [], b.mentionNames ?? [])) return false;
   if (!sameList(a.reactions, b.reactions, (x, y) => x.emoji === y.emoji && x.count === y.count && x.mine === y.mine)) return false;
   const ra = a.numberRefs;
   const rb = b.numberRefs;
@@ -104,7 +110,10 @@ export function mergeMessages(prev: MessageT[], incoming: readonly MessageT[]): 
  *   - edits, deletes and reactions are NOT seen by `after`, so the newest window is refetched every 20 s
  *     (and when the tab comes back) and merged by id; every 5th refresh also re-reads ONE older page already open,
  *     in turn, so a change far up the list shows within a few minutes without re-reading every page each time,
- *   - back at the newest, a list longer than `MAX_KEPT` drops its oldest messages (`trim`; Load older reloads them),
+ *   - back at the newest, a list longer than `MAX_KEPT` drops its oldest messages (`trim`; Load older reloads them);
+ *     read further up, it drops the newest instead (`trimNewest`), and `loadNewer` pages them back in with `after`.
+ *     While newer messages are dropped (`hasNewer`) nothing new is appended (it would leave a gap),
+ *   - the window refresh slows down while the person is idle (`windowDelayMs`) and never runs in a hidden tab,
  *   - a sent message shows at once as pending; a failed one keeps its `clientId`, so Retry never duplicates it.
  */
 export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollMs = null, me}: Options) {
@@ -118,6 +127,12 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
   const [olderError, setOlderError] = useState<unknown>(null);
   const [canWrite, setCanWrite] = useState(true);
   const [canModerate, setCanModerate] = useState(false);
+  const [archived, setArchived] = useState(false);
+  /** The seq of the newest message held while newer ones were dropped (`trimNewest`); null = the list reaches the newest. */
+  const [newerCursor, setNewerCursorState] = useState<number | null>(null);
+  const newerRef = useRef<number | null>(null);
+  const [loadingNewer, setLoadingNewer] = useState(false);
+  const lastWindow = useRef(0);
   /** `before` cursors of the older pages already loaded: the refresh re-reads one of them now and then, in turn. */
   const olderCursors = useRef<number[]>([]);
   const ticks = useRef(0);
@@ -145,6 +160,11 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
     setItems(prev => mergeMessages(prev, incoming));
   }, []);
 
+  const setNewerCursor = useCallback((seq: number | null) => {
+    newerRef.current = seq;
+    setNewerCursorState(seq);
+  }, []);
+
   const setKnownSeq = useCallback((seq: number) => {
     if (seq > knownRef.current) {
       knownRef.current = seq;
@@ -161,8 +181,11 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
       if (mine !== generation.current) return;
       setItems(page.items);
       setNextBefore(page.nextBefore);
+      setNewerCursor(null);
       setCanWrite(page.canWrite);
       setCanModerate(page.canModerate ?? false);
+      setArchived(page.archived ?? false);
+      lastWindow.current = Date.now();
       knownRef.current = page.lastSeq;
       setKnown(page.lastSeq);
       setStatus('ready');
@@ -171,12 +194,13 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
       setError(e);
       setStatus('error');
     }
-  }, [url]);
+  }, [url, setNewerCursor]);
 
   useEffect(() => {
     setItems([]);
     setPending([]);
     setNextBefore(null);
+    setNewerCursor(null);
     olderCursors.current = [];
     knownRef.current = 0;
     setKnown(0);
@@ -184,11 +208,34 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
     return () => {
       generation.current += 1;
     };
-  }, [load]);
+  }, [load, setNewerCursor]);
+
+  /**
+   * The newest page again, replacing the list (jump back to the newest after the newer messages were dropped, or
+   * after a send from a list that does not reach the newest). No loading state: the old rows stay until it answers.
+   */
+  const reloadNewest = useCallback(async () => {
+    const mine = generation.current;
+    try {
+      const page = await call<MessagePage>('GET', url({}));
+      if (mine !== generation.current) return;
+      olderCursors.current = [];
+      setItems(page.items);
+      setNextBefore(page.nextBefore);
+      setNewerCursor(null);
+      setCanWrite(page.canWrite);
+      if (page.canModerate !== undefined) setCanModerate(page.canModerate);
+      setArchived(page.archived ?? false);
+      setKnownSeq(page.lastSeq);
+    } catch {
+      // Quiet: the list keeps what it shows; the next refresh or a click tries again.
+    }
+  }, [url, setNewerCursor, setKnownSeq]);
 
   /** New messages since what we know; loops while the server says there are more. Quiet on errors (the next tick retries). */
   const poll = useCallback(async () => {
-    if (busy.current || sending.current > 0 || status !== 'ready') return;
+    // A list that does not reach the newest (`hasNewer`) appends nothing: `loadNewer` fills it in order.
+    if (busy.current || sending.current > 0 || status !== 'ready' || newerRef.current !== null) return;
     busy.current = true;
     const mine = generation.current;
     try {
@@ -197,6 +244,7 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
         if (mine !== generation.current) return;
         merge(page.items);
         setCanWrite(page.canWrite);
+        setArchived(page.archived ?? false);
         const last = page.items[page.items.length - 1];
         if (page.more && last) setKnownSeq(last.seq);
         else {
@@ -215,13 +263,19 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
   const refreshWindow = useCallback(async () => {
     if (busy.current || refreshing.current || sending.current > 0 || status !== 'ready') return;
     refreshing.current = true;
+    lastWindow.current = Date.now();
     const mine = generation.current;
     try {
-      const page = await call<MessagePage>('GET', url({}));
-      if (mine !== generation.current || sending.current > 0) return;
-      merge(page.items);
-      setCanWrite(page.canWrite);
-      if (page.canModerate !== undefined) setCanModerate(page.canModerate);
+      // The newest window only when the list reaches the newest: merged into a list missing the newer messages it
+      // would leave a gap.
+      if (newerRef.current === null) {
+        const page = await call<MessagePage>('GET', url({}));
+        if (mine !== generation.current || sending.current > 0) return;
+        merge(page.items);
+        setCanWrite(page.canWrite);
+        if (page.canModerate !== undefined) setCanModerate(page.canModerate);
+        setArchived(page.archived ?? false);
+      }
       // Older pages already open: edits, deletes and pins there too, one page now and then, newest first, in turn.
       ticks.current += 1;
       const cursors = olderCursors.current;
@@ -235,7 +289,9 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
         if (older.items.length > 0) {
           setItems(prev => {
             const floor = prev[0]?.seq;
-            const kept = floor === undefined ? older.items : older.items.filter(m => m.seq >= floor);
+            // ...and nothing past the newest held while newer messages are dropped.
+            const ceiling = newerRef.current === null ? Infinity : (prev[prev.length - 1]?.seq ?? Infinity);
+            const kept = floor === undefined ? older.items : older.items.filter(m => m.seq >= floor && m.seq <= ceiling);
             return kept.length === 0 ? prev : mergeMessages(prev, kept);
           });
         }
@@ -252,7 +308,10 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
     if (pulseSeq !== undefined && pulseSeq > knownRef.current) void poll();
   }, [pulseSeq, poll]);
   useVisibleInterval(() => void poll(), pollMs);
-  useVisibleInterval(() => void refreshWindow(), status === 'ready' ? WINDOW_MS : null);
+  // Ticks every 20 s in a visible tab; refreshes when the idle-aware delay has passed (20 s active, then 1 and 3 min).
+  useVisibleInterval(() => {
+    if (Date.now() - lastWindow.current >= windowDelayMs(idleMs()) - 1000) void refreshWindow();
+  }, status === 'ready' ? WINDOW_MS : null);
   useEffect(() => {
     const wake = () => {
       if (!document.hidden) {
@@ -285,6 +344,43 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
     }
   }, [nextBefore, loadingOlder, url, merge, items]);
 
+  /**
+   * The newer messages dropped by `trimNewest`, one page at a time (`after` the newest held, oldest first). When the
+   * last page comes back the list reaches the newest again and polling appends as before.
+   */
+  const loadNewer = useCallback(async () => {
+    const from = newerRef.current;
+    if (from === null || loadingNewer) return;
+    setLoadingNewer(true);
+    const mine = generation.current;
+    try {
+      const page = await call<MessagePage>('GET', url({after: from}));
+      if (mine !== generation.current || newerRef.current !== from) return;
+      merge(page.items);
+      const last = page.items[page.items.length - 1];
+      if (page.more && last) setNewerCursor(last.seq);
+      else {
+        setNewerCursor(null);
+        setKnownSeq(page.lastSeq);
+      }
+    } catch {
+      // Quiet: scrolling down (or the button) tries again.
+    } finally {
+      setLoadingNewer(false);
+    }
+  }, [loadingNewer, url, merge, setNewerCursor, setKnownSeq]);
+
+  /**
+   * Keeps the oldest `MAX_KEPT` messages and drops the newest past them (the list calls it while the reader is far up
+   * and the dropped rows are well below the screen). `loadNewer` brings them back.
+   */
+  const trimNewest = useCallback(() => {
+    if (loadingNewer || items.length <= MAX_KEPT) return;
+    const newest = items[MAX_KEPT - 1]!.seq;
+    setItems(prev => (prev.length > MAX_KEPT ? prev.slice(0, MAX_KEPT) : prev));
+    setNewerCursor(newest);
+  }, [items, loadingNewer, setNewerCursor]);
+
   /** Drops the oldest messages past `MAX_KEPT` (the list calls it while the reader is at the newest). */
   const trim = useCallback(() => {
     if (loadingOlder || items.length <= MAX_KEPT) return;
@@ -307,6 +403,7 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
       let gap = false;
       setPending(list => list.map(x => (x.clientId === p.clientId ? {...x, status: 'sending', error: undefined} : x)));
       try {
+        const gapped = newerRef.current !== null;
         const res = await call<{message: MessageT}>('POST', base, {
           body: p.body,
           clientId: p.clientId,
@@ -316,11 +413,16 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
           // What this view has seen of the conversation (a thread's seqs are not the conversation's, so it sends none).
           ...(!p.parentId && knownRef.current > 0 ? {lastSeenSeq: knownRef.current} : {}),
         });
+        setPending(list => list.filter(x => x.clientId !== p.clientId));
+        // A list that does not reach the newest jumps back to it: the sent message lands where it belongs.
+        if (gapped || newerRef.current !== null) {
+          void reloadNewest();
+          return res.message;
+        }
         merge([res.message]);
         // Only advance when nothing from others sits in between; otherwise fetch the gap after the send.
         if (res.message.seq === knownRef.current + 1) setKnownSeq(res.message.seq);
         else gap = true;
-        setPending(list => list.filter(x => x.clientId !== p.clientId));
         return res.message;
       } catch (e) {
         setPending(list => list.map(x => (x.clientId === p.clientId ? {...x, status: 'failed', error: errorMessage(e)} : x)));
@@ -330,7 +432,7 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
         if (gap) void poll();
       }
     },
-    [base, merge, setKnownSeq, errorMessage, poll]
+    [base, merge, setKnownSeq, errorMessage, poll, reloadNewest]
   );
 
   const send = useCallback(
@@ -351,9 +453,10 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
   );
   const discard = useCallback((clientId: string) => setPending(list => list.filter(x => x.clientId !== clientId)), []);
 
+  const hasNewer = newerCursor !== null;
   return useMemo(
-    () => ({items, pending, status, error, nextBefore, loadingOlder, olderError, canWrite, canModerate, known, load, loadOlder, send, retry, discard, patch, merge, trim, me}),
-    [items, pending, status, error, nextBefore, loadingOlder, olderError, canWrite, canModerate, known, load, loadOlder, send, retry, discard, patch, merge, trim, me]
+    () => ({items, pending, status, error, nextBefore, loadingOlder, olderError, canWrite, canModerate, archived, known, hasNewer, loadingNewer, load, loadOlder, loadNewer, reloadNewest, send, retry, discard, patch, merge, trim, trimNewest, me}),
+    [items, pending, status, error, nextBefore, loadingOlder, olderError, canWrite, canModerate, archived, known, hasNewer, loadingNewer, load, loadOlder, loadNewer, reloadNewest, send, retry, discard, patch, merge, trim, trimNewest, me]
   );
 }
 

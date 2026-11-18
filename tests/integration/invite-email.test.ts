@@ -1,4 +1,4 @@
-import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
+import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 
 import {sha256Hex} from '../../src/platform/auth/encoding';
 import '../../src/server/background';
@@ -8,6 +8,19 @@ import {Browser, configureEnv, DATABASE_URL, db, resetDatabase, signedIn, userId
 import {env} from './support/cloudflare-workers';
 
 type J = Record<string, any>;
+
+// Records each job key the routes send (the job itself still runs, as in local mode).
+const jobKeys = vi.hoisted(() => [] as string[]);
+vi.mock('../../src/platform/background', async orig => {
+  const real = await orig<typeof import('../../src/platform/background')>();
+  return {
+    ...real,
+    sendJob: (...args: Parameters<typeof real.sendJob>) => {
+      if (args[3]?.key) jobKeys.push(args[3].key);
+      return real.sendJob(...args);
+    },
+  };
+});
 
 const ADDRESS = 'zqx-invitee-7731@example.test';
 
@@ -144,6 +157,30 @@ describe.skipIf(!DATABASE_URL)('invite emails (integration, real Postgres)', () 
       await db.workspaceInvite.update({where: {id: first.json.id}, data: {emailStatus: 'sent'}});
       expect((await bob.post(url, {email: ADDRESS})).status).toBe(409);
       expect((await bob.post(`/site-api/workspaces/${ws}/invites/999999/email`, {email: ADDRESS})).status).toBe(404);
+    });
+
+    it('every resend sends a new job key, even when no send was counted (the platform drops a repeated key)', async () => {
+      const first = await create(bob);
+      const url = `/site-api/workspaces/${ws}/invites/${first.json.id}/email`;
+      jobKeys.length = 0;
+      expect((await bob.post(url, {email: ADDRESS})).json.emailStatus).toBe('not_configured');
+      expect((await bob.post(url, {email: ADDRESS})).json.emailStatus).toBe('not_configured');
+      expect((await row(first.json.id)).emailAttempts).toBe(0);
+      expect(jobKeys).toHaveLength(2);
+      expect(new Set(jobKeys).size).toBe(2);
+    });
+
+    it('an email stuck queued is offered again after a while; a fresh one is not', async () => {
+      const first = await create(bob);
+      const url = `/site-api/workspaces/${ws}/invites/${first.json.id}/email`;
+      await db.workspaceInvite.update({where: {id: first.json.id}, data: {emailStatus: 'queued', emailQueuedAt: new Date()}});
+      expect((await bob.get(`/site-api/workspaces/${ws}/invites`)).json.items[0].emailResendable).toBe(false);
+      expect((await bob.post(url, {email: ADDRESS})).status).toBe(409);
+      await db.workspaceInvite.update({where: {id: first.json.id}, data: {emailQueuedAt: new Date(Date.now() - 60 * 60_000)}});
+      expect((await bob.get(`/site-api/workspaces/${ws}/invites`)).json.items[0].emailResendable).toBe(true);
+      const again = await bob.post(url, {email: ADDRESS});
+      expect(again.status).toBe(200);
+      expect((await row(first.json.id)).tokenHash).toBe(await sha256Hex(again.json.token));
     });
 
     it('stops after five sends of one invite', async () => {

@@ -290,13 +290,20 @@ const memberSelect = {
  * An archived workspace counts for its owner only (it is closed to everyone else).
  */
 async function visibleTo(db: PrismaClient, viewer: Viewer) {
+  return (await visibility(db, viewer)).where;
+}
+
+/** `visibleTo` plus the viewer's role in each workspace whose plan it shows (for `canCancel`). */
+async function visibility(db: PrismaClient, viewer: Viewer) {
   const admins = await db.workspaceMember.findMany({
     where: {userId: viewer.id!, role: {in: ['owner', 'admin']}},
     select: {workspaceId: true, role: true, workspace: {select: {archivedAt: true}}},
     take: 50,
   });
-  const workspaceIds = admins.filter(row => row.workspace.archivedAt === null || row.role === 'owner').map(row => row.workspaceId);
-  return {
+  const shown = admins.filter(row => row.workspace.archivedAt === null || row.role === 'owner');
+  const workspaceIds = shown.map(row => row.workspaceId);
+  const roles = new Map(shown.map(row => [row.workspaceId, row.role] as const));
+  const where = {
     OR: [
       // Own rows of a workspace's plan only while still an admin or owner there (the cancel route's rule): the
       // workspace clause below covers those; a removed or demoted buyer sees (and can stop) nothing of it.
@@ -305,21 +312,35 @@ async function visibleTo(db: PrismaClient, viewer: Viewer) {
       ...(workspaceIds.length ? [{workspaceId: {in: workspaceIds}}] : []),
     ],
   };
+  return {where, roles};
 }
+
+/**
+ * The cancel route's rule, for a row `visibility` showed: a workspace's plan is cancelled by its owner, or by the
+ * buyer while still an admin there; the viewer's own rows of no workspace always.
+ */
+const mayCancel = (row: {workspaceId: number | null; userId: number | null}, roles: Map<number, string>, viewerId: number) => {
+  if (row.workspaceId === null) return true;
+  const role = roles.get(row.workspaceId);
+  return role === 'owner' || (role === 'admin' && row.userId === viewerId);
+};
 
 const cancelBody = validator('json', value => ({atPeriodEnd: (value as {atPeriodEnd?: unknown})?.atPeriodEnd !== false}));
 
 export const membershipRoutes = new Hono()
   .get('/', withViewer, requireAuth, withDb, async c => {
-    const rows = await c.var.db.membership.findMany({where: await visibleTo(c.var.db, c.var.viewer), select: memberSelect, orderBy: {id: 'desc'}, take: 20});
+    const {where, roles} = await visibility(c.var.db, c.var.viewer);
+    const rows = await c.var.db.membership.findMany({where, select: {...memberSelect, userId: true}, orderBy: {id: 'desc'}, take: 20});
     const ids = [...new Set(rows.flatMap(row => (row.workspaceId ? [row.workspaceId] : [])))];
     const names = new Map(
       ids.length ? (await c.var.db.workspace.findMany({where: {id: {in: ids}}, select: {id: true, name: true}, take: 20})).map(w => [w.id, w.name] as const) : [],
     );
     c.header('Cache-Control', 'private, no-store');
     return c.json({
-      memberships: rows.map(row => ({
+      memberships: rows.map(({userId, ...row}) => ({
         ...row,
+        // Whether "Cancel plan" works for this viewer (the cancel route checks the same rule again).
+        canCancel: mayCancel({workspaceId: row.workspaceId, userId}, roles, c.var.viewer.id!),
         workspaceName: row.workspaceId ? (names.get(row.workspaceId) ?? null) : null,
         currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
         accessEndsAt: row.accessEndsAt?.toISOString() ?? null,

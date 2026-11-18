@@ -442,10 +442,16 @@ export const searchRoutes = new Hono()
       if (!count) throw new LaneFull('stale');
       // Labels belong to a board: the ones of the old board mean nothing on the new one.
       await tx.cardLabel.deleteMany({where: {cardId: card.id}});
-      await tx.lane.updateMany({
-        where: {id: card.laneId, boardId: card.boardId, workspaceId: card.workspaceId},
-        data: {cardCount: {decrement: 1}, updatedRev: revs.get(card.boardId)!},
-      });
+      // The Inbox lane's counter and the exit record in ONE statement: the Inbox board's delta (another tab of mine)
+      // learns the card left only from `card_board_exits` (GET /boards/:id/changes `removed`).
+      const srcRev = revs.get(card.boardId)!;
+      await tx.$executeRaw`
+        WITH x AS (
+          INSERT INTO card_board_exits (workspace_id, board_id, card_id, rev)
+          VALUES (${card.workspaceId}::int, ${card.boardId}::int, ${card.id}::int, ${srcRev}::bigint)
+        )
+        UPDATE lanes SET card_count = card_count - 1, updated_rev = ${srcRev}::bigint
+        WHERE id = ${card.laneId}::int AND board_id = ${card.boardId}::int AND workspace_id = ${card.workspaceId}::int`;
       await tx.activity.create({
         data: {workspaceId: card.workspaceId, boardId: target.boardId, cardId: card.id, actorId: userId, kind: 'card.moved', meta: {from: 'inbox'}},
       });

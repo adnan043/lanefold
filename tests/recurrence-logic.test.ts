@@ -63,4 +63,23 @@ describe('checkRule', () => {
     expect(checkRule({...ok, startOn: '2026-11-01'}, '2026-11-04')).toMatchObject({ok: false, fields: {startOn: 'past'}});
     expect(checkRule({...ok, endsOn: '2026-11-01'}, '2026-11-04')).toMatchObject({ok: false, fields: {endsOn: 'before_start'}});
   });
+  it('keeps a separate anchor so a monthly rule on the 31st does not drift after a short month', () => {
+    // Card due Jan 31, "repeat monthly" chosen on Feb 5: first copy Feb 28, then back to the 31st.
+    const r = checkRule({frequency: 'monthly', interval: 1, startOn: '2027-02-28', anchorOn: '2027-01-31', endsOn: null}, '2027-02-05');
+    expect(r).toMatchObject({ok: true, value: {startOn: '2027-02-28', anchorOn: '2027-01-31'}});
+    if (!r.ok) return;
+    const rule: RepeatRule = {frequency: 'monthly', interval: 1, anchor: r.value.anchorOn, endsOn: null};
+    expect(nextAfter(rule, '2027-02-28')).toBe('2027-03-31');
+    expect(nextAfter(rule, '2027-03-31')).toBe('2027-04-30');
+    expect(upcoming(rule, '2027-02-05', 3)).toEqual(['2027-02-28', '2027-03-31', '2027-04-30']);
+  });
+  it('defaults the anchor to the first day and refuses an anchor that does not fit', () => {
+    const ok = {frequency: 'monthly', interval: 1, startOn: '2027-02-28', endsOn: null};
+    expect(checkRule(ok, '2027-02-05')).toMatchObject({ok: true, value: {anchorOn: '2027-02-28'}});
+    expect(checkRule({...ok, anchorOn: ''}, '2027-02-05')).toMatchObject({ok: true, value: {anchorOn: '2027-02-28'}});
+    expect(checkRule({...ok, anchorOn: '2027-03-31'}, '2027-02-05')).toMatchObject({ok: false, fields: {anchorOn: 'invalid'}}); // after the first day
+    expect(checkRule({...ok, anchorOn: '2027-02-31'}, '2027-02-05')).toMatchObject({ok: false, fields: {anchorOn: 'invalid'}});
+    expect(checkRule({...ok, anchorOn: '2027-01-15'}, '2027-02-05')).toEqual({ok: false, fields: {startOn: 'off_rule'}}); // the 28th is not a day of a rule on the 15th
+    expect(checkRule({...ok, frequency: 'weekly', startOn: '2027-02-12', anchorOn: '2027-01-29'}, '2027-02-05')).toMatchObject({ok: true}); // both Fridays
+  });
 });

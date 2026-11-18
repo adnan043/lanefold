@@ -169,6 +169,10 @@ describe.skipIf(!DATABASE_URL)('card detail (integration, real Postgres)', () =>
   it('attachments: links count, bad addresses and file types are refused, delete follows', async () => {
     expect((await ann.post(`/site-api/cards/${card}/attachments/link`, {url: 'javascript:alert(1)'})).status).toBe(422);
     expect((await ann.post(`/site-api/cards/${card}/attachments/link`, {url: 'https://user:pw@example.com/'})).status).toBe(422);
+    // Plain http: is refused: a link opened from a card always goes over https.
+    const plain = await ann.post(`/site-api/cards/${card}/attachments/link`, {url: 'http://example.com/spec'});
+    expect(plain.status).toBe(422);
+    expect(plain.json.fieldCodes.url).toBe('invalid');
     expect((await ann.post(`/site-api/cards/${card}/attachments/upload`, {name: 'x.html', contentType: 'text/html', size: 10})).status).toBe(422);
     const link = await ann.post(`/site-api/cards/${card}/attachments/link`, {url: 'https://example.com/spec', name: 'Spec'});
     expect(link.status).toBe(201);

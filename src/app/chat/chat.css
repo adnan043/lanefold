@@ -327,22 +327,28 @@
 .chat-edited + .chat-thread-link {
   margin-inline-start: 0.6rem;
 }
+/* Hidden by opacity, never display:none: its buttons stay in the tab order, so a keyboard user reaches them and
+   :focus-visible (below) reveals the whole toolbar. pointer-events: none keeps the invisible toolbar unclickable. */
 .chat-msg-actions {
   position: absolute;
   inset-block-start: 0.15rem;
   inset-inline-end: 0.5rem;
-  display: none;
+  display: flex;
   gap: 0.1rem;
   padding: 0.15rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--card);
   box-shadow: var(--shadow-sm);
+  opacity: 0;
+  pointer-events: none;
 }
 .chat-msg:hover .chat-msg-actions,
+.chat-msg:focus-visible .chat-msg-actions,
 .chat-msg:has(:focus-visible) .chat-msg-actions,
 .chat-msg:has([aria-expanded='true']) .chat-msg-actions {
-  display: flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 /* content-visibility (below) clips paint to the message box, so the hover toolbar must fit inside even a one-line
    grouped message: 24px buttons (WCAG 2.5.8 minimum) and a message never shorter than the toolbar plus its offset. */
@@ -362,7 +368,8 @@
 }
 @media (hover: none) {
   .chat-msg-actions {
-    display: flex;
+    opacity: 1;
+    pointer-events: auto;
     position: static;
     grid-column: 2;
     border: 0;

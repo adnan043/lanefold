@@ -233,7 +233,7 @@ export const HOME = {
 export const PLAN_DEFAULTS = {
   free: {members: 10, fileMb: 10, storageGb: 1, flows: 0, auditLog: false},
   pro: {members: 50, fileMb: 100, storageGb: 20, flows: 10, auditLog: false},
-  team: {members: 100, fileMb: 100, storageGb: 100, flows: 100, auditLog: true},
+  team: {members: 500, fileMb: 100, storageGb: 100, flows: 100, auditLog: true},
 } as const;
 
 const D = PLAN_DEFAULTS;

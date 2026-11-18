@@ -1,10 +1,10 @@
 import {findCardNumberRefs} from '../../lib/card-number-refs';
 import {safeUrl} from '../../lib/markdown';
 import {allMentionIndexes} from '../../lib/mention-all';
-import type {MemberT} from './api';
+import type {ChatPersonT} from './api';
 
 /** What mentions need of a person. */
-export type PersonRef = Pick<MemberT, 'userId' | 'name'>;
+export type PersonRef = Pick<ChatPersonT, 'userId' | 'name'>;
 
 /** Pure helpers for @mentions (unit tested): the server stores the text and the ids; the text is escaped on render. */
 export const MAX_BODY = 4000;

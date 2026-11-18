@@ -11,7 +11,9 @@ import {atomically, body, bumpRev, cardCtx, finish, Gone, noStore, refused, send
  * (`src/server/jobs/recurring-cards.ts`) makes the copies; these routes only keep the rule.
  *
  *   GET    /cards/:id/recurrence   the rule or `{recurrence: null}`  (anyone who can see the card)
- *   PUT    /cards/:id/recurrence   { frequency, interval, startOn, endsOn? }  create or replace (writers)
+ *   PUT    /cards/:id/recurrence   { frequency, interval, startOn, anchorOn?, endsOn? }  create or replace (writers)
+ *          `startOn` is the first copy day, `anchorOn` (default `startOn`) the day the rule counts from (kept as
+ *          `anchor_on`, so a monthly rule anchored on the 31st goes back to the 31st after a short month).
  *   DELETE /cards/:id/recurrence   stop repeating (writers; allowed in a read-only workspace so it can be turned off)
  *
  * Access is cardCtx (membership IN its first query; 404 for a card of another workspace, 403 for a viewer, 409 for an
@@ -23,7 +25,9 @@ const RULE_FIELD_MESSAGES: Record<string, FieldError> = {
   interval: {code: 'invalid', message: 'Use a whole number from 1 to 99.'},
   startOn: {code: 'invalid', message: 'Use a date like 2026-12-31.'},
   endsOn: {code: 'invalid', message: 'Use a date like 2026-12-31.'},
+  anchorOn: {code: 'invalid', message: 'Use a date like 2026-12-31, on or before the first day.'},
 };
+const OFF_RULE: FieldError = {code: 'invalid', message: 'Pick a day the rule repeats on.'};
 const PAST: FieldError = {code: 'recurrence_past', message: 'Pick today or a later day.'};
 const END_BEFORE: FieldError = {code: 'recurrence_end_before_start', message: 'The last day cannot be before the first.'};
 
@@ -32,11 +36,11 @@ const dayDate = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 const dayOf = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
 const ruleBody = body(v => {
-  const checked = checkRule({frequency: v.frequency, interval: v.interval, startOn: v.startOn, endsOn: v.endsOn}, todayUtc());
+  const checked = checkRule({frequency: v.frequency, interval: v.interval, startOn: v.startOn, endsOn: v.endsOn, anchorOn: v.anchorOn}, todayUtc());
   if (checked.ok) return {ok: true, value: checked.value};
   const errors: Record<string, FieldError> = {};
   for (const [name, why] of Object.entries(checked.fields)) {
-    errors[name] = why === 'past' ? PAST : why === 'before_start' ? END_BEFORE : RULE_FIELD_MESSAGES[name]!;
+    errors[name] = why === 'past' ? PAST : why === 'before_start' ? END_BEFORE : why === 'off_rule' ? OFF_RULE : RULE_FIELD_MESSAGES[name]!;
   }
   return {ok: false, errors};
 });
@@ -78,7 +82,7 @@ export const cardRecurrenceRoutes = new Hono()
       const data = {
         frequency: input.frequency,
         intervalCount: input.interval,
-        anchorOn: dayDate(input.startOn),
+        anchorOn: dayDate(input.anchorOn),
         nextRunOn: dayDate(input.startOn),
         endsOn: input.endsOn ? dayDate(input.endsOn) : null,
         enabled: true,

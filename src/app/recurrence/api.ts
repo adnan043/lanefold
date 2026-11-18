@@ -8,6 +8,7 @@ import type {Frequency} from '../../lib/recurrence';
 export type RecurrenceT = {
   frequency: Frequency;
   interval: number;
+  /** The day the rule counts from (its day of the month or weekday is kept); not always the first copy day. */
   startOn: string;
   endsOn: string | null;
   /** The day the next copy is made; null once the rule has finished. */
@@ -15,7 +16,8 @@ export type RecurrenceT = {
   lastRunOn: string | null;
   enabled: boolean;
 };
-export type RecurrenceInput = {frequency: Frequency; interval: number; startOn: string; endsOn: string | null};
+/** `startOn`: the first copy day. `anchorOn`: the day the rule counts from, when it is not `startOn` (see `checkRule`). */
+export type RecurrenceInput = {frequency: Frequency; interval: number; startOn: string; endsOn: string | null; anchorOn?: string};
 
 const key = (cardId: number) => ['card-recurrence', cardId] as const;
 

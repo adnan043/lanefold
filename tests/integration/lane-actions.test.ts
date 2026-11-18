@@ -90,6 +90,37 @@ describe.skipIf(!DATABASE_URL)('lane actions (integration, real Postgres)', () =
     expect(await titles(bob, theirLane)).toEqual([]);
   });
 
+  it('move-cards: a full or archived target changes nothing (409 / 404, rev untouched); one activity row and one rev per move', async () => {
+    await ann.post(`/site-api/lanes/${lane1}/cards`, {titles: ['A', 'B']});
+    const rev = async () => (await db.board.findUniqueOrThrow({where: {id: boardA}})).rev;
+    const before = await rev();
+    await db.lane.update({where: {id: lane2}, data: {cardCount: 499}});
+    const full = await ann.post(`/site-api/lanes/${lane1}/move-cards`, {toLaneId: lane2});
+    expect(full.status).toBe(409);
+    expect(full.json.error).toBe('lane_full');
+    expect(await titles(ann, lane1)).toEqual(['A', 'B']);
+    expect((await db.lane.findUniqueOrThrow({where: {id: lane1}})).cardCount).toBe(2);
+    expect(await rev()).toBe(before);
+    await db.lane.update({where: {id: lane2}, data: {cardCount: 0, archivedAt: new Date()}});
+    expect((await ann.post(`/site-api/lanes/${lane1}/move-cards`, {toLaneId: lane2})).status).toBe(404);
+    expect(await titles(ann, lane1)).toEqual(['A', 'B']);
+    await db.lane.update({where: {id: lane2}, data: {archivedAt: null}});
+    const ok = await ann.post(`/site-api/lanes/${lane1}/move-cards`, {toLaneId: lane2});
+    expect(ok.status).toBe(200);
+    expect(BigInt(ok.json.rev)).toBe(before + 1n);
+    const act = await db.activity.findMany({where: {boardId: boardA, kind: 'lane.moved'}, select: {meta: true}});
+    expect(act).toEqual([{meta: {laneId: lane1, toLaneId: lane2, cards: 2}}]);
+  });
+
+  it('archive-cards: one activity row with the count, none when the lane was empty', async () => {
+    await ann.post(`/site-api/lanes/${lane1}/cards`, {titles: ['A', 'B', 'C']});
+    expect((await ann.post(`/site-api/lanes/${lane1}/archive-cards`, {})).json.archived).toBe(3);
+    expect((await ann.post(`/site-api/lanes/${lane2}/archive-cards`, {})).json.archived).toBe(0);
+    const act = await db.activity.findMany({where: {boardId: boardA, kind: 'lane.updated'}, select: {meta: true}});
+    expect(act).toEqual([{meta: {laneId: lane1, archivedCards: 3}}]);
+    expect(await db.card.count({where: {laneId: lane1, archivedAt: {not: null}}})).toBe(3);
+  });
+
   it('archive-cards: every open card leaves the lane and the counter goes to 0', async () => {
     await ann.post(`/site-api/lanes/${lane1}/cards`, {titles: ['A', 'B']});
     const res = await ann.post(`/site-api/lanes/${lane1}/archive-cards`, {});

@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 
 import type {CardT, LaneT} from '../src/app/api';
-import {agendaDays, dropChangesDue, groupByDue, isBoardView, monthWeeks, nextSort, shiftMonth, sortRows, tableRows, viewStorageKey, weekdayOrder} from '../src/app/boards/views/view-logic';
+import {agendaDays, dropChangesDue, dueBeforeStart, groupByDue, isBoardView, monthWeeks, nextSort, shiftMonth, sortRows, tableRows, viewStorageKey, weekdayOrder} from '../src/app/boards/views/view-logic';
 
 const card = (id: number, over: Partial<CardT> = {}): CardT => ({
   id, laneId: 1, title: `Card ${id}`, position: `a${id}`, priority: 'none', dueDate: null, completed: false,
@@ -46,6 +46,16 @@ describe('calendar grid', () => {
   it('a drop on the same day changes nothing', () => {
     expect(dropChangesDue({dueDate: '2026-11-05'}, '2026-11-05')).toBe(false);
     expect(dropChangesDue({dueDate: null}, '2026-11-05')).toBe(true);
+  });
+  it('a due day before the start day is refused (the server rule); the start day itself, no start or no due is fine', () => {
+    expect(dueBeforeStart({startDate: '2026-11-10'}, '2026-11-09')).toBe(true);
+    expect(dueBeforeStart({startDate: '2026-11-10'}, '2026-11-10')).toBe(false);
+    expect(dueBeforeStart({startDate: '2026-11-10'}, '2026-12-01')).toBe(false);
+    expect(dueBeforeStart({startDate: null}, '2026-11-09')).toBe(false);
+    expect(dueBeforeStart({}, '2026-11-09')).toBe(false);
+    expect(dueBeforeStart({startDate: '2026-11-10'}, null)).toBe(false);
+    // Across a year: ISO days compare as dates.
+    expect(dueBeforeStart({startDate: '2027-01-02'}, '2026-12-31')).toBe(true);
   });
 });
 

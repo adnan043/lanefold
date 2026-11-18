@@ -3,6 +3,7 @@ import {Hono} from 'hono';
 import {validator} from 'hono/validator';
 
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
+import {CARD_ESTIMATE} from '../../lib/rules';
 import {getEntitlements, MAX_CARD_TEMPLATES} from '../entitlements';
 import {idOf, invalid, objectOf, textField, type FieldError} from '../validation';
 import {membership, notFound, rankOf} from '../workspaces';
@@ -14,7 +15,8 @@ import {atomically, bumpRev, cardCtx, finish, Gone, noStore, refused, send} from
  *
  *   GET    /workspaces/:id/card-templates   every member: the templates (newest first, at most MAX_CARD_TEMPLATES)
  *   POST   /workspaces/:id/card-templates   {name, payload}: member or above
- *   POST   /cards/:id/save-template         {name}: a template from this card (member or above)
+ *   POST   /cards/:id/save-template         {name, sharePrivate?}: a template from this card (member or above); a card on a
+ *                                           private board needs sharePrivate: true (409 template_private_board without)
  *   POST   /cards/:id/apply-template        {templateId}: fills THIS card (a card you may write to)
  *   DELETE /card-templates/:id              its author, or a workspace admin
  *
@@ -23,7 +25,7 @@ import {atomically, bumpRev, cardCtx, finish, Gone, noStore, refused, send} from
  * to the target board's labels on apply (names that do not exist there are skipped).
  */
 
-export const TEMPLATE_LIMITS = {name: 80, title: 200, description: 20000, checklists: 20, checklistTitle: 100, items: 100, itemText: 300, totalItems: 200, labels: 20, labelName: 40, estimateMax: 1_000_000};
+export const TEMPLATE_LIMITS = {name: 80, title: 200, description: 20000, checklists: 20, checklistTitle: 100, items: 100, itemText: 300, totalItems: 200, labels: 20, labelName: 40};
 const PRIORITIES = ['none', 'low', 'medium', 'high', 'urgent'] as const;
 
 export type TemplatePayload = {
@@ -37,8 +39,15 @@ export type TemplatePayload = {
 
 const err = (code: string, message: string): {ok: false; error: FieldError} => ({ok: false, error: {code, message}});
 
-/** The payload, strictly: known keys only, each of the right type and size, bounded counts. */
-export function parsePayload(value: unknown): {ok: true; value: TemplatePayload} | {ok: false; error: FieldError} {
+/**
+ * The payload, strictly: known keys only, each of the right type and size, bounded counts. The estimate uses the
+ * card's own range (CARD_ESTIMATE), so applying a template always gives a card that can be saved.
+ *
+ * `stored`: reading a row saved earlier (or a card's own values), when templates allowed estimates from 0 to
+ * 1,000,000 minutes. Such an estimate is brought into range instead of hiding the whole template: 0 is dropped
+ * (no estimate), a larger one is capped at the card's maximum.
+ */
+export function parsePayload(value: unknown, {stored = false}: {stored?: boolean} = {}): {ok: true; value: TemplatePayload} | {ok: false; error: FieldError} {
   const v = objectOf(value);
   if (!v) return err('invalid', 'Send the template as an object.');
   const L = TEMPLATE_LIMITS;
@@ -52,8 +61,11 @@ export function parsePayload(value: unknown): {ok: true; value: TemplatePayload}
   if (typeof priority !== 'string' || !(PRIORITIES as readonly string[]).includes(priority)) return err('invalid', 'Unknown priority.');
   let estimate: number | null = null;
   if (v.estimateMinutes !== undefined && v.estimateMinutes !== null) {
-    if (typeof v.estimateMinutes !== 'number' || !Number.isSafeInteger(v.estimateMinutes) || v.estimateMinutes < 0 || v.estimateMinutes > L.estimateMax) return err('out_of_range', 'Use a whole number of minutes.');
-    estimate = v.estimateMinutes;
+    const n = v.estimateMinutes;
+    if (typeof n !== 'number' || !Number.isSafeInteger(n)) return err('out_of_range', `Use a whole number of minutes from ${CARD_ESTIMATE.min} to ${CARD_ESTIMATE.max}.`);
+    if (stored) estimate = n < CARD_ESTIMATE.min ? null : Math.min(n, CARD_ESTIMATE.max);
+    else if (n < CARD_ESTIMATE.min || n > CARD_ESTIMATE.max) return err('out_of_range', `Use a whole number of minutes from ${CARD_ESTIMATE.min} to ${CARD_ESTIMATE.max}.`);
+    else estimate = n;
   }
   const rawLists = v.checklists ?? [];
   if (!Array.isArray(rawLists) || rawLists.length > L.checklists) return err('too_many', `Use at most ${L.checklists} checklists.`);
@@ -97,9 +109,11 @@ const createBody = validator('json', (value, c) => {
   if (!name.ok || !payload.ok) return invalid(c, errors);
   return {name: name.value, payload: payload.value};
 });
-const nameBody = validator('json', (value, c) => {
-  const name = nameOf(objectOf(value)?.name);
-  return name.ok ? {name: name.value} : invalid(c, {name: name.error});
+const saveBody = validator('json', (value, c) => {
+  const v = objectOf(value);
+  const name = nameOf(v?.name);
+  // `sharePrivate: true`: the person confirmed that a template made from a private board's card is seen by the whole workspace.
+  return name.ok ? {name: name.value, sharePrivate: v?.sharePrivate === true} : invalid(c, {name: name.error});
 });
 const applyBody = validator('json', (value, c) => {
   const id = objectOf(value)?.templateId;
@@ -110,7 +124,7 @@ const applyBody = validator('json', (value, c) => {
 const SELECT = {id: true, name: true, payload: true, createdBy: true, createdAt: true} as const;
 type Row = {id: number; name: string; payload: unknown; createdBy: number | null; createdAt: Date};
 const present = (r: Row, me: number) => {
-  const payload = parsePayload(r.payload);
+  const payload = parsePayload(r.payload, {stored: true});
   return payload.ok ? {id: r.id, name: r.name, payload: payload.value, mine: r.createdBy === me, createdAt: r.createdAt.toISOString()} : null;
 };
 
@@ -136,12 +150,17 @@ export const cardTemplateRoutes = new Hono()
     return store(c, workspaceId, userId, c.req.valid('json'));
   })
 
-  .post('/cards/:id/save-template', nameBody, withViewer, requireAuth, withDb, noStore, async c => {
+  .post('/cards/:id/save-template', saveBody, withViewer, requireAuth, withDb, noStore, async c => {
     const db = c.var.db;
     const userId = c.var.viewer.id!;
     const ctx = await cardCtx(db, userId, idOf(c.req.param('id')), 'write');
     if (refused(ctx)) return send(c, ctx);
     if (rankOf(ctx.access.workspaceRole) < rankOf('member')) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
+    // Every member of the workspace sees its templates: copying a private board's card (or an inbox card) into one
+    // needs an explicit confirmation, so its description, checklists and labels never leave the board by surprise.
+    if ((ctx.access.visibility === 'private' || ctx.inboxOf !== null) && !c.req.valid('json').sharePrivate) {
+      return c.json(problem('template_private_board', 'This card is on a private board. Everyone in the workspace will see the template: confirm to save it.'), 409);
+    }
     const L = TEMPLATE_LIMITS;
     const where = {id: ctx.cardId, boardId: ctx.boardId, workspaceId: ctx.workspaceId};
     const card = await db.card.findFirst({
@@ -173,7 +192,7 @@ export const cardTemplateRoutes = new Hono()
       estimateMinutes: card.estimateMinutes,
       checklists,
       labels: card.labels.map(l => l.label.name),
-    });
+    }, {stored: true});
     if (!payload.ok) return invalid(c, {payload: payload.error});
     return store(c, ctx.workspaceId, userId, {name: c.req.valid('json').name, payload: payload.value});
   })
@@ -187,7 +206,7 @@ export const cardTemplateRoutes = new Hono()
     // so they can't apply one either (applying would copy its content onto a card they can read).
     if (ctx.access.guest) return notFound(c, 'template');
     const row = await db.cardTemplate.findFirst({where: {id: c.req.valid('json').templateId, workspaceId: ctx.workspaceId, kind: 'card'}, select: {payload: true}});
-    const parsed = row ? parsePayload(row.payload) : null;
+    const parsed = row ? parsePayload(row.payload, {stored: true}) : null;
     if (!parsed?.ok) return notFound(c, 'template');
     const t = parsed.value;
     const out = await atomically(db, async tx => {

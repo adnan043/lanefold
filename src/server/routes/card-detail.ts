@@ -18,6 +18,7 @@ import {HEX_RE, idOf, intField, invalid, likeEscape, objectOf, textField, type F
 import {afterResponse, type WithExecutionCtx} from '../after-response';
 import {cardWithAccess, workspaceReadOnly} from '../board-access-via';
 import {softLimited, softTake} from '../soft-limit';
+import {CARD_ESTIMATE} from '../../lib/rules';
 
 /**
  * Phase 2: everything inside a card. Mounted ONCE at `/` in `app.ts`.
@@ -282,7 +283,7 @@ const detailsBody = body(v => {
   if (v.estimateMinutes !== undefined) {
     if (v.estimateMinutes === null) out.estimateMinutes = null;
     else {
-      const n = intField(v.estimateMinutes, 1, 99_999);
+      const n = intField(v.estimateMinutes, CARD_ESTIMATE.min, CARD_ESTIMATE.max);
       if (n.ok) out.estimateMinutes = n.value;
       else errors.estimateMinutes = n.error;
     }
@@ -452,7 +453,7 @@ const linkBody = body(v => {
   } catch {
     url = null;
   }
-  if (!url || (url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password) {
+  if (!url || url.protocol !== 'https:' || url.username || url.password) {
     return errAt('url', {code: 'invalid', message: 'Enter a web address starting with https://.'});
   }
   let name = '';
@@ -810,6 +811,9 @@ export const cardDetailRoutes = new Hono()
       LEFT JOIN card_members cm ON cm.card_id = ${ctx.cardId} AND cm.user_id = u.id
       WHERE m.workspace_id = ${ctx.workspaceId} AND u.status = 'active'
         AND (${q}::text = '' OR u.name ILIKE ${like}) ${seats(ctx)}
+        -- A guest (a board seat, no workspace membership) sees only people seated on this board and the workspace's owners/admins, as in board-people.
+        AND (NOT ${ctx.access.guest}::boolean OR m.role IN ('owner', 'admin')
+             OR EXISTS (SELECT 1 FROM board_members bm WHERE bm.board_id = ${ctx.boardId} AND bm.user_id = m.user_id))
       ORDER BY u.name, u.id
       LIMIT 20`;
     return c.json({items: rows.map(r => ({id: r.id, name: r.name, assigned: r.assigned}))});

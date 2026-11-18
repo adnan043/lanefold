@@ -9,6 +9,7 @@ import {rules} from '../../lib/rules';
 import {Button, EmptyState, ErrorNote, Icon, IconButton, LoadingBlock, Menu, Notice, useToast} from '../../portal/ui';
 import {EditorToolbar} from './editor-toolbar';
 import {ApiError} from '../api';
+import {boardQuery} from '../queries';
 import {useBoardActions} from '../boards/actions';
 import {clearQuickAction, peekQuickAction, QUICK_TARGET_SELECTOR} from '../boards/quick-action';
 import {Attachments} from './attachments';
@@ -237,6 +238,8 @@ function TopBar({detail, actions, boardActions, boardId, cardId, close}: {detail
   const toast = useToast();
   const {busy, run} = useAction();
   const [savingTemplate, setSavingTemplate] = useState(false);
+  // The board screen already holds the board; `select` keeps this from re-rendering on every board change.
+  const privateBoard = useQuery({...boardQuery(boardId), select: d => d.board.visibility === 'private'}).data ?? false;
   const cover = detail?.attachments.find(a => a.id === detail.card.coverAttachmentId);
   return (
     <div className="cd-top" data-cover={cover ? '' : undefined}>
@@ -306,7 +309,7 @@ function TopBar({detail, actions, boardActions, boardId, cardId, close}: {detail
         )}
         <IconButton icon="x" label={t('cd.close')} className="cd-close" onClick={close} />
       </div>
-      {detail && <SaveTemplateDialog open={savingTemplate} cardId={cardId} defaultName={detail.card.title} onClose={() => setSavingTemplate(false)} />}
+      {detail && <SaveTemplateDialog open={savingTemplate} cardId={cardId} defaultName={detail.card.title} privateBoard={privateBoard} onClose={() => setSavingTemplate(false)} />}
     </div>
   );
 }

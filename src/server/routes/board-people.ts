@@ -15,7 +15,9 @@ import {noStore} from './boards';
  * another workspace's board, or a private board they have no seat on, is a 404). Any role may read it, like the card
  * people picker. ONE query, bounded (LIMIT + 1 for `more`), names only: an email never leaves here.
  * Who counts: active workspace members; a private board only its board members and the workspace owners/admins; a
- * personal Inbox only its owner (the same rules as boardAccess / seatFilter).
+ * personal Inbox only its owner (the same rules as boardAccess / seatFilter). A GUEST (a seat, no workspace membership)
+ * sees only the people they share THIS board with by name: those seated on it and the workspace owners/admins (who
+ * run every board), never the whole workspace directory, even on a board all members can see.
  */
 
 const PAGE = 200;
@@ -40,6 +42,7 @@ export const boardPeopleRoutes = new Hono().get('/boards/:id/people', peopleQuer
     WHERE b.id = ${boardId} AND b.workspace_id = ${access.workspaceId} AND u.status = 'active'
       AND (b.inbox_of IS NULL OR b.inbox_of = m.user_id)
       AND (b.visibility <> 'private' OR b.inbox_of IS NOT NULL OR m.role IN ('owner', 'admin') OR bm.user_id IS NOT NULL)
+      AND (NOT ${access.guest}::boolean OR m.role IN ('owner', 'admin') OR bm.user_id IS NOT NULL)
       AND (${q}::text = '' OR u.name ILIKE ${like})
     ORDER BY u.name, u.id
     LIMIT ${PAGE + 1}`;

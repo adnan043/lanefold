@@ -22,7 +22,7 @@ function LinkDialog({open, actions, onClose}: {open: boolean; actions: CardActio
   const form = useForm(
     {url: '', name: ''},
     {
-      url: [rules.required(t('cd.linkInvalid')), value => (/^https?:\/\/\S+$/i.test(value.trim()) ? null : t('cd.linkInvalid'))],
+      url: [rules.required(t('cd.linkInvalid')), value => (/^https:\/\/\S+$/i.test(value.trim()) ? null : t('cd.linkInvalid'))],
       name: [rules.maxLength(200, t('cd.textTooLong', {max: 200}))],
     }
   );

@@ -39,7 +39,8 @@ export async function sweepEndedMemberships(db: PrismaClient): Promise<{moved: n
         RETURNING w.id, r.plan AS from_plan`;
       if (moves.length) {
         moved += moves.length;
-        await startGraceForWorkspaces(db, moves.map(m => m.id));
+        // A plan change: a clock that ran out on the old plan starts again (a new over-limit event).
+        await startGraceForWorkspaces(db, moves.map(m => m.id), {restartExpired: true});
         for (const m of moves) forgetEntitlements(db, m.id);
         // One insert for the page's audit rows (the audit helper writes one row per call).
         try {

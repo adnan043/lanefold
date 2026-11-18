@@ -20,11 +20,15 @@ import {afterResponse} from '../after-response';
  *   GET  /chat/pulse                           my conversations: last_seq, last_read_seq, unread (one query)
  *   GET  /workspaces/:id/conversations         channels + my DMs, groups and board chats
  *   POST /workspaces/:id/conversations         new channel / group, or open a DM (idempotent)
- *   GET  /boards/:id/conversation              the board's chat (created on first use), I join it
+ *   GET  /boards/:id/conversation              the board's chat and my seat in it (read only: null before its first open)
+ *   POST /boards/:id/conversation              open the board's chat: create it on first use and join it (idempotent)
  *   GET  /conversations/:id/messages           ?before=<seq> (older) | ?after=<seq> (poll) | ?parent=<id> (a thread)
  *   POST /conversations/:id/messages           send (client_id makes a retry idempotent; rate limited)
  *   POST /conversations/:id/read               move my read marker {seq}
  *   PUT|DELETE /conversations/:id/mute         mute / unmute for me
+ *   PUT|DELETE /conversations/:id/archive      archive / restore a channel (workspace owners and admins)
+ *   GET  /conversations/:id/members            the people of a DM or group (one query)
+ *   GET  /workspaces/:id/chat-people           names and roles of the workspace (mentions, role badges; never emails)
  *   PATCH|DELETE /messages/:id                 edit / soft-delete (own; moderators may delete)
  *   PUT|DELETE /messages/:id/reactions         {emoji}
  *   PUT|DELETE /messages/:id/pin               pin (moderators, or any participant of a DM / group)
@@ -47,6 +51,8 @@ const CONVERSATIONS_PER_HOUR = 30;
 const LIST_CAP = 100;
 const PULSE_CAP = 200;
 const MAX_EMOJI_PER_MESSAGE = 20;
+/** The most people `GET /workspaces/:id/chat-people` answers with (one bounded query). */
+export const CHAT_PEOPLE_CAP = 500;
 /** Sending: at most this many messages per user per minute / hour (bounded read of messages(sender_id, created_at)). */
 const SEND_PER_MINUTE = 20;
 const SEND_PER_HOUR = 300;
@@ -119,7 +125,7 @@ type Access = {
   canWrite: boolean;
   /** May delete anyone's message and pin (admins of the workspace or the board). */
   canModerate: boolean;
-  /** A board chat of an archived board: nothing is written there. */
+  /** A board chat of an archived board, or an archived channel: nothing is written there. */
   archived: boolean;
   /** Has a `conversation_members` row (channels and board chats: created on first read or send). */
   joined: boolean;
@@ -137,6 +143,7 @@ type AccessRow = {
   last_read_seq: bigint | null;
   muted_at: Date | null;
   joined: boolean;
+  channel_archived: boolean;
 };
 
 /**
@@ -151,7 +158,8 @@ export async function conversationAccess(db: PrismaClient, conversationId: numbe
     // The workspace membership gates everything: another workspace's conversation is "missing" (INNER JOIN).
     db.$queryRaw<AccessRow[]>`
       SELECT cv.id, cv.workspace_id, cv.kind, cv.board_id, cv.last_seq, wm.role,
-             cm.last_read_seq, cm.muted_at, (cm.user_id IS NOT NULL) AS joined
+             cm.last_read_seq, cm.muted_at, (cm.user_id IS NOT NULL) AS joined,
+             (cv.kind = 'channel' AND cv.archived_at IS NOT NULL) AS channel_archived
       FROM conversations cv
       JOIN workspace_members wm ON wm.workspace_id = cv.workspace_id AND wm.user_id = ${userId}
       JOIN workspaces w ON w.id = cv.workspace_id AND w.archived_at IS NULL
@@ -178,7 +186,11 @@ export async function conversationAccess(db: PrismaClient, conversationId: numbe
     lastReadSeq: conv.joined ? Number(conv.last_read_seq) : 0,
     muted: Boolean(conv.muted_at),
   };
-  if (conv.kind === 'channel') return {...base, canWrite: rank >= 2, canModerate: rank >= 3};
+  // An archived channel is read-only for everyone (restoring it is its own route, for owners and admins).
+  if (conv.kind === 'channel') {
+    if (conv.channel_archived) return {...base, archived: true, canWrite: false, canModerate: false};
+    return {...base, canWrite: rank >= 2, canModerate: rank >= 3};
+  }
   if (conv.kind === 'dm' || conv.kind === 'group') {
     if (!conv.joined) return null;
     return {...base, canWrite: true, canModerate: false};
@@ -299,6 +311,9 @@ function messageShape(r: MessageRow, names: Map<number, string>, reactions: Reac
     deleted,
     pinned: r.pinnedAt !== null,
     mentions: deleted ? [] : r.mentions.map(m => m.userId),
+    // The names of the people named, from the same names read as the sender's: a mention shows even when the
+    // person is outside the directory the client holds.
+    mentionNames: deleted ? [] : r.mentions.map(m => names.get(m.userId) ?? ''),
     cardIds: deleted ? [] : r.cardRefs.map(x => x.cardId),
     numberRefs,
     reactions: deleted ? [] : reactions,
@@ -701,6 +716,25 @@ const conversationShape = (
 
 const convCols = {id: true, kind: true, name: true, boardId: true, lastSeq: true, dmKey: true} as const;
 
+type ConvRow = {id: number; kind: string; name: string | null; boardId: number | null; lastSeq: bigint; dmKey: string | null};
+
+/**
+ * The board's access and its chat with MY seat in it, side by side (board_id is unique). The chat is dropped unless it
+ * belongs to the board's workspace, so it is only ever used once the access check passed.
+ */
+async function boardChatOf(db: PrismaClient, boardId: number, me: number) {
+  const [access, found] = await Promise.all([
+    boardAccess(db, boardId, me),
+    db.conversation.findFirst({
+      where: {boardId, kind: 'board'},
+      select: {...convCols, workspaceId: true, members: {where: {userId: me}, select: {lastReadSeq: true, mutedAt: true}, take: 1}},
+    }),
+  ]);
+  if (!access) return [null, null] as const;
+  if (!found || found.workspaceId !== access.workspaceId) return [access, null] as const;
+  return [access, found] as const;
+}
+
 /* ------------------------------------------------------------------ routes */
 
 /**
@@ -717,6 +751,7 @@ export async function pulseRows(db: PrismaClient, me: number, cap = PULSE_CAP) {
     JOIN workspace_members wm ON wm.workspace_id = cm.workspace_id AND wm.user_id = ${me}
     JOIN workspaces w ON w.id = wm.workspace_id AND w.archived_at IS NULL
     WHERE cm.user_id = ${me}
+      AND cv.archived_at IS NULL
       AND (cv.board_id IS NULL OR NOT EXISTS (
         SELECT 1 FROM boards b
         WHERE b.id = cv.board_id
@@ -759,7 +794,7 @@ export const chatRoutes = new Hono()
     const {db} = c.var;
     const [channels, mineRows] = await Promise.all([
       db.conversation.findMany({
-        where: {workspaceId, kind: 'channel'},
+        where: {workspaceId, kind: 'channel', archivedAt: null},
         select: {...convCols, members: {where: {userId: me}, select: {lastReadSeq: true, mutedAt: true}, take: 1}},
         orderBy: {id: 'asc'},
         take: LIST_CAP,
@@ -813,7 +848,7 @@ export const chatRoutes = new Hono()
 
     if (input.kind === 'channel') {
       const isGeneral = input.name!.trim().toLowerCase() === 'general';
-      // Channels can't be deleted yet, so the workspace's 50 slots are guarded: a member (not an admin) starts at
+      // Only owners and admins archive channels, so the workspace's 50 slots are guarded: a member (not an admin) starts at
       // most CHANNELS_PER_HOUR an hour and MEMBER_CHANNELS in all; one bounded read on (workspace, kind, created_by).
       if (!isGeneral && member.rank < 3) {
         const mine = await db.conversation.findMany({
@@ -826,10 +861,11 @@ export const chatRoutes = new Hono()
         if (lastHour >= CHANNELS_PER_HOUR) return c.json(problem('conversation_rate_limited', 'You started many channels in the last hour. Try again later.'), 429);
         if (mine.length >= MEMBER_CHANNELS) return c.json(problem('limit_reached', `You can start up to ${MEMBER_CHANNELS} channels here. Ask an admin for more.`), 409);
       }
-      const existing = await db.conversation.findMany({where: {workspaceId, kind: 'channel'}, select: {id: true, name: true}, take: MAX_CHANNELS});
+      // Archived channels free their slot.
+      const existing = await db.conversation.findMany({where: {workspaceId, kind: 'channel', archivedAt: null}, select: {id: true, name: true}, take: MAX_CHANNELS});
       if (!isGeneral && existing.length >= MAX_CHANNELS) return c.json(problem('limit_reached', `A workspace can have ${MAX_CHANNELS} channels.`), 409);
       const findGeneral = (client: PrismaClient | Tx) =>
-        client.conversation.findFirst({where: {workspaceId, kind: 'channel', name: {equals: 'general', mode: 'insensitive'}}, select: convCols, orderBy: {id: 'asc'}});
+        client.conversation.findFirst({where: {workspaceId, kind: 'channel', archivedAt: null, name: {equals: 'general', mode: 'insensitive'}}, select: convCols, orderBy: {id: 'asc'}});
       const result = await db.$transaction(async tx => {
         if (isGeneral) {
           // #general is made once per workspace: concurrent creators queue on this lock, the second finds the first.
@@ -908,38 +944,48 @@ export const chatRoutes = new Hono()
     return c.json({conversation: conversationShape(row, {lastReadSeq: 0n, mutedAt: null}, new Map(), me)}, 201);
   })
 
+  /**
+   * The board's chat as it is: read only, never a write (this GET runs every time a board's Chat tab opens).
+   * `conversation` is null before anyone opened it; `joined: false` means POST it to take a seat (unread counts).
+   * A guest (a seat on the board, no workspace membership) gets 404: the chat belongs to the workspace.
+   */
   .get('/boards/:id/conversation', withViewer, requireAuth, withDb, noStore, async c => {
+    const me = c.var.viewer.id!;
+    const boardId = idOf(c.req.param('id'));
+    if (!boardId) return notFound(c, 'board');
+    const [access, found] = await boardChatOf(c.var.db, boardId, me);
+    if (!access || access.guest) return notFound(c, 'board');
+    const canWrite = access.canWrite && !access.archived;
+    if (!found) return c.json({conversation: null, canWrite});
+    return c.json({conversation: {...conversationShape(found, found.members[0], new Map(), me), canWrite}});
+  })
+
+  /**
+   * Opens the board's chat: creates it on first use and joins it (marker 0 when new). Idempotent and cheap: when the
+   * chat and my seat already exist (read side by side with the access check) nothing is written.
+   */
+  .post('/boards/:id/conversation', withViewer, requireAuth, withDb, noStore, async c => {
     const me = c.var.viewer.id!;
     const {db} = c.var;
     const boardId = idOf(c.req.param('id'));
     if (!boardId) return notFound(c, 'board');
-    // The board chat is read side by side with the access check (board_id is unique); it is dropped unless the
-    // visitor may see the board and it belongs to that board's workspace.
-    const [access, found] = await Promise.all([
-      boardAccess(db, boardId, me),
-      db.conversation.findFirst({where: {boardId, kind: 'board'}, select: {...convCols, workspaceId: true}}),
-    ]);
-    if (!access) return notFound(c, 'board');
-    const where = {boardId, workspaceId: access.workspaceId, kind: 'board'} as const;
-    let conv =
-      found && found.workspaceId === access.workspaceId
-        ? {id: found.id, kind: found.kind, name: found.name, boardId: found.boardId, lastSeq: found.lastSeq, dmKey: found.dmKey}
-        : null;
+    const [access, found] = await boardChatOf(db, boardId, me);
+    if (!access || access.guest) return notFound(c, 'board');
+    const canWrite = access.canWrite && !access.archived;
+    if (found && found.members[0]) return c.json({conversation: {...conversationShape(found, found.members[0], new Map(), me), canWrite}});
+    let conv: ConvRow | null = found;
     if (!conv) {
       try {
-        conv = await db.conversation.create({
-          data: {workspaceId: access.workspaceId, boardId, kind: 'board', createdBy: me},
-          select: convCols,
-        });
+        conv = await db.conversation.create({data: {workspaceId: access.workspaceId, boardId, kind: 'board', createdBy: me}, select: convCols});
       } catch (error) {
         if (!isUnique(error)) throw error;
-        conv = await db.conversation.findFirst({where, select: convCols});
+        conv = await db.conversation.findFirst({where: {boardId, workspaceId: access.workspaceId, kind: 'board'}, select: convCols});
       }
     }
     if (!conv) return c.json(problem('internal_error', 'Something went wrong.'), 500);
     // I join it (marker 0 when new; an existing row is left as it is) and my row comes back in the same statement.
     const mine = await joinConversation(db, conv.id, access.workspaceId, me);
-    return c.json({conversation: {...conversationShape(conv, mine, new Map(), me), canWrite: access.canWrite && !access.archived}});
+    return c.json({conversation: {...conversationShape(conv, mine, new Map(), me), canWrite}}, found ? 200 : 201);
   })
 
   /* ---- messages ------------------------------------------------------------------------------ */
@@ -979,6 +1025,7 @@ export const chatRoutes = new Hono()
       lastReadSeq: a.lastReadSeq,
       canWrite: a.canWrite,
       canModerate: a.canModerate,
+      archived: a.archived,
     });
   })
 
@@ -1005,8 +1052,8 @@ export const chatRoutes = new Hono()
     const [ent, found, lastMinute, lastHour, parent, allowed, cardIds, names, numberRefs] = await Promise.all([
       getEntitlements(db, a.workspaceId),
       find(),
-      db.message.findMany({where: {senderId: me, createdAt: {gt: new Date(now - 60_000)}}, select: {id: true}, take: SEND_PER_MINUTE + 1}),
-      db.message.findMany({where: {senderId: me, createdAt: {gt: new Date(now - 3_600_000)}}, select: {id: true}, take: SEND_PER_HOUR + 1}),
+      db.message.findMany({where: {senderId: me, createdAt: {gt: new Date(now - 60_000)}}, select: {id: true}, take: SEND_PER_MINUTE}),
+      db.message.findMany({where: {senderId: me, createdAt: {gt: new Date(now - 3_600_000)}}, select: {id: true}, take: SEND_PER_HOUR}),
       // A reply goes to a top-level, live message of THIS conversation.
       input.parentId !== null
         ? db.message.findFirst({
@@ -1026,8 +1073,9 @@ export const chatRoutes = new Hono()
     // Retried send: the same message comes back, nothing is written twice.
     const already = await replay(found);
     if (already) return already;
-    if (lastMinute.length > SEND_PER_MINUTE || lastHour.length > SEND_PER_HOUR) {
-      c.header('Retry-After', lastMinute.length > SEND_PER_MINUTE ? '30' : '300');
+    // SEND_PER_MINUTE already sent in the last minute (or SEND_PER_HOUR in the hour): this one would be one too many.
+    if (lastMinute.length >= SEND_PER_MINUTE || lastHour.length >= SEND_PER_HOUR) {
+      c.header('Retry-After', lastMinute.length >= SEND_PER_MINUTE ? '30' : '300');
       return c.json(problem('rate_limited', 'You are sending too fast. Wait a moment and try again.'), 429);
     }
     if (input.parentId !== null && !parent) return notFound(c, 'message');
@@ -1139,29 +1187,82 @@ export const chatRoutes = new Hono()
     return c.json({muted: false});
   })
 
+  /**
+   * Archive (PUT) or restore (DELETE) a CHANNEL: workspace owners and admins only (the workspace role, the same rank
+   * `canModerate` uses for channels). An archived channel leaves the list and the pulse and is read-only for everyone;
+   * its history stays. DMs, groups and board chats are not archived here (404: there is no such channel). Restoring
+   * respects the workspace's channel cap. One conditional write each, so a repeat changes nothing.
+   */
+  .put('/conversations/:id/archive', withViewer, requireAuth, withDb, requireConversation('read'), noStore, async c => {
+    const a = c.var.access;
+    if (rankOf(a.workspaceRole) < 3) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
+    if (a.kind !== 'channel') return notFound(c, 'conversation');
+    const {count} = await c.var.db.conversation.updateMany({
+      where: {id: a.conversationId, workspaceId: a.workspaceId, kind: 'channel', archivedAt: null},
+      data: {archivedAt: new Date()},
+    });
+    if (count) await audit(c.var.db, {actorUserId: c.var.viewer.id!, action: 'chat.channel_archived', target: ['conversation', a.conversationId], meta: {workspaceId: a.workspaceId}});
+    return c.json({archived: true});
+  })
+
+  .delete('/conversations/:id/archive', withViewer, requireAuth, withDb, requireConversation('read'), noStore, async c => {
+    const a = c.var.access;
+    if (rankOf(a.workspaceRole) < 3) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
+    if (a.kind !== 'channel') return notFound(c, 'conversation');
+    if (!a.archived) return c.json({archived: false});
+    const {db} = c.var;
+    const [ent, live] = await Promise.all([
+      getEntitlements(db, a.workspaceId),
+      db.conversation.findMany({where: {workspaceId: a.workspaceId, kind: 'channel', archivedAt: null}, select: {id: true}, take: MAX_CHANNELS}),
+    ]);
+    const blocked = readOnlyAnswer(c, ent);
+    if (blocked) return blocked;
+    if (live.length >= MAX_CHANNELS) return c.json(problem('limit_reached', `A workspace can have ${MAX_CHANNELS} channels.`), 409);
+    const {count} = await db.conversation.updateMany({
+      where: {id: a.conversationId, workspaceId: a.workspaceId, kind: 'channel', archivedAt: {not: null}},
+      data: {archivedAt: null},
+    });
+    if (count) await audit(db, {actorUserId: c.var.viewer.id!, action: 'chat.channel_restored', target: ['conversation', a.conversationId], meta: {workspaceId: a.workspaceId}});
+    return c.json({archived: false});
+  })
+
   /** Who is in this conversation. DMs and groups list their people (name and workspace role, never emails, current workspace members only);
-   * a channel is the whole workspace and a board chat everyone with the board, so those answer with their scope and no list. */
+   * a channel is the whole workspace and a board chat everyone with the board, so those answer with their scope and no list.
+   * ONE query after the access check: conversation_members joined to the workspace membership (current members only) and the names. */
   .get('/conversations/:id/members', withViewer, requireAuth, withDb, requireConversation('read'), noStore, async c => {
     const a = c.var.access;
     if (a.kind !== 'dm' && a.kind !== 'group') return c.json({scope: a.kind === 'board' ? 'board' : 'workspace', items: []});
-    const {db} = c.var;
-    const rows = await db.conversationMember.findMany({
-      where: {conversationId: a.conversationId, workspaceId: a.workspaceId},
-      select: {userId: true},
-      orderBy: {createdAt: 'asc'},
-      take: MAX_GROUP + 1,
-    });
-    const userIds = rows.map(r => r.userId);
-    const [seated, names] = await Promise.all([
-      db.workspaceMember.findMany({where: {workspaceId: a.workspaceId, userId: {in: userIds}}, select: {userId: true, role: true}, take: MAX_GROUP + 1}),
-      namesOf(db, userIds),
-    ]);
-    const roleOf = new Map(seated.map(s => [s.userId, s.role]));
-    const items = userIds
-      .filter(id => roleOf.has(id) && names.has(id))
-      .map(id => ({id, name: names.get(id)!, role: roleOf.get(id)!}))
-      .sort((x, y) => x.name.localeCompare(y.name));
+    const rows = await c.var.db.$queryRaw<{id: number; name: string; role: string}[]>`
+      SELECT u.id, u.name, wm.role
+      FROM conversation_members cm
+      JOIN workspace_members wm ON wm.workspace_id = cm.workspace_id AND wm.user_id = cm.user_id
+      JOIN users u ON u.id = cm.user_id
+      WHERE cm.conversation_id = ${a.conversationId} AND cm.workspace_id = ${a.workspaceId}
+      ORDER BY u.name ASC, u.id ASC
+      LIMIT ${MAX_GROUP + 1}`;
+    const items = rows.map(r => ({id: r.id, name: r.name, role: r.role})).sort((x, y) => x.name.localeCompare(y.name));
     return c.json({scope: 'members', items});
+  })
+
+  /**
+   * The chat's directory of the workspace: id, name and workspace role of up to CHAT_PEOPLE_CAP members, ONE query, never
+   * an email. Mentions in the composer and the role badges next to senders read it. Workspace members only
+   * (`requireWorkspaceRole`): a guest with a seat on one board gets 404. Mention names in messages come with the
+   * messages themselves, so a workspace past the cap still shows every mention.
+   */
+  .get('/workspaces/:id/chat-people', withViewer, requireAuth, withDb, requireWorkspaceRole('viewer'), noStore, async c => {
+    const rows = await c.var.db.$queryRaw<{id: number; name: string; role: string}[]>`
+      SELECT u.id, u.name, m.role
+      FROM workspace_members m
+      JOIN users u ON u.id = m.user_id
+      WHERE m.workspace_id = ${c.var.workspaceId}
+      ORDER BY u.name ASC, u.id ASC
+      LIMIT ${CHAT_PEOPLE_CAP + 1}`;
+    const me = c.var.viewer.id;
+    return c.json({
+      items: rows.slice(0, CHAT_PEOPLE_CAP).map(r => ({userId: r.id, name: r.name, role: r.role, isMe: r.id === me})),
+      truncated: rows.length > CHAT_PEOPLE_CAP,
+    });
   })
 
   /* ---- one message: edit, delete, react, pin ---------------------------------------------------- */
@@ -1211,6 +1312,8 @@ export const chatRoutes = new Hono()
     const own = row.senderId === me;
     if (row.kind === 'system') return c.json(problem('forbidden', 'You do not have access to this.'), 403);
     if (!own && !a.canModerate) return notFound(c, 'message');
+    // An archived channel is read-only: not even its authors change it.
+    if (a.archived && a.kind === 'channel') return c.json(problem('forbidden', 'You do not have access to this.'), 403);
     // Deleting your OWN message always works (it heals a read-only workspace); a moderator's delete does not.
     if (!own) {
       const blocked = await readOnlyBlock(c, db, a.workspaceId);

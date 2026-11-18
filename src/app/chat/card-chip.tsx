@@ -1,16 +1,16 @@
-import {useQuery} from '@tanstack/react-query';
+import {useQueries} from '@tanstack/react-query';
 import {Link} from '../nav';
 
 import {useT} from '../../i18n';
 import {Icon} from '../../portal/ui';
-import {cardRefsQuery, type CardRefT} from './api';
+import {cardRefQuery, type CardRefT} from './api';
 
 /**
- * A card a message points at. The server sends ids only; titles come from ONE batched read of the cards the
- * viewer may see, so a private board's title never travels in the message. Absent (no access) or still loading:
- * a plain "Card" chip that is not a link.
+ * A card a message points at. The server sends ids only; titles come from batched reads of the cards the viewer may
+ * see, so a private board's title never travels in the message. Absent (no access) or still loading: a plain "Card"
+ * chip that is not a link.
  */
-export function CardChip({data, pending}: {data?: CardRefT; pending: boolean}) {
+export function CardChip({data, pending}: {data?: CardRefT | null; pending: boolean}) {
   const t = useT();
   if (!data) {
     return (
@@ -27,16 +27,19 @@ export function CardChip({data, pending}: {data?: CardRefT; pending: boolean}) {
   );
 }
 
-/** The chips under a message body: one query for all its cards (key = sorted ids). */
+/**
+ * The chips under a message body. One cached query per card, and every card of the page rendered together is
+ * fetched in ONE `/cards/refs` request (`cardRefQuery` batches them), never one request per message.
+ */
 export function CardChips({cardIds}: {cardIds: readonly number[]}) {
   const t = useT();
-  const {data, isPending} = useQuery(cardRefsQuery(cardIds));
+  const refs = useQueries({queries: cardIds.map(id => cardRefQuery(id))});
   if (cardIds.length === 0) return null;
   return (
     <ul className="chat-card-chips" aria-label={t('chat.linkedCards')}>
-      {cardIds.map(id => (
+      {cardIds.map((id, i) => (
         <li key={id}>
-          <CardChip data={data?.[id]} pending={isPending} />
+          <CardChip data={refs[i]?.data} pending={refs[i]?.isPending ?? false} />
         </li>
       ))}
     </ul>

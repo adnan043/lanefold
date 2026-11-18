@@ -633,6 +633,7 @@ model Board {
   boardStars   BoardStar[]
   invites      WorkspaceInvite[]
   removals     BoardRemoval[]
+  cardExits    CardBoardExit[]
 
   @@index([workspaceId, archivedAt, id])
   @@index([inboxOf, workspaceId])
@@ -656,6 +657,24 @@ model BoardMember {
   /// The guest count of a workspace (seats of people who are not workspace members).
   @@index([workspaceId, userId])
   @@map("board_members")
+}
+
+/// A card that LEFT this board for another one (`POST /cards/:id/move-to-board`), stamped with the source board's rev
+/// of that move: `GET /boards/:id/changes` reports it in `removed`, since the card row itself now belongs to the other
+/// board and no longer shows up in this board's delta. A board's rows go with it (cascade).
+model CardBoardExit {
+  id          BigInt   @id @default(autoincrement())
+  workspaceId Int      @map("workspace_id")
+  boardId     Int      @map("board_id")
+  cardId      Int      @map("card_id")
+  rev         BigInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  /// The delta's read: this board's exits in (since, rev].
+  @@index([boardId, rev])
+  @@map("card_board_exits")
 }
 
 /// Someone a board admin removed from a board: the board's invite link, or an email invite made before the removal,
@@ -1124,6 +1143,8 @@ model Conversation {
   dmKey       String?  @map("dm_key") @db.VarChar(24)
   lastSeq     BigInt   @default(0) @map("last_seq")
   createdBy   Int?     @map("created_by")
+  /// A channel archived by a workspace owner or admin: hidden from the list, read-only. Only channels are archived.
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 

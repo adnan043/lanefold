@@ -1,0 +1,9 @@
+/* "Save as template" on a private board: the warning, then the confirmation it needs. */
+.ctpl-private {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.ctpl-private .field-error {
+  margin: 0;
+}

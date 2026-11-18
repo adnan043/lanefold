@@ -222,6 +222,16 @@ async function load(db: PrismaClient, workspaceId: number): Promise<Entitlements
       return result;
     }
   }
+  // Back under the limits with an old clock still set (members removed, storage freed, a plan raised): drop it now,
+  // not at the next daily sweep, so a later overage (a downgrade the same day) starts a FRESH grace instead of
+  // reading the expired date as "grace over". One idempotent UPDATE, only in that state; a failure never breaks the read.
+  if (!result.overLimit && row.grace_until !== null) {
+    try {
+      await startGraceForOverLimit(db, {workspaceId});
+    } catch {
+      /* the daily sweep clears it */
+    }
+  }
   return result;
 }
 
@@ -266,7 +276,8 @@ export async function getEntitlementsMany(db: PrismaClient, workspaceIds: readon
   const slow: number[] = [];
   for (const row of rows) {
     const ent = buildFrom(row, settings.billingMode, row.grace_until);
-    if (ent.overLimit && row.grace_until === null) {
+    // Rare states that need a write (start the clock, or drop an old one): through getEntitlements.
+    if ((ent.overLimit && row.grace_until === null) || (!ent.overLimit && row.grace_until !== null)) {
       slow.push(row.id);
       continue;
     }
@@ -304,15 +315,18 @@ export async function frozenWorkspaces(db: PrismaClient, workspaceIds: Iterable<
 /**
  * Starts the grace clock (once) for PAID workspaces now over a limit: after a switch to PAID, a plan's limits
  * lowered, or a downgrade. One statement; `plan` narrows it to one plan's workspaces.
+ * `restartExpired`: the call follows a PLAN CHANGE (a new over-limit event), so a clock that already ran out (left
+ * from an earlier overage the sweep had not cleared yet) starts again instead of making the workspace read-only at
+ * once. Never set it for a plain re-check: a workspace that stays over its limits must not get a new grace.
  */
-export async function startGraceForWorkspaces(db: PrismaClient, ids: number[]): Promise<void> {
+export async function startGraceForWorkspaces(db: PrismaClient, ids: number[], {restartExpired = false}: {restartExpired?: boolean} = {}): Promise<void> {
   if (ids.length === 0) return;
   await db.$executeRaw`
     UPDATE workspaces w
     SET grace_until = now() + make_interval(days => s.grace_days)
     FROM plan_limits p, app_settings s
     WHERE p.plan = w.plan AND s.id = 1 AND s.billing_mode = 'PAID'
-      AND w.grace_until IS NULL
+      AND (w.grace_until IS NULL OR (${restartExpired}::boolean AND w.grace_until <= now()))
       AND (w.member_count > p.max_members OR w.storage_used_bytes > p.storage_quota_bytes)
       AND w.id = ANY(${ids}::int[])`;
   await db.$executeRaw`
@@ -323,15 +337,17 @@ export async function startGraceForWorkspaces(db: PrismaClient, ids: number[]): 
       AND w.id = ANY(${ids}::int[])`;
 }
 
-export async function startGraceForOverLimit(db: PrismaClient, options: {plan?: string; workspaceId?: number} = {}): Promise<number> {
+/** `startGraceForWorkspaces` by plan or workspace (or all). `restartExpired`: see there (plan changes only). */
+export async function startGraceForOverLimit(db: PrismaClient, options: {plan?: string; workspaceId?: number; restartExpired?: boolean} = {}): Promise<number> {
   const plan = options.plan ?? null;
   const workspaceId = options.workspaceId ?? null;
+  const restartExpired = options.restartExpired ?? false;
   const started = await db.$executeRaw`
     UPDATE workspaces w
     SET grace_until = now() + make_interval(days => s.grace_days)
     FROM plan_limits p, app_settings s
     WHERE p.plan = w.plan AND s.id = 1 AND s.billing_mode = 'PAID'
-      AND w.grace_until IS NULL
+      AND (w.grace_until IS NULL OR (${restartExpired}::boolean AND w.grace_until <= now()))
       AND (w.member_count > p.max_members OR w.storage_used_bytes > p.storage_quota_bytes)
       AND (${plan}::text IS NULL OR w.plan = ${plan})
       AND (${workspaceId}::int IS NULL OR w.id = ${workspaceId})`;

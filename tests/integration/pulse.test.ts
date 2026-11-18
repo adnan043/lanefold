@@ -42,8 +42,8 @@ describe.skipIf(!DATABASE_URL)('chat pulse (integration, real Postgres)', () => 
     const boardId = (await ann.post(`/site-api/workspaces/${wsA}/boards`, {name: 'Secret', lanes: ['To do']})).json.board.id;
     await db.board.update({where: {id: boardId}, data: {visibility: 'private'}});
     await db.boardMember.create({data: {boardId, userId: ids.mia!, workspaceId: wsA, role: 'member'}});
-    const board = await mia.get(`/site-api/boards/${boardId}/conversation`);
-    expect(board.status).toBe(200);
+    const board = await mia.post(`/site-api/boards/${boardId}/conversation`);
+    expect(board.status).toBe(201); // the first open creates the board chat and seats mia in it
     const boardConv = board.json.conversation.id;
     const dm = await db.conversation.create({data: {workspaceId: wsA, kind: 'dm', dmKey: `${ids.ann}:${ids.mia}`}});
     await db.conversationMember.createMany({data: [ids.ann!, ids.mia!].map(userId => ({conversationId: dm.id, userId, workspaceId: wsA}))});

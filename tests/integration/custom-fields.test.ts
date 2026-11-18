@@ -77,4 +77,46 @@ describe.skipIf(!DATABASE_URL)('custom fields (integration, real Postgres)', () 
     expect((await eve.request('DELETE', `/site-api/fields/${f.id}`)).status).toBe(404);
     expect((await eve.request('PUT', `/site-api/boards/${board}/fields/order`, {ids: [f.id]})).status).toBe(404);
   });
+
+  it('reads the values in whole-card pages, then only what changed since a revision', async () => {
+    const ws = (await db.board.findUniqueOrThrow({where: {id: board}, select: {workspaceId: true}})).workspaceId;
+    const lane = (await db.lane.findFirstOrThrow({where: {boardId: board}, select: {id: true}})).id;
+    await db.customField.createMany({data: Array.from({length: 20}, (_, i) => ({boardId: board, workspaceId: ws, name: `F${i}`, type: 'text', position: i}))});
+    const fieldIds = (await db.customField.findMany({where: {boardId: board}, orderBy: {id: 'asc'}, select: {id: true}})).map(f => f.id);
+    await db.card.createMany({data: Array.from({length: 260}, (_, i) => ({boardId: board, laneId: lane, workspaceId: ws, title: `Bulk ${i}`, position: `b${String(i).padStart(4, '0')}`}))});
+    const cards = (await db.card.findMany({where: {boardId: board}, orderBy: {id: 'asc'}, select: {id: true}})).map(c => c.id);
+    await db.cardFieldValue.createMany({data: cards.flatMap(cardId => fieldIds.map(fieldId => ({cardId, fieldId, workspaceId: ws, textValue: `v${cardId}`})))});
+    // 261 cards x 20 values: the first page holds 250 whole cards, the second the rest.
+    const first = (await ann.get(`/site-api/boards/${board}/field-values`)).json;
+    expect(Object.keys(first.values)).toHaveLength(250);
+    expect(first.nextAfter).toBe(cards[249]);
+    expect(Object.values(first.values).every(v => Object.keys(v as object).length === 20)).toBe(true);
+    const second = (await ann.get(`/site-api/boards/${board}/field-values?after=${first.nextAfter}`)).json;
+    expect(Object.keys(second.values).map(Number)).toEqual(cards.slice(250));
+    expect(second.nextAfter).toBeNull();
+    expect((await ann.get(`/site-api/boards/${board}/field-values?after=x`)).status).toBe(422);
+    expect((await ann.get(`/site-api/boards/${board}/field-values?since=-1`)).status).toBe(422);
+
+    // Nothing changed: an empty delta. Then a value cleared, a card edited, and a card archived.
+    const rev = first.rev as string;
+    expect((await ann.get(`/site-api/boards/${board}/field-values?since=${rev}`)).json).toMatchObject({rev, values: {}, changed: []});
+    expect((await ann.request('PUT', `/site-api/cards/${cards[0]}/fields/${fieldIds[0]}`, {value: null})).status).toBe(200);
+    expect((await ann.request('PATCH', `/site-api/cards/${cards[1]}/details`, {title: 'Touched'})).status).toBe(200);
+    await db.board.update({where: {id: board}, data: {rev: {increment: 1}}});
+    const top = (await db.board.findUniqueOrThrow({where: {id: board}, select: {rev: true}})).rev;
+    await db.card.update({where: {id: cards[2]}, data: {archivedAt: new Date(), updatedRev: top}});
+    const delta = (await ann.get(`/site-api/boards/${board}/field-values?since=${rev}`)).json;
+    expect([...delta.changed].sort((a: number, b: number) => a - b)).toEqual(cards.slice(0, 3));
+    expect(Object.keys(delta.values[String(cards[0])])).toHaveLength(19);
+    expect(Object.keys(delta.values[String(cards[1])])).toHaveLength(20);
+    expect(delta.values[String(cards[2])]).toBeUndefined(); // archived: in `changed`, without values
+    expect(delta.reset).toBeUndefined();
+
+    // Too much changed for a delta, or a revision from the future: read it all again.
+    await db.card.updateMany({where: {boardId: board}, data: {updatedRev: top}});
+    expect((await ann.get(`/site-api/boards/${board}/field-values?since=${rev}`)).json.reset).toBe(true);
+    expect((await ann.get(`/site-api/boards/${board}/field-values?since=${top + 1000n}`)).json.reset).toBe(true);
+    expect((await eve.get(`/site-api/boards/${board}/field-values?since=${rev}`)).status).toBe(404);
+    expect((await eve.get(`/site-api/boards/${board}/field-values?after=1`)).status).toBe(404);
+  });
 });

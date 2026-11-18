@@ -1,7 +1,7 @@
 import type {PrismaClient} from '../../generated/prisma/client';
 import {getEntitlements} from '../entitlements';
 import {readConfig} from '../flows/config';
-import {applyFlow, newRun, runFlows} from '../flows/engine';
+import {applyFlow, type FlowEvent, MAX_ACTIONS_PER_RUN, newRun, runFlows} from '../flows/engine';
 
 /**
  * The daily Flows job: `daily_due` flows ("a card is due in N days"). Scheduled hourly in background.json; every
@@ -87,10 +87,13 @@ export async function runDailyFlows(
           take: cardsPerFlow,
         });
         if (rows.length === 0) continue;
-        // One shared run per flow: its budget caps the actions (a move may chain card_moved flows).
-        const run = newRun();
-        run.budget.left = rows.length * config.actions.length;
-        const stoppedAt = await applyFlow(db, board, flow, 'daily_due', rows.map(r => r.id), run, ev => runFlows(db, [ev], {...run, depth: 1}), deadline);
+        // One run per flow, its budget exactly this flow's actions on these cards. A move that chains card_moved
+        // flows gives that chain its OWN budget (the size one card's user action gets), so a chain can never spend
+        // what the remaining due cards need; the `seen` memory is shared to stop loops. Should the budget still run
+        // short, applyFlow returns the card it stopped at and the position is recorded below, like a deadline stop.
+        const run = newRun(0, rows.length * config.actions.length);
+        const chain = (ev: FlowEvent) => runFlows(db, [ev], {depth: 1, seen: run.seen, budget: {left: MAX_ACTIONS_PER_RUN}});
+        const stoppedAt = await applyFlow(db, board, flow, 'daily_due', rows.map(r => r.id), run, chain, deadline);
         // Cards are in id order: everything before the one it stopped at is done. A full page may have more after it.
         const resumeAfter = stoppedAt !== null ? stoppedAt - 1 : rows.length === cardsPerFlow ? rows.at(-1)!.id : null;
         cards += stoppedAt !== null ? rows.findIndex(r => r.id === stoppedAt) : rows.length;

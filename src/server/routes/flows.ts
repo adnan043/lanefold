@@ -9,6 +9,7 @@ import {
   type Errors,
   type FlowAction,
   type FlowConfig,
+  type FlowProblem,
   MAX_FLOWS_PER_BOARD,
   parseActions,
   parseConditions,
@@ -99,11 +100,11 @@ async function existing(db: PrismaClient, board: BoardCtx, refs: Ref[]) {
 
 const flowCols = {id: true, boardId: true, name: true, enabled: true, config: true, lastRunOn: true, createdAt: true, updatedAt: true} as const;
 type FlowRow = Prisma.FlowGetPayload<{select: typeof flowCols}>;
-const PROBLEM_CODE = {lane: 'lane_gone', label: 'label_gone', user: 'user_gone'} as const;
+const PROBLEM_CODE: Record<'lane' | 'label' | 'user', FlowProblem> = {lane: 'lane_gone', label: 'label_gone', user: 'user_gone'};
 
 function flowShape(row: FlowRow, found: Awaited<ReturnType<typeof existing>>) {
   const config = readConfig(row.config);
-  const problems = config ? [...new Set(refsOf(config).filter(r => !found[r.kind].has(r.id)).map(r => PROBLEM_CODE[r.kind]))] : ['invalid_config'];
+  const problems: FlowProblem[] = config ? [...new Set(refsOf(config).filter(r => !found[r.kind].has(r.id)).map(r => PROBLEM_CODE[r.kind]))] : ['invalid_config'];
   return {
     id: row.id,
     boardId: row.boardId,
