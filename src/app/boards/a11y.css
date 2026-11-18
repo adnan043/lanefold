@@ -1,6 +1,8 @@
 /* Accessibility additions for the board (WCAG 2.4.7, 2.5.8, 1.4.1). Loaded after polish.css. */
 .lf-card-title {
   min-block-size: 24px;
+  /* The 24px target, with the 20px text line in its middle (not at its top, which left 4px extra under a one-line card). */
+  padding-block: 2px;
 }
 .lf-grip {
   min-inline-size: 24px;

@@ -167,7 +167,7 @@
 
 /* ---- cards ---- */
 .app-shell .lf-card {
-  padding: 0.5rem 0.75rem 0.625rem;
+  padding: 0.5rem 0.75rem; /* the same space above and below */
   border: 0;
   border-radius: 8px;
   background: var(--tl-card);
@@ -254,6 +254,7 @@
   color: var(--tl-ink);
 }
 .app-shell .lf-card-title {
+  padding-block: 2px; /* the 24px target (a11y.css) with the text line in its middle: the same space above and below */
   font-size: 0.875rem;
   line-height: 20px;
   font-weight: 400;

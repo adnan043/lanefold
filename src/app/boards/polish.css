@@ -176,7 +176,7 @@
   display: inline-grid;
   place-items: center;
   inline-size: 0;
-  block-size: 20px;
+  block-size: 24px; /* the title's row: its first line's middle */
   margin-inline-end: -0.25rem; /* cancels the row's gap while hidden, so the title does not move */
   padding: 0;
   border: 0;
@@ -251,7 +251,7 @@
   }
   .lf-done-burst {
     position: absolute;
-    inset-block-start: 10px; /* the middle of the 20px title line */
+    inset-block-start: 12px; /* the middle of the title's first line */
     inset-inline-start: 8px; /* the middle of the 16px tick */
     z-index: 2;
     pointer-events: none;
