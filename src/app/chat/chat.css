@@ -1320,10 +1320,13 @@ a.chat-file-name:focus-visible,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A FIXED height: the picture is remounted on every move and has no size until it loads, so a panel sized by its
+   picture collapsed for a moment and the whole dialog jumped. Now every picture fits inside the same box. */
 .chat-viewer {
   position: relative;
   display: grid;
   place-items: center;
+  block-size: min(70vh, 70dvh, 640px);
   padding: 0.5rem;
   overflow: hidden;
   border-radius: 18px;
@@ -1332,7 +1335,7 @@ a.chat-file-name:focus-visible,
 .chat-viewer img {
   display: block;
   max-inline-size: 100%;
-  max-block-size: min(70vh, 70dvh);
+  max-block-size: 100%;
   border-radius: 14px;
   object-fit: contain;
 }
