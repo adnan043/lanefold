@@ -5,6 +5,7 @@ import {useI18n} from '../../i18n';
 import {Button, Icon, type IconName, type MenuItem, Menu, useConfirm} from '../../portal/ui';
 import {todayISO} from '../../portal/ui/date';
 import {call, type LaneT} from '../api';
+import {boardLabelsKey} from '../cards/use-card';
 import type {BoardActions, BulkAction, Undoable} from './actions';
 import {useBulkRunner} from './use-bulk-runner';
 import {type Selection, useSelectedIds} from './selection';
@@ -50,7 +51,7 @@ export function BulkBar({boardId, lanes, actions, selection, onUndoable}: BarPro
   first.current = ids.values().next().value ?? 0;
 
   const labels = useQuery({
-    queryKey: ['board-labels', boardId],
+    queryKey: boardLabelsKey(boardId),
     queryFn: () => call<{items: LabelOption[]}>('GET', `/boards/${boardId}/labels`),
     enabled: count > 0,
     staleTime: 30_000,

@@ -72,6 +72,9 @@ export type DetailT = {
 export type ActivityT = {id: string; kind: string; meta: Record<string, unknown> | null; actorName: string | null; createdAt: string};
 type Written = {card: CardT; rev: string};
 
+/** The board's label list read by the bulk bar; every label create, rename or delete here refreshes it. */
+export const boardLabelsKey = (boardId: number) => ['board-labels', boardId] as const;
+
 export const cardDetailQuery = (cardId: number) =>
   queryOptions({
     queryKey: ['card', cardId],
@@ -171,15 +174,18 @@ export function useCardActions(boardId: number, cardId: number) {
     const createLabel = async (input: {name: string; colorHex: string}) => {
       const res = await tracked(() => call<{label: LabelT}>('POST', `/boards/${boardId}/labels`, input));
       set(d => ({...d, labels: [...d.labels, res.label]}));
+      void qc.invalidateQueries({queryKey: boardLabelsKey(boardId)});
       return res.label;
     };
     const updateLabel = async (id: number, input: {name: string; colorHex: string}) => {
       const res = await tracked(() => call<{label: LabelT}>('PATCH', `/labels/${id}`, input));
       set(d => ({...d, labels: d.labels.map(l => (l.id === id ? res.label : l))}));
+      void qc.invalidateQueries({queryKey: boardLabelsKey(boardId)});
     };
     const deleteLabel = async (id: number) => {
       await tracked(() => call('DELETE', `/labels/${id}`));
       set(d => ({...d, labels: d.labels.filter(l => l.id !== id), labelIds: d.labelIds.filter(l => l !== id)}));
+      void qc.invalidateQueries({queryKey: boardLabelsKey(boardId)});
     };
 
     const setMember = async (person: PersonT, on: boolean) => {
