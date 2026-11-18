@@ -350,10 +350,7 @@ export function Members() {
       actions: true,
       cell: (i) => (
         <>
-          {i.active &&
-            i.boundToEmail &&
-            (i.emailStatus === "failed" ||
-              i.emailStatus === "not_configured") && (
+          {i.active && i.emailResendable && (
               <Button
                 size="sm"
                 variant="ghost"
