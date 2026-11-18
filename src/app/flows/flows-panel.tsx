@@ -2,6 +2,7 @@ import {useQuery, useQueryClient} from '@tanstack/react-query';
 import {useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
+import {useMe} from '../../portal/shared';
 import {Badge, Button, EmptyState, LoadingBlock, Menu, Notice, Switch, useConfirm, useToast} from '../../portal/ui';
 import {type ApiError, type BoardT, type LaneT} from '../api';
 import {useFlowContext} from './context';
@@ -13,7 +14,8 @@ import './flows.css';
 
 /**
  * "Automations" section of the board settings drawer: the board's Flows, each with an on/off switch and an
- * Edit / Delete menu, and a "New automation" button. Board admins only (the server checks again).
+ * Edit / Delete menu, and a "New automation" button. Board admins whose site role grants `board:flows`
+ * (the `manageFlows` ability) only; the server checks both again.
  */
 export function FlowsSection({board, lanes, open}: {board: BoardT; lanes: LaneT[]; open: boolean}) {
   const t = useT();
@@ -21,7 +23,9 @@ export function FlowsSection({board, lanes, open}: {board: BoardT; lanes: LaneT[
   const toast = useToast();
   const confirm = useConfirm();
   const queryClient = useQueryClient();
-  const allowed = board.canAdmin && !board.archived;
+  const me = useMe();
+  // Board admin alone is not enough: the routes also require the site-wide `board:flows` permission.
+  const allowed = board.canAdmin && !board.archived && !!me.data?.abilities.manageFlows;
   const query = useQuery({...flowsQuery(board.id), enabled: open && allowed});
   const context = useFlowContext(board.workspaceId, lanes, open && allowed);
   const [editing, setEditing] = useState<FlowT | 'new' | null>(null);
