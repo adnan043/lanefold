@@ -51,7 +51,9 @@ const tick = (time: number) => {
   const step = 1 - Math.pow(1 - EASE, elapsed / 16.7);
   current += (target - current) * step;
   if (Math.abs(target - current) < 0.5) current = target;
-  window.scrollTo({top: current, behavior: 'instant'});
+  // Whole device pixels only: fractional offsets make the sticky header and bars shimmer.
+  const dpr = window.devicePixelRatio || 1;
+  window.scrollTo({top: Math.round(current * dpr) / dpr, behavior: 'instant'});
   frame = current === target ? 0 : requestAnimationFrame(tick);
   if (!frame) lastTime = 0;
 };

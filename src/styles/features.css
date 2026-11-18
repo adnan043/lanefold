@@ -257,8 +257,8 @@
   inline-size: 70%;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: color-mix(in oklab, var(--tone-solid) 20%, transparent);
-  filter: blur(60px);
+  /* A soft radial falloff rather than `filter: blur()`, which is costly to repaint while scrolling. */
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--tone-solid) 20%, transparent), transparent);
   pointer-events: none;
 }
 
@@ -302,9 +302,9 @@
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: color-mix(in oklab, var(--card) 86%, transparent);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+  /* No backdrop blur: the group's own soft gradient sits behind it, and ~20 blurred cards
+     repainting every frame made the eased scroll (smooth-scroll.ts) judder. */
+  background: color-mix(in oklab, var(--card) 90%, transparent);
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease,
