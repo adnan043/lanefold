@@ -169,8 +169,6 @@
   "boards.share.roleChanged": "تم تحديث دور {name}.",
   "boards.guestTitle": "لوحات الضيف",
   "boards.guestHint": "لوحات من مساحات عمل أخرى أُضفت إليها. لا ترى هناك إلا هذه اللوحات.",
-  "boards.share.addedByEmail": "إنه في مساحة العمل هذه وتمت إضافته إلى اللوحة.",
-  "boards.share.alreadyOnBoard": "هذا الشخص يرى هذه اللوحة بالفعل.",
   "boards.share.copied": "تم نسخ الرابط.",
   "boards.share.copy": "نسخ الرابط",
   "boards.share.emailExample": "name@example.com",

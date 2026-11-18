@@ -165,8 +165,6 @@
   "boards.share.roleChanged": "نقش {name} به‌روز شد.",
   "boards.guestTitle": "بردهای مهمان",
   "boards.guestHint": "بردهایی از فضاهای کار دیگر که به آن‌ها اضافه شده‌اید. آنجا فقط همین بردها را می‌بینید.",
-  "boards.share.addedByEmail": "او در این فضای کار است و به برد اضافه شد.",
-  "boards.share.alreadyOnBoard": "این شخص از قبل این برد را می‌بیند.",
   "boards.share.copied": "پیوند کپی شد.",
   "boards.share.copy": "کپی پیوند",
   "boards.share.emailExample": "name@example.com",

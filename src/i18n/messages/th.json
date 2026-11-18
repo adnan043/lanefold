@@ -164,8 +164,6 @@
   "boards.share.roleChanged": "อัปเดตบทบาทของ {name} แล้ว",
   "boards.guestTitle": "บอร์ดที่เป็นแขก",
   "boards.guestHint": "บอร์ดของเวิร์กสเปซอื่นที่คุณถูกเพิ่ม ที่นั่นคุณเห็นแค่บอร์ดเหล่านี้",
-  "boards.share.addedByEmail": "คนนี้อยู่ในเวิร์กสเปซและถูกเพิ่มในบอร์ดแล้ว",
-  "boards.share.alreadyOnBoard": "คนนั้นเห็นบอร์ดนี้อยู่แล้ว",
   "boards.share.copied": "คัดลอกลิงก์แล้ว",
   "boards.share.copy": "คัดลอกลิงก์",
   "boards.share.emailExample": "name@example.com",

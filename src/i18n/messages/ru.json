@@ -167,8 +167,6 @@
   "boards.share.roleChanged": "Роль {name} обновлена.",
   "boards.guestTitle": "Гостевые доски",
   "boards.guestHint": "Доски других пространств, куда вас добавили. Там вы видите только эти доски.",
-  "boards.share.addedByEmail": "Этот человек в пространстве и добавлен на доску.",
-  "boards.share.alreadyOnBoard": "Этот человек уже видит эту доску.",
   "boards.share.copied": "Ссылка скопирована.",
   "boards.share.copy": "Копировать ссылку",
   "boards.share.emailExample": "name@example.com",

@@ -165,8 +165,6 @@
   "boards.share.roleChanged": "{name}-এর ভূমিকা বদলানো হয়েছে।",
   "boards.guestTitle": "গেস্ট বোর্ড",
   "boards.guestHint": "অন্য ওয়ার্কস্পেসের যে বোর্ডগুলোতে আপনাকে যোগ করা হয়েছে। সেখানে আপনি শুধু এই বোর্ডগুলোই দেখেন।",
-  "boards.share.addedByEmail": "তিনি এই ওয়ার্কস্পেসে আছেন, তাকে বোর্ডে যোগ করা হয়েছে।",
-  "boards.share.alreadyOnBoard": "তিনি আগে থেকেই এই বোর্ড দেখতে পারেন।",
   "boards.share.copied": "লিংক কপি হয়েছে।",
   "boards.share.copy": "লিংক কপি করুন",
   "boards.share.emailExample": "name@example.com",

@@ -164,8 +164,6 @@
   "boards.share.roleChanged": "Peran {name} diperbarui.",
   "boards.guestTitle": "Papan sebagai tamu",
   "boards.guestHint": "Papan dari ruang kerja lain tempat Anda ditambahkan. Di sana Anda hanya melihat papan ini.",
-  "boards.share.addedByEmail": "Orang itu ada di ruang kerja ini dan sudah ditambahkan ke papan.",
-  "boards.share.alreadyOnBoard": "Orang itu sudah bisa melihat papan ini.",
   "boards.share.copied": "Tautan disalin.",
   "boards.share.copy": "Salin tautan",
   "boards.share.emailExample": "name@example.com",

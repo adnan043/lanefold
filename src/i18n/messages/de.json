@@ -165,8 +165,6 @@
   "boards.share.roleChanged": "Rolle von {name} aktualisiert.",
   "boards.guestTitle": "Gast-Boards",
   "boards.guestHint": "Boards anderer Workspaces, zu denen du hinzugefügt wurdest. Dort siehst du nur diese Boards.",
-  "boards.share.addedByEmail": "Die Person ist in diesem Workspace und wurde zum Board hinzugefügt.",
-  "boards.share.alreadyOnBoard": "Diese Person sieht dieses Board bereits.",
   "boards.share.copied": "Link kopiert.",
   "boards.share.copy": "Link kopieren",
   "boards.share.emailExample": "name@example.com",

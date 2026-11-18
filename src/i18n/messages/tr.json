@@ -165,8 +165,6 @@
   "boards.share.roleChanged": "{name} rolü güncellendi.",
   "boards.guestTitle": "Misafir panolar",
   "boards.guestHint": "Eklendiğiniz diğer çalışma alanlarının panoları. Orada yalnızca bu panoları görürsünüz.",
-  "boards.share.addedByEmail": "Bu çalışma alanında ve panoya eklendi.",
-  "boards.share.alreadyOnBoard": "Bu kişi bu panoyu zaten görebiliyor.",
   "boards.share.copied": "Bağlantı kopyalandı.",
   "boards.share.copy": "Bağlantıyı kopyala",
   "boards.share.emailExample": "name@example.com",

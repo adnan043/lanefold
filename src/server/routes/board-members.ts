@@ -6,7 +6,7 @@ import {audit, normalizeEmail} from '../../platform/auth';
 import {config} from '../../platform/config';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {bgImageUrl} from '../bg-image';
-import {canInvite, guestCapReached, seatRoleFor} from '../board-seats';
+import {canInvite, guestCapReached} from '../board-seats';
 import {getEntitlements} from '../entitlements';
 import {enqueueInviteEmails, sealInviteItem} from '../jobs/invite-email';
 import {mailConfigured} from '../mail/send';
@@ -31,7 +31,7 @@ import {linkOrigin} from '../site-origin';
  *   POST   /boards/:id/join                       a workspace member takes a seat themselves (when the board allows it)
  *   PATCH  /boards/:id/sharing   {memberInvites?, selfJoin?}                                board admins
  *   GET    /boards/:id/invites                    pending email invites (no address: only a hash is kept)
- *   POST   /boards/:id/invites   {email, role}    a workspace member gets a seat at once; anyone else an emailed invite (a guest)
+ *   POST   /boards/:id/invites   {email, role}    an emailed invite, the same for any address (a guest, or a seat for a workspace member, on accept)
  *   DELETE /boards/:id/invites/:inviteId          revoke a pending email invite
  *   GET    /boards/:id/invite-link                {active, role}
  *   POST   /boards/:id/invite-link  {role}        create or replace the link: {url} ONCE (only its SHA-256 is kept)
@@ -60,8 +60,6 @@ const MAX_LIST = 200;
 const MAX_CANDIDATES = 20;
 const MAX_PENDING = 50;
 const INVITE_DAYS = 14;
-/** Address checks (POST /boards/:id/invites) one person may make per hour, across all boards. */
-const LOOKUPS_PER_HOUR = 30;
 const LINK_OPS_PER_HOUR = 20;
 
 const roleOf = (value: unknown): BoardRole | null =>
@@ -418,51 +416,11 @@ export const boardMemberRoutes = new Hono()
     const {workspaceId} = ctx.access;
     if (!ctx.access.canAdmin && role === 'admin') return c.json(FORBIDDEN().body, 403);
 
-    // The answer below says whether an address belongs to someone of this workspace ('added'/'already' vs an
-    // invite), so every check is counted per inviter BEFORE the lookup: guessing addresses is slow and audited.
-    // Bounded read on @@index([actorUserId, action, id desc]).
-    const lookups = await db.auditEvent.findMany({
-      where: {actorUserId: me, action: 'board.invite.lookup', createdAt: {gt: new Date(Date.now() - 3600_000)}},
-      orderBy: {id: 'desc'},
-      take: LOOKUPS_PER_HOUR,
-      select: {id: true},
-    });
-    if (lookups.length >= LOOKUPS_PER_HOUR) {
-      c.header('Retry-After', '3600');
-      return c.json(problem('rate_limited', 'Too many invites. Try again in an hour.'), 429);
-    }
-    // Targeted at the inviter, not the board: it stays out of the workspace audit log (one row per check).
-    await audit(db, {actorUserId: me, action: 'board.invite.lookup', target: ['user', me], meta: {boardId: ctx.boardId}});
-
-    // Someone of this workspace already: seated at once (their workspace role still caps the seat), no email.
-    // ONE read: the address's active account, its role in this workspace and its seat on the board.
-    const [user] = await db.$queryRaw<{id: number; wsRole: string | null; seat: string | null}[]>`
-      SELECT u.id,
-             (SELECT role FROM workspace_members WHERE workspace_id = ${workspaceId} AND user_id = u.id) AS "wsRole",
-             (SELECT role FROM board_members WHERE board_id = ${ctx.boardId} AND user_id = u.id) AS seat
-      FROM users u WHERE u.email = ${email} AND u.status = 'active'`;
-    if (user) {
-      const p = user;
-      if (p.wsRole !== null) {
-        const seatRole = seatRoleFor(p.wsRole, role);
-        if (seatRole === null || p.seat !== null) return c.json({result: 'already'});
-        const n = await db.$executeRaw`
-          INSERT INTO board_members (board_id, user_id, workspace_id, role)
-          SELECT ${ctx.boardId}, m.user_id, m.workspace_id, ${seatRole}::varchar FROM workspace_members m
-          WHERE m.workspace_id = ${workspaceId} AND m.user_id = ${user.id} AND m.role IN ('member', 'viewer')
-          ON CONFLICT (board_id, user_id) DO NOTHING`;
-        if (n > 0) {
-          await Promise.all([
-            notify(db, [user.id], {workspaceId, kind: 'board_member', actorId: me, boardId: ctx.boardId}),
-            db.activity.create({data: {workspaceId, boardId: ctx.boardId, actorId: me, kind: 'board.member_added', meta: {userId: user.id, role: seatRole}}}),
-            audit(db, {actorUserId: me, action: 'board.member.added', target: ['board', ctx.boardId], meta: {userId: user.id, role: seatRole}}),
-          ]);
-        }
-        return c.json({result: n > 0 ? 'added' : 'already'});
-      }
-    }
-
-    // Anyone else becomes a GUEST when they accept: an emailed invite bound to this address (only its keyed hash is kept).
+    // EVERY address gets the same emailed invite, bound to it (only its keyed hash is kept), and the same answer:
+    // the inviter never learns whether the address belongs to someone of this workspace (no lookup at all). On
+    // accept, acceptSeat() does the right thing for who they are: a workspace member takes a normal seat (capped by
+    // their workspace role; owners and admins already see every board), anyone else joins as a GUEST. To seat a
+    // workspace member at once, the Share panel's "Add people" picks them by name.
     // That sends an email from the site's own sender: only from an account whose address is confirmed (phishing, spam).
     if (!c.var.viewer.emailVerified) {
       return c.json(problem('email_unverified', 'Confirm your email address before sending invite emails.'), 403);

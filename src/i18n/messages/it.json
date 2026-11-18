@@ -166,8 +166,6 @@
   "boards.share.roleChanged": "Ruolo di {name} aggiornato.",
   "boards.guestTitle": "Bacheche da ospite",
   "boards.guestHint": "Bacheche di altri spazi a cui sei stato aggiunto. Lì vedi solo queste bacheche.",
-  "boards.share.addedByEmail": "È in questo spazio ed è stato aggiunto alla bacheca.",
-  "boards.share.alreadyOnBoard": "Quella persona vede già questa bacheca.",
   "boards.share.copied": "Link copiato.",
   "boards.share.copy": "Copia link",
   "boards.share.emailExample": "name@example.com",

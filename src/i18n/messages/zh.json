@@ -164,8 +164,6 @@
   "boards.share.roleChanged": "已更新 {name} 的角色。",
   "boards.guestTitle": "访客看板",
   "boards.guestHint": "你被添加到的其他工作区的看板。在那里你只能看到这些看板。",
-  "boards.share.addedByEmail": "对方在此工作区中，已被添加到看板。",
-  "boards.share.alreadyOnBoard": "对方已经可以查看此看板。",
   "boards.share.copied": "链接已复制。",
   "boards.share.copy": "复制链接",
   "boards.share.emailExample": "name@example.com",

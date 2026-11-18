@@ -165,8 +165,6 @@
   "boards.share.roleChanged": "{name} की भूमिका अपडेट की गई।",
   "boards.guestTitle": "अतिथि बोर्ड",
   "boards.guestHint": "दूसरे वर्कस्पेस के बोर्ड जिनमें आपको जोड़ा गया। वहाँ आप केवल ये बोर्ड देखते हैं।",
-  "boards.share.addedByEmail": "वे इस वर्कस्पेस में हैं और उन्हें बोर्ड में जोड़ा गया।",
-  "boards.share.alreadyOnBoard": "वह व्यक्ति पहले से यह बोर्ड देख सकता है।",
   "boards.share.copied": "लिंक कॉपी हुआ।",
   "boards.share.copy": "लिंक कॉपी करें",
   "boards.share.emailExample": "name@example.com",

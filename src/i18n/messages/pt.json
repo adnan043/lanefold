@@ -166,8 +166,6 @@
   "boards.share.roleChanged": "Papel de {name} atualizado.",
   "boards.guestTitle": "Quadros como convidado",
   "boards.guestHint": "Quadros de outros espaços aos quais você foi adicionado. Lá você vê apenas esses quadros.",
-  "boards.share.addedByEmail": "A pessoa está neste espaço e foi adicionada ao quadro.",
-  "boards.share.alreadyOnBoard": "Essa pessoa já pode ver este quadro.",
   "boards.share.copied": "Link copiado.",
   "boards.share.copy": "Copiar link",
   "boards.share.emailExample": "name@example.com",

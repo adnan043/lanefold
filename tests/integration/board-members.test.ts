@@ -174,10 +174,27 @@ describe.skipIf(!DATABASE_URL)('board members (integration, real Postgres)', () 
     expect((await bob.get(`/site-api/boards/${board}`)).status).toBe(404);
   });
 
-  it('an email invite to a workspace member seats them at once; a pending invite can be revoked', async () => {
-    const res = await ann.post(`/site-api/boards/${board}/invites`, {email: 'ben@example.test', role: 'member'});
-    expect(res.json.result).toBe('added');
-    expect((await ben.get(`/site-api/boards/${board}`)).status).toBe(200);
+  it('an email invite answers the same for a workspace member and anyone else; the member takes a normal seat on accept', async () => {
+    const forMember = await ann.post(`/site-api/boards/${board}/invites`, {email: 'ben@example.test', role: 'member'});
+    const forStranger = await ann.post(`/site-api/boards/${board}/invites`, {email: 'new@example.test', role: 'member'});
+    const forNobody = await ann.post(`/site-api/boards/${board}/invites`, {email: 'zqx-nobody@example.test', role: 'member'});
+    // Same status, same keys, same result: the inviter cannot tell who is in the workspace.
+    for (const res of [forMember, forStranger, forNobody]) {
+      expect(res.status).toBe(201);
+      expect(res.json.result).toBe('invited');
+    }
+    expect(Object.keys(forMember.json).sort()).toEqual(Object.keys(forStranger.json).sort());
+    expect(Object.keys(forMember.json).sort()).toEqual(Object.keys(forNobody.json).sort());
+    // Nobody was seated yet: the board's people list does not change either.
+    expect((await ben.get(`/site-api/boards/${board}`)).status).toBe(404);
+    expect((await members(ann)).json.members.some((m: J) => m.id === benId)).toBe(false);
+    // On accept, ben (a workspace member) gets a normal seat, not a guest one.
+    const ok = await ben.post('/site-api/invites/accept', {token: tokenOf(forMember.json.link)});
+    expect(ok.json).toMatchObject({boardId: board, guest: false});
+    expect((await ben.get(`/site-api/boards/${board}`)).json.board).toMatchObject({guest: false, role: 'member'});
+  });
+
+  it('a pending invite can be revoked, and lists no address', async () => {
     const inv = await ann.post(`/site-api/boards/${board}/invites`, {email: 'new@example.test', role: 'viewer'});
     const pending = await ann.get(`/site-api/boards/${board}/invites`);
     expect(pending.json.items).toHaveLength(1);
@@ -185,20 +202,6 @@ describe.skipIf(!DATABASE_URL)('board members (integration, real Postgres)', () 
     expect((await ann.delete(`/site-api/boards/${board}/invites/${inv.json.inviteId}`)).json.revoked).toBe(true);
     // The workspace's own invite list never shows board invites.
     expect((await ann.get(`/site-api/workspaces/${wsA}/invites`)).json.items).toHaveLength(0);
-  });
-
-  it('address checks are capped per inviter (30 an hour): no unlimited guessing of who is a member', async () => {
-    // 30 checks of already-seated or made-up workspace addresses: each answers, none emails anyone.
-    for (let i = 0; i < 30; i++) {
-      const res = await ann.post(`/site-api/boards/${board}/invites`, {email: i === 0 ? 'ben@example.test' : `ben${i}@example.test`, role: 'member'});
-      expect(res.status, `check ${i}`).not.toBe(429);
-      // Made-up addresses go the invite way; age those rows so the separate invite/email caps don't trip first.
-      await db.workspaceInvite.updateMany({data: {createdAt: new Date(Date.now() - 7_200_000), emailQueuedAt: new Date(Date.now() - 7_200_000)}});
-    }
-    const next = await ann.post(`/site-api/boards/${board}/invites`, {email: 'ben@example.test', role: 'member'});
-    expect(next.status).toBe(429);
-    // The checks are audited on the inviter, not the board: the workspace audit log stays readable.
-    expect(await db.auditEvent.count({where: {action: 'board.invite.lookup', targetType: 'user'}})).toBe(30);
   });
 
   it('an invite link seats whoever opens it (a guest when outside), and dies when removed or its maker loses the right', async () => {
@@ -251,13 +254,16 @@ describe.skipIf(!DATABASE_URL)('board members (integration, real Postgres)', () 
 
   it('someone removed from the workspace cannot come back as a guest by link or by an older invite', async () => {
     const old = await ann.post(`/site-api/boards/${board}/invites`, {email: 'ben@example.test', role: 'member'});
-    expect(old.json.result).toBe('added'); // ben is a member: seated at once
+    expect(old.json.result).toBe('invited');
+    await put(ann, benId, 'member');
     const link = await ann.post(`/site-api/boards/${board}/invite-link`, {role: 'member'});
     // ben leaves the workspace (removal recorded), then tries the board link.
     await db.boardMember.deleteMany({where: {boardId: board, userId: benId}});
     await db.workspaceMember.deleteMany({where: {workspaceId: wsA, userId: benId}});
     await db.workspaceRemoval.create({data: {workspaceId: wsA, userId: benId}});
     expect((await ben.post('/site-api/invites/accept', {token: tokenOf(link.json.url)})).status).toBe(404);
+    // Nor the email invite made while still a member.
+    expect((await ben.post('/site-api/invites/accept', {token: tokenOf(old.json.link)})).status).toBe(404);
     expect((await ben.get(`/site-api/boards/${board}`)).status).toBe(404);
     // A deliberate email invite made after the removal works (as a guest).
     const again = await ann.post(`/site-api/boards/${board}/invites`, {email: 'ben@example.test', role: 'member'});
