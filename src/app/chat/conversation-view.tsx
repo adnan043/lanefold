@@ -70,7 +70,8 @@ type ListProps = {
   /** Keep every loaded message (an open thread's parent must stay in the list). */
   holdTrim?: boolean;
   /** Shown above the first message once the start of the history is loaded (the main list, not a thread). */
-  welcome?: {mark: ReactNode; title: string};
+  /** The start of the history: a heading (null = none, only the note when there are no messages yet). */
+  welcome?: {mark: ReactNode; title: string | null};
 };
 
 /** The scrolling list: oldest first, "Load older" on top, stays at the bottom for new messages unless the reader scrolled up. */
@@ -261,7 +262,7 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
             )}
           </div>
         )}
-        {welcome && feed.nextBefore === null && (
+        {welcome?.title && feed.nextBefore === null && (
           <div className="chat-welcome">
             {welcome.mark}
             <h3>
@@ -580,7 +581,8 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
             announceIn={title}
             cardTarget={cardTarget}
             holdTrim={thread !== null}
-            welcome={embedded ? undefined : {mark: mark('lg'), title: welcomeTitle}}
+            // Channels, DMs and groups start without a heading; a board chat keeps its own.
+            welcome={embedded ? undefined : {mark: mark('lg'), title: conversation.kind === 'board' ? welcomeTitle : null}}
           />
           {feed.status === 'ready' &&
             (feed.canWrite ? (
