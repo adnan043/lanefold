@@ -1,11 +1,11 @@
 import {useMemo, useState} from 'react';
 
 import {useI18n, useT} from '../../../i18n';
-import {Badge, EmptyState} from '../../../portal/ui';
+import {Badge, EmptyState, Notice} from '../../../portal/ui';
 import {type Column, DataTable} from '../../../portal/ui';
 import type {BoardData, CardT} from '../../api';
 import type {BoardActions} from '../actions';
-import {useFieldColumns} from '../../custom-fields/use-field-columns';
+import {useFieldColumns, useFieldValues} from '../../custom-fields/use-field-columns';
 import {nextSort, type Row, type SortDir, type SortKey, sortRows, tableRows} from './view-logic';
 import {LoadMoreBar, useFirstPages} from './use-lanes-loaded';
 
@@ -28,6 +28,8 @@ export function TableView({data, actions, onOpenCard}: {data: BoardData; actions
   };
 
   const fieldColumns = useFieldColumns<Row>(data.board.id, data.board.rev);
+  // Same query as the columns (deduplicated): true when the board has more values than the view reads.
+  const fieldsPartial = useFieldValues(data.board.id, data.board.rev).data?.partial ?? false;
   const columns: Column<Row>[] = [
     {
       key: 'number',
@@ -74,6 +76,7 @@ export function TableView({data, actions, onOpenCard}: {data: BoardData; actions
 
   return (
     <div className="lf-vw lf-vw-table">
+      {fieldsPartial && <Notice tone="info">{t('views.table.fieldsPartial')}</Notice>}
       <DataTable
         columns={columns}
         rows={rows}

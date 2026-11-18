@@ -1,22 +1,38 @@
-import {useQuery} from '@tanstack/react-query';
+import {useQuery, useQueryClient} from '@tanstack/react-query';
+import {useEffect, useRef} from 'react';
 
 import {useI18n, useT} from '../../i18n';
 import {Badge} from '../../portal/ui';
 import {type Column} from '../../portal/ui';
 import {call} from '../api';
-import type {FieldT} from '../cards/use-card';
+import {type FieldValuesPage, type FieldValuesT, loadFieldValues, revNewer} from './field-values';
 
-type Value = string | number | boolean;
-export type FieldValuesT = {fields: FieldT[]; values: Record<string, Record<string, Value>>};
+export type {FieldValuesT} from './field-values';
 
-/** A board's custom fields and every card's values (`GET /boards/:id/field-values`), re-read when the board's revision moves. */
+/**
+ * A board's custom fields and every card's values (`GET /boards/:id/field-values`). Read in full (page by page) once,
+ * then, each time the board's revision moves past what we hold, only the cards that changed since (one small read).
+ */
 export function useFieldValues(boardId: number, rev: string) {
-  return useQuery({
-    queryKey: ['field-values', boardId, rev],
-    queryFn: () => call<FieldValuesT>('GET', `/boards/${boardId}/field-values`),
-    staleTime: 30_000,
-    placeholderData: previous => previous,
+  const qc = useQueryClient();
+  const key = ['field-values', boardId] as const;
+  const query = useQuery({
+    queryKey: key,
+    queryFn: () => loadFieldValues(q => call<FieldValuesPage>('GET', `/boards/${boardId}/field-values${q ? `?${q}` : ''}`), qc.getQueryData<FieldValuesT>(key)),
+    // Refreshed by the revision below, never on a timer or on focus.
+    staleTime: Infinity,
+    gcTime: 60_000,
   });
+  const held = query.data?.rev;
+  const asked = useRef('');
+  const {refetch, isFetching} = query;
+  useEffect(() => {
+    // One read per revision: a delta that answers an older revision (never expected) cannot loop.
+    if (held === undefined || isFetching || !revNewer(rev, held) || asked.current === `${boardId}:${rev}`) return;
+    asked.current = `${boardId}:${rev}`;
+    void refetch();
+  }, [boardId, rev, held, isFetching, refetch]);
+  return query;
 }
 
 /** One Table column per custom field; the cell shows the card's value in the field's type. */

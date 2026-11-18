@@ -105,40 +105,87 @@ async function fieldFor(db: PrismaClient, userId: number, fieldId: number | unde
   return {...ctx, field};
 }
 
-/** The most values one board read returns (20 fields x a few hundred cards; the Table view pages its cards the same way). */
-const VALUES_TAKE = 5000;
+/**
+ * One page of a board's values: whole cards only, at most VALUES_TAKE values (20 fields x 250 cards). The Table view
+ * reads the pages in turn (`?after=<last card id>`), then only what changed (`?since=<rev>`).
+ */
+export const VALUES_TAKE = 5000;
+/** A delta covers at most this many changed cards (x 20 fields = VALUES_TAKE values); more and the client reads it all again. */
+export const DELTA_CARDS = 250;
+
+type ValueRow = Parameters<typeof valueMap>[0][number] & {cardId: number};
+const byCard = (rows: ValueRow[], fields: Parameters<typeof valueMap>[1]) => {
+  const grouped = new Map<number, ValueRow[]>();
+  for (const r of rows) grouped.set(r.cardId, [...(grouped.get(r.cardId) ?? []), r]);
+  const values: Record<string, Record<string, FieldValue>> = {};
+  for (const [cardId, list] of grouped) values[String(cardId)] = valueMap(list, fields);
+  return values;
+};
+/** `?after=`: absent is 0 (the first page); anything but a card id is null (refused). */
+const cursorOf = (raw: string | undefined) => (raw === undefined ? 0 : /^\d{1,10}$/.test(raw) && Number(raw) <= 2_147_483_647 ? Number(raw) : null);
 
 export const cardFieldRoutes = new Hono()
   /* ---- the board's fields and every card's values (the Table view's columns) ---- */
+  // `?after=<card id>`: the next page of a full read (answer `nextAfter`, null on the last page).
+  // `?since=<rev>`: only the cards changed after that revision (`changed`: their ids, archived ones included, so the
+  // client drops them; `values`: the live ones' values; `reset: true` when too much changed: read it all again).
+  // Every answer carries `rev`, read FIRST (as /boards/:id/changes does), so a change landing meanwhile is in this
+  // answer or comes with the next delta, never skipped.
   .get('/boards/:id/field-values', withViewer, requireAuth, withDb, noStore, async c => {
     const db = c.var.db;
     const userId = c.var.viewer.id!;
     const boardId = idOf(c.req.param('id'));
+    const after = cursorOf(c.req.query('after'));
+    const rawSince = c.req.query('since');
     if (!boardId) return notFound(c, 'board');
-    // ONE round trip: the board with boardAccess()'s columns and its fields, and beside it the values of the board's
-    // fields (the board must be reachable IN that query too). Nothing is answered unless boardAccess()'s rules pass.
-    const [board, valueRows] = await Promise.all([
-      db.board.findFirst({
-        where: {id: boardId, ...boardReachable(userId)},
-        select: {...accessSelect(userId), customFields: {orderBy: [...FIELD_ORDER], take: FIELD_LIMITS.perBoard, select: {...fieldCols, workspaceId: true}}},
-      }),
-      db.cardFieldValue.findMany({
-        where: {field: {boardId, board: boardReachable(userId)}, card: {archivedAt: null}},
-        orderBy: [{cardId: 'asc'}, {fieldId: 'asc'}],
-        take: VALUES_TAKE,
-        select: {cardId: true, workspaceId: true, ...valueCols},
-      }),
-    ]);
+    if (after === null) return invalid(c, {after: {code: 'invalid', message: 'Send the last card id you have.'}});
+    if (rawSince !== undefined && !/^\d{1,15}$/.test(rawSince)) return invalid(c, {since: {code: 'invalid', message: 'Send the revision you have.'}});
+    // The board with boardAccess()'s columns (its revision too) and its fields, in one query: nothing more is read
+    // unless boardAccess()'s rules pass.
+    const board = await db.board.findFirst({
+      where: {id: boardId, ...boardReachable(userId)},
+      select: {...accessSelect(userId), customFields: {orderBy: [...FIELD_ORDER], take: FIELD_LIMITS.perBoard, select: {...fieldCols, workspaceId: true}}},
+    });
     const access = board ? resolveAccess(board, userId) : null;
     if (!board || !access) return notFound(c, 'board');
-    const fields = board.customFields.filter(f => f.workspaceId === access.workspaceId);
-    if (!fields.length) return c.json({fields: [], values: {}});
-    const rows = valueRows.filter(r => r.workspaceId === access.workspaceId);
-    const byCard = new Map<number, typeof rows>();
-    for (const r of rows) byCard.set(r.cardId, [...(byCard.get(r.cardId) ?? []), r]);
-    const values: Record<string, Record<string, FieldValue>> = {};
-    for (const [cardId, list] of byCard) values[String(cardId)] = valueMap(list, fields);
-    return c.json({fields: fields.map(fieldShape), values});
+    const {workspaceId} = access;
+    const rev = String(board.rev);
+    const fields = board.customFields.filter(f => f.workspaceId === workspaceId);
+    if (!fields.length) return c.json({fields: [], values: {}, rev, nextAfter: null, changed: []});
+    const shapes = fields.map(fieldShape);
+
+    if (rawSince !== undefined) {
+      const since = BigInt(rawSince);
+      if (since > board.rev) return c.json({fields: shapes, values: {}, rev, reset: true});
+      const upto = {gt: since, lte: board.rev};
+      const [changed, rows] = await Promise.all([
+        db.card.findMany({where: {workspaceId, boardId, updatedRev: upto}, orderBy: {updatedRev: 'asc'}, take: DELTA_CARDS + 1, select: {id: true}}),
+        db.cardFieldValue.findMany({
+          where: {workspaceId, field: {boardId}, card: {workspaceId, boardId, archivedAt: null, updatedRev: upto}},
+          orderBy: [{cardId: 'asc'}, {fieldId: 'asc'}],
+          take: DELTA_CARDS * FIELD_LIMITS.perBoard,
+          select: {cardId: true, ...valueCols},
+        }),
+      ]);
+      if (changed.length > DELTA_CARDS) return c.json({fields: shapes, values: {}, rev, reset: true});
+      return c.json({fields: shapes, values: byCard(rows, fields), changed: changed.map(r => r.id), rev});
+    }
+
+    const rows = await db.cardFieldValue.findMany({
+      where: {workspaceId, field: {boardId}, card: {workspaceId, boardId, archivedAt: null}, ...(after ? {cardId: {gt: after}} : {})},
+      orderBy: [{cardId: 'asc'}, {fieldId: 'asc'}],
+      take: VALUES_TAKE + 1,
+      select: {cardId: true, ...valueCols},
+    });
+    // One row past the page says whether there is more, and whether the page's last card goes on past it: then that
+    // card is left for the next page, so every card comes whole (a card holds at most 20 values, far below a page).
+    let nextAfter: number | null = null;
+    if (rows.length > VALUES_TAKE) {
+      const extra = rows.pop()!;
+      while (rows.length && rows[rows.length - 1]!.cardId === extra.cardId) rows.pop();
+      nextAfter = rows.length ? rows[rows.length - 1]!.cardId : null;
+    }
+    return c.json({fields: shapes, values: byCard(rows, fields), rev, nextAfter});
   })
 
   .post('/boards/:id/fields', fieldBody, withViewer, requireAuth, withDb, noStore, async c => {
