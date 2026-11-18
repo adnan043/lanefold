@@ -15,14 +15,18 @@ import {type FlowAction, type FlowConfig, MAX_FLOWS_PER_BOARD, readConfig, type 
  *  - Never exceeds the board: every read and write carries `board_id` and `workspace_id`; lanes, labels and people a
  *    flow names are re-checked at run time (they may have been deleted, archived or left since it was saved).
  *  - Loop-safe: chain depth <= MAX_DEPTH, a flow runs at most once per card per chain (`seen`), and one user action
- *    spends at most MAX_ACTIONS_PER_RUN actions in total (`budget`).
+ *    spends at most MAX_ACTIONS_PER_RUN actions per card it touched, never more than MAX_ACTIONS_PER_BATCH in total
+ *    (`budget`). Cards a spent budget leaves out are logged (a count, never card text).
  *  - Idempotent actions: assigning or labelling twice is a no-op (no rev bump, no activity).
  *  - Each action is its own small transaction (board row lock via `bump`, same as every card write).
  */
 
 export const MAX_DEPTH = 3;
+/** Actions one card's events may spend, chained flows included (a single card's whole run). */
 export const MAX_ACTIONS_PER_RUN = 20;
-/** Cards one event batch may carry (the create route adds at most 20). */
+/** The safety cap for one user action, however many cards it carried (a bulk move sends up to 50). */
+export const MAX_ACTIONS_PER_BATCH = 300;
+/** Cards read and run together: events are processed in slices of this size, all of them. */
 const MAX_EVENT_CARDS = 20;
 const MAX_ASSIGNEES = 50;
 
@@ -44,7 +48,10 @@ export type Run = {
   budget: {left: number};
 };
 
-export const newRun = (depth = 0): Run => ({depth, seen: new Set(), budget: {left: MAX_ACTIONS_PER_RUN}});
+export const newRun = (depth = 0, budget = MAX_ACTIONS_PER_RUN): Run => ({depth, seen: new Set(), budget: {left: budget}});
+
+/** The budget for a batch of `cards` event cards: what one card gets, per card, up to the safety cap. */
+export const batchBudget = (cards: number): number => Math.min(MAX_ACTIONS_PER_BATCH, Math.max(1, cards) * MAX_ACTIONS_PER_RUN);
 
 type StoredFlow = {id: number; name: string; config: unknown};
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
@@ -253,9 +260,10 @@ async function passing(db: PrismaClient, board: BoardInfo, cardIds: readonly num
 /**
  * Runs ONE flow on the given cards (already known to be on the board). Used by the event runner and the daily job.
  * `onMove` lets the event runner chain card_moved flows for cards a `move` action relocated.
- * `deadline` (epoch ms, the daily job's time budget): checked BETWEEN cards, never inside one, so a card is either
- * fully handled or not started. Returns the id of the first card it did not start because the deadline passed
- * (the caller resumes from there), or null when it went through the list (or the action budget ran out).
+ * `deadline` (epoch ms, the daily job's time budget) and the action budget are checked BETWEEN cards, never inside
+ * one, so a card is either fully handled or not started: a card starts only while the budget covers all of the
+ * flow's actions. Returns the id of the first card it did not start because the deadline passed or the budget was
+ * spent (the caller resumes from there, or logs what was left out), or null when it went through the list.
  */
 export async function applyFlow(
   db: PrismaClient,
@@ -277,11 +285,16 @@ export async function applyFlow(
     const key = `${flow.id}:${cardId}`;
     if (run.seen.has(key)) continue;
     if (deadline !== undefined && Date.now() >= deadline) return cardId;
+    if (pass && !pass.has(cardId)) {
+      run.seen.add(key);
+      continue;
+    }
+    if (run.budget.left < config.actions.length) return cardId;
     run.seen.add(key);
-    if (pass && !pass.has(cardId)) continue;
     const ctx: Ctx = {db, board, cardId, flow: {id: flow.id, name: flow.name}, kind, run, memo};
     for (const action of config.actions) {
-      if (run.budget.left <= 0) return null;
+      // A chained flow (onMove) may have spent the shared budget part-way through this card.
+      if (run.budget.left <= 0) break;
       run.budget.left--;
       try {
         const out = await perform(ctx, action);
@@ -298,41 +311,51 @@ export async function applyFlow(
 
 /**
  * Runs the enabled flows of a board for events that just committed. All events share one board and one kind
- * (the create route adds up to 20 cards at once). Never throws.
+ * (the create route adds up to 20 cards at once, a bulk move up to 50). Every event is processed, in slices of
+ * MAX_EVENT_CARDS cards; a top-level call (no `run`) gets a budget sized to its cards (`batchBudget`). Never throws.
  */
-export async function runFlows(db: PrismaClient, events: readonly FlowEvent[], run: Run = newRun()): Promise<void> {
+export async function runFlows(db: PrismaClient, events: readonly FlowEvent[], run: Run = newRun(0, batchBudget(events.length))): Promise<void> {
   try {
     const first = events[0];
     if (!first || run.depth >= MAX_DEPTH || run.budget.left <= 0) return;
-    const batch = events.slice(0, MAX_EVENT_CARDS);
-    const flows = await db.flow.findMany({
-      where: {boardId: first.boardId, workspaceId: first.workspaceId, triggerKind: first.kind, enabled: true},
-      select: {id: true, name: true, config: true},
-      orderBy: {id: 'asc'},
-      take: MAX_FLOWS_PER_BOARD,
-    });
-    if (flows.length === 0) return;
-    // Independent reads, side by side. The cards must still be live on this board (one read for the whole batch).
-    const [allowed, board, live] = await Promise.all([
+    const [flows, allowed, board] = await Promise.all([
+      db.flow.findMany({
+        where: {boardId: first.boardId, workspaceId: first.workspaceId, triggerKind: first.kind, enabled: true},
+        select: {id: true, name: true, config: true},
+        orderBy: {id: 'asc'},
+        take: MAX_FLOWS_PER_BOARD,
+      }),
       mayRun(db, first.workspaceId),
       loadBoard(db, first.boardId, first.workspaceId),
-      db.card.findMany({
+    ]);
+    if (flows.length === 0 || !allowed || !board) return;
+    const next = {...run, depth: run.depth + 1};
+    let skipped = 0;
+    for (let at = 0; at < events.length; at += MAX_EVENT_CARDS) {
+      const batch = events.slice(at, at + MAX_EVENT_CARDS);
+      if (run.budget.left <= 0) {
+        skipped += batch.length;
+        continue;
+      }
+      // The cards must still be live on this board (one read per slice).
+      const live = await db.card.findMany({
         where: {id: {in: batch.map(e => e.cardId)}, boardId: first.boardId, workspaceId: first.workspaceId, archivedAt: null},
         select: {id: true, laneId: true},
         take: MAX_EVENT_CARDS,
-      }),
-    ]);
-    if (!allowed || !board) return;
-    const lane = new Map(live.map(c => [c.id, c.laneId]));
-    const next = {...run, depth: run.depth + 1};
-    for (const flow of flows) {
-      const config = readConfig(flow.config);
-      if (!config || (config.trigger.kind !== 'card_created' && config.trigger.kind !== 'card_moved')) continue;
-      const wanted = config.trigger.laneId;
-      const ids = batch.filter(e => lane.has(e.cardId) && (!wanted || e.laneId === wanted) && e.fromLaneId !== e.laneId).map(e => e.cardId);
-      if (ids.length === 0) continue;
-      await applyFlow(db, board, flow, first.kind, ids, run, ev => runFlows(db, [ev], next));
+      });
+      const lane = new Map(live.map(c => [c.id, c.laneId]));
+      for (const flow of flows) {
+        const config = readConfig(flow.config);
+        if (!config || (config.trigger.kind !== 'card_created' && config.trigger.kind !== 'card_moved')) continue;
+        const wanted = config.trigger.laneId;
+        const ids = batch.filter(e => lane.has(e.cardId) && (!wanted || e.laneId === wanted) && e.fromLaneId !== e.laneId).map(e => e.cardId);
+        if (ids.length === 0) continue;
+        const stoppedAt = await applyFlow(db, board, flow, first.kind, ids, run, ev => runFlows(db, [ev], next));
+        if (stoppedAt !== null) skipped += ids.length - ids.indexOf(stoppedAt);
+      }
     }
+    // Ids and counts only: never card text.
+    if (skipped) console.warn(`flows: action budget spent on board ${first.boardId}, ${skipped} card run(s) left out`);
   } catch (err) {
     console.error(`flows: ${(err as Error).message}`);
   }

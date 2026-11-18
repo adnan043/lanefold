@@ -1682,6 +1682,7 @@
   "flows.problem.lane_gone": "A lane it uses was deleted. Edit it to fix.",
   "flows.problem.label_gone": "A label it uses was deleted. Edit it to fix.",
   "flows.problem.user_gone": "A person it uses left. Edit it to fix.",
+  "flows.problem.invalid_config": "Its settings are no longer valid. Edit it to fix.",
   "flows.err.required": "Choose or enter a value.",
   "flows.err.tooLong": "This is too long.",
   "flows.err.invalid": "This value is not valid.",

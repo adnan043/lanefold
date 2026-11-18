@@ -1675,6 +1675,7 @@
   "flows.problem.lane_gone": "使用中のレーンが削除されました。編集して修正してください。",
   "flows.problem.label_gone": "使用中のラベルが削除されました。編集して修正してください。",
   "flows.problem.user_gone": "使用中のメンバーが退出しました。編集して修正してください。",
+  "flows.problem.invalid_config": "設定が無効になっています。編集して修正してください。",
   "flows.err.required": "値を選ぶか入力してください。",
   "flows.err.tooLong": "長すぎます。",
   "flows.err.invalid": "この値は無効です。",

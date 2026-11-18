@@ -1675,6 +1675,7 @@
   "flows.problem.lane_gone": "Lajur yang dipakai telah dihapus. Ubah otomatisasi untuk memperbaikinya.",
   "flows.problem.label_gone": "Label yang dipakai telah dihapus. Ubah otomatisasi untuk memperbaikinya.",
   "flows.problem.user_gone": "Orang yang dipakai sudah keluar. Ubah otomatisasi untuk memperbaikinya.",
+  "flows.problem.invalid_config": "Pengaturannya sudah tidak valid. Ubah otomatisasi untuk memperbaikinya.",
   "flows.err.required": "Pilih atau masukkan nilai.",
   "flows.err.tooLong": "Terlalu panjang.",
   "flows.err.invalid": "Nilai ini tidak valid.",

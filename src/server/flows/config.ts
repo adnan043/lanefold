@@ -29,6 +29,9 @@ export const MAX_DUE_DAYS = 30;
 export const MAX_COMMENT = 500;
 export const MAX_NAME = 80;
 export const MAX_FLOWS_PER_BOARD = 30;
+/** Problem codes a listed flow may carry; each has a `flows.problem.<code>` message in every locale. */
+export const FLOW_PROBLEMS = ['lane_gone', 'label_gone', 'user_gone', 'invalid_config'] as const;
+export type FlowProblem = (typeof FLOW_PROBLEMS)[number];
 
 export type Errors = Record<string, FieldError>;
 

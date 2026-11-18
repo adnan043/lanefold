@@ -1675,6 +1675,7 @@
   "flows.problem.lane_gone": "Một cột đang dùng đã bị xóa. Hãy sửa để khắc phục.",
   "flows.problem.label_gone": "Một nhãn đang dùng đã bị xóa. Hãy sửa để khắc phục.",
   "flows.problem.user_gone": "Một người đang dùng đã rời đi. Hãy sửa để khắc phục.",
+  "flows.problem.invalid_config": "Cài đặt của nó không còn hợp lệ. Hãy sửa để khắc phục.",
   "flows.err.required": "Hãy chọn hoặc nhập một giá trị.",
   "flows.err.tooLong": "Quá dài.",
   "flows.err.invalid": "Giá trị này không hợp lệ.",

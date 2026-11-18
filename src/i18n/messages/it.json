@@ -1689,6 +1689,7 @@
   "flows.problem.lane_gone": "Una colonna usata è stata eliminata. Modifica l'automazione per risolvere.",
   "flows.problem.label_gone": "Un'etichetta usata è stata eliminata. Modifica l'automazione per risolvere.",
   "flows.problem.user_gone": "Una persona usata non c'è più. Modifica l'automazione per risolvere.",
+  "flows.problem.invalid_config": "Le sue impostazioni non sono più valide. Modifica l'automazione per risolvere.",
   "flows.err.required": "Scegli o inserisci un valore.",
   "flows.err.tooLong": "È troppo lungo.",
   "flows.err.invalid": "Questo valore non è valido.",

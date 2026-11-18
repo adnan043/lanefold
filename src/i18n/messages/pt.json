@@ -1689,6 +1689,7 @@
   "flows.problem.lane_gone": "Uma lista usada foi excluída. Edite a automação para corrigir.",
   "flows.problem.label_gone": "Uma etiqueta usada foi excluída. Edite a automação para corrigir.",
   "flows.problem.user_gone": "Uma pessoa usada saiu. Edite a automação para corrigir.",
+  "flows.problem.invalid_config": "As configurações dela não são mais válidas. Edite a automação para corrigir.",
   "flows.err.required": "Escolha ou digite um valor.",
   "flows.err.tooLong": "Está muito longo.",
   "flows.err.invalid": "Este valor não é válido.",

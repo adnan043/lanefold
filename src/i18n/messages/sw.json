@@ -1682,6 +1682,7 @@
   "flows.problem.lane_gone": "Safu inayotumika imefutwa. Hariri ili kurekebisha.",
   "flows.problem.label_gone": "Lebo inayotumika imefutwa. Hariri ili kurekebisha.",
   "flows.problem.user_gone": "Mtu anayetumika ameondoka. Hariri ili kurekebisha.",
+  "flows.problem.invalid_config": "Mipangilio yake si halali tena. Hariri ili kurekebisha.",
   "flows.err.required": "Chagua au weka thamani.",
   "flows.err.tooLong": "Ni ndefu mno.",
   "flows.err.invalid": "Thamani hii si sahihi.",

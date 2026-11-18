@@ -1675,6 +1675,7 @@
   "flows.problem.lane_gone": "사용 중인 레인이 삭제되었습니다. 편집하여 해결하세요.",
   "flows.problem.label_gone": "사용 중인 라벨이 삭제되었습니다. 편집하여 해결하세요.",
   "flows.problem.user_gone": "사용 중인 사람이 나갔습니다. 편집하여 해결하세요.",
+  "flows.problem.invalid_config": "설정이 더 이상 유효하지 않습니다. 편집하여 해결하세요.",
   "flows.err.required": "값을 선택하거나 입력하세요.",
   "flows.err.tooLong": "너무 깁니다.",
   "flows.err.invalid": "올바르지 않은 값입니다.",

@@ -1682,6 +1682,7 @@
   "flows.problem.lane_gone": "Eine verwendete Liste wurde gelöscht. Bearbeite die Automatisierung, um das zu beheben.",
   "flows.problem.label_gone": "Ein verwendetes Label wurde gelöscht. Bearbeite die Automatisierung, um das zu beheben.",
   "flows.problem.user_gone": "Eine verwendete Person ist nicht mehr dabei. Bearbeite die Automatisierung, um das zu beheben.",
+  "flows.problem.invalid_config": "Ihre Einstellungen sind nicht mehr gültig. Bearbeite die Automatisierung, um das zu beheben.",
   "flows.err.required": "Wähle oder gib einen Wert ein.",
   "flows.err.tooLong": "Das ist zu lang.",
   "flows.err.invalid": "Dieser Wert ist ungültig.",

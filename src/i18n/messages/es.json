@@ -1689,6 +1689,7 @@
   "flows.problem.lane_gone": "Se eliminó una lista que usa. Edítala para arreglarlo.",
   "flows.problem.label_gone": "Se eliminó una etiqueta que usa. Edítala para arreglarlo.",
   "flows.problem.user_gone": "Una persona que usa ya no está. Edítala para arreglarlo.",
+  "flows.problem.invalid_config": "Su configuración ya no es válida. Edítala para arreglarlo.",
   "flows.err.required": "Elige o escribe un valor.",
   "flows.err.tooLong": "Es demasiado largo.",
   "flows.err.invalid": "Este valor no es válido.",

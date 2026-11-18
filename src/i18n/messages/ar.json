@@ -1710,6 +1710,7 @@
   "flows.problem.lane_gone": "تم حذف مسار مستخدم. عدّل الأتمتة لإصلاح ذلك.",
   "flows.problem.label_gone": "تم حذف تسمية مستخدمة. عدّل الأتمتة لإصلاح ذلك.",
   "flows.problem.user_gone": "غادر شخص مستخدم. عدّل الأتمتة لإصلاح ذلك.",
+  "flows.problem.invalid_config": "إعداداتها لم تعد صالحة. عدّل الأتمتة لإصلاح ذلك.",
   "flows.err.required": "اختر قيمة أو أدخلها.",
   "flows.err.tooLong": "هذا طويل جدًا.",
   "flows.err.invalid": "هذه القيمة غير صالحة.",

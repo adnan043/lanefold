@@ -1682,6 +1682,7 @@
   "flows.problem.lane_gone": "Kullandığı bir liste silinmiş. Düzeltmek için düzenleyin.",
   "flows.problem.label_gone": "Kullandığı bir etiket silinmiş. Düzeltmek için düzenleyin.",
   "flows.problem.user_gone": "Kullandığı bir kişi ayrılmış. Düzeltmek için düzenleyin.",
+  "flows.problem.invalid_config": "Ayarları artık geçerli değil. Düzeltmek için düzenleyin.",
   "flows.err.required": "Bir değer seçin veya girin.",
   "flows.err.tooLong": "Bu çok uzun.",
   "flows.err.invalid": "Bu değer geçerli değil.",

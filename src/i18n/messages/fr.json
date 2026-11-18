@@ -1689,6 +1689,7 @@
   "flows.problem.lane_gone": "Une liste utilisée a été supprimée. Modifiez l'automatisation pour corriger.",
   "flows.problem.label_gone": "Une étiquette utilisée a été supprimée. Modifiez l'automatisation pour corriger.",
   "flows.problem.user_gone": "Une personne utilisée est partie. Modifiez l'automatisation pour corriger.",
+  "flows.problem.invalid_config": "Ses paramètres ne sont plus valides. Modifiez l'automatisation pour corriger.",
   "flows.err.required": "Choisissez ou saisissez une valeur.",
   "flows.err.tooLong": "C'est trop long.",
   "flows.err.invalid": "Cette valeur n'est pas valide.",
