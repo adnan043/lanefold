@@ -1948,5 +1948,17 @@
   "chat.viewThread": "Xem chuỗi",
   "chat.mentionSomeone": "Nhắc đến ai đó",
   "chat.insertEmoji": "Biểu tượng cảm xúc",
-  "chat.sendHint": "Enter để gửi · Shift + Enter để xuống dòng"
+  "chat.sendHint": "Enter để gửi · Shift + Enter để xuống dòng",
+  "chat.attachFile": "Đính kèm tệp",
+  "chat.filesToSend": "Tệp sẽ gửi",
+  "chat.uploadingFile": "Đang tải lên…",
+  "chat.uploadFailed": "Tải lên thất bại",
+  "chat.removeFile": "Gỡ {name}",
+  "chat.fileTooBig": "{name} lớn hơn {max}.",
+  "chat.fileTypeRefused": "Không thể gửi {name} ở đây. Hãy gửi tệp PDF, Word, Excel, PowerPoint, văn bản, CSV, ZIP hoặc hình ảnh.",
+  "chat.tooManyFiles": "Gửi tối đa {n} tệp mỗi lần.",
+  "chat.waitForUploads": "Hãy chờ các tệp tải lên xong.",
+  "chat.messageFiles": "Tệp",
+  "chat.downloadFile": "Tải xuống {name}",
+  "chat.openFile": "Mở {name}"
 }

@@ -1948,5 +1948,17 @@
   "chat.viewThread": "스레드 보기",
   "chat.mentionSomeone": "멘션하기",
   "chat.insertEmoji": "이모지",
-  "chat.sendHint": "Enter로 보내기 · Shift + Enter로 줄 바꿈"
+  "chat.sendHint": "Enter로 보내기 · Shift + Enter로 줄 바꿈",
+  "chat.attachFile": "파일 첨부",
+  "chat.filesToSend": "보낼 파일",
+  "chat.uploadingFile": "업로드 중…",
+  "chat.uploadFailed": "업로드 실패",
+  "chat.removeFile": "{name} 제거",
+  "chat.fileTooBig": "{name}이(가) {max}보다 큽니다.",
+  "chat.fileTypeRefused": "{name}은(는) 여기서 보낼 수 없습니다. PDF, Word, Excel, PowerPoint, 텍스트, CSV, ZIP 또는 이미지 파일을 보내세요.",
+  "chat.tooManyFiles": "한 번에 최대 {n}개의 파일을 보낼 수 있습니다.",
+  "chat.waitForUploads": "파일 업로드가 끝날 때까지 기다려 주세요.",
+  "chat.messageFiles": "파일",
+  "chat.downloadFile": "{name} 다운로드",
+  "chat.openFile": "{name} 열기"
 }

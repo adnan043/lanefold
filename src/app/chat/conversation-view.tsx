@@ -403,8 +403,9 @@ function ThreadPanel({workspaceId, boardId, conversationId, title, parent, pulse
           placeholder={t('chat.replyPlaceholder')}
           submitLabel={t('chat.replyLabel')}
           autoFocus
-          onSend={async (body, mentions, cardIds) => {
-            const sent = await feed.send(body, mentions, cardIds);
+          conversationId={conversationId}
+          onSend={async (body, mentions, cardIds, files) => {
+            const sent = await feed.send(body, mentions, cardIds, files);
             if (sent) onSent();
           }}
         />
@@ -583,7 +584,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
           />
           {feed.status === 'ready' &&
             (feed.canWrite ? (
-              <Composer people={peopleList} workspaceId={workspaceId} draft={{kind: 'chat', id: conversation.id}} label={t('chat.composerLabel')} placeholder={t('chat.composerPlaceholder', {name: title})} onSend={(body, mentions, cardIds) => feed.send(body, mentions, cardIds)} />
+              <Composer people={peopleList} workspaceId={workspaceId} draft={{kind: 'chat', id: conversation.id}} label={t('chat.composerLabel')} placeholder={t('chat.composerPlaceholder', {name: title})} conversationId={conversation.id} onSend={(body, mentions, cardIds, files) => feed.send(body, mentions, cardIds, files)} />
             ) : (
               <Notice tone="info">{feed.archived ? t('chat.archivedNotice') : t('chat.readOnly')}</Notice>
             ))}

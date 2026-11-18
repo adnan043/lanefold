@@ -4,24 +4,32 @@ import {useEffect, useId, useLayoutEffect, useRef, useState} from 'react';
 import {QUICK_EMOJI} from '../emoji';
 import {Popover} from '../../portal/ui/popover';
 
-import {useT} from '../../i18n';
+import {useI18n, useT} from '../../i18n';
+import {CHAT_FILE_ACCEPT, CHAT_FILE_MAX_BYTES, CHAT_FILE_TYPES, CHAT_FILES_PER_MESSAGE, type ChatFileT, chatFileType} from '../../lib/chat-files';
+import {bytesLabel} from '../cards/parts';
 import {type DraftKind} from '../draft-store';
 import {useDraft} from '../use-draft';
 import {Avatar, Button, Icon, IconButton} from '../../portal/ui';
-import {type CardHitT, cardSearchQuery, memberSearchQuery, useDebounced} from './api';
+import {type CardHitT, cardSearchQuery, memberSearchQuery, removeUnsentFile, uploadChatFile, useDebounced} from './api';
 import {ALL_TOKEN} from '../../lib/mention-all';
 import {cardTagAt, insertMention, matchPeople, MAX_BODY, MAX_CARDS, mentionAt, mentionedIds, type PersonRef, removeCardTag} from './mentions';
 
 /** The `@all` row of the list: not a person (id 0 is never a user, so it never travels as a mention id). */
 const ALL_OPTION: PersonRef = {userId: 0, name: ALL_TOKEN};
 
+/** A file in the composer's tray: uploading, ready to send (with its server row), or failed (with the reason). */
+type TrayFile = {key: number; name: string; size: number; image: boolean; status: 'uploading' | 'ready' | 'failed'; file?: ChatFileT; error?: string; abort: AbortController};
+let trayKey = 0;
+
 type Props = {
   /** The directory already loaded (resolves @names when the text is sent). */
   people: readonly PersonRef[];
   /** With it the `@` list comes from the members search (names only, 20 at most). */
   workspaceId?: number;
+  /** With it files can be attached (they upload into this conversation's workspace before the message is sent). */
+  conversationId?: number;
   /** Resolves when the message is on its way (the composer clears at once: a failure keeps the text in the pending bubble). */
-  onSend: (body: string, mentions: number[], cardIds: number[]) => unknown;
+  onSend: (body: string, mentions: number[], cardIds: number[], files: ChatFileT[]) => unknown;
   label: string;
   placeholder: string;
   autoFocus?: boolean;
@@ -35,8 +43,9 @@ type Props = {
  * The message box: Enter sends, Shift+Enter is a new line, `@` opens the people list (arrows, Enter or Tab to
  * pick, Esc closes). Same 4000-character limit as the server; the over-limit message says how many to remove.
  */
-export function Composer({people, workspaceId, onSend, label, placeholder, autoFocus, submitLabel, draft}: Props) {
+export function Composer({people, workspaceId, conversationId, onSend, label, placeholder, autoFocus, submitLabel, draft}: Props) {
   const t = useT();
+  const {errorMessage, formatNumber} = useI18n();
   const id = useId();
   const area = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState('');
@@ -64,6 +73,66 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
   // The results can shrink under a highlight that was moved first (a slower search answers): keep it on a row.
   const current = count > 0 ? Math.min(active, count - 1) : 0;
   const over = text.trim().length - MAX_BODY;
+
+  // Files: they upload as soon as they are picked, and go with the next message once ready.
+  const [tray, setTray] = useState<TrayFile[]>([]);
+  const [fileError, setFileError] = useState('');
+  const picker = useRef<HTMLInputElement>(null);
+  const trayRef = useRef(tray);
+  trayRef.current = tray;
+  const readyFiles = tray.filter(f => f.status === 'ready' && f.file).map(f => f.file!);
+  const uploading = tray.some(f => f.status === 'uploading');
+  const patchTray = (key: number, change: Partial<TrayFile>) => setTray(list => list.map(f => (f.key === key ? {...f, ...change} : f)));
+  const addFiles = (picked: File[]) => {
+    if (!conversationId || picked.length === 0) return;
+    setFileError('');
+    const room = CHAT_FILES_PER_MESSAGE - trayRef.current.filter(f => f.status !== 'failed').length;
+    if (picked.length > room) setFileError(t('chat.tooManyFiles', {n: CHAT_FILES_PER_MESSAGE}));
+    for (const file of picked.slice(0, Math.max(0, room))) {
+      // The same rules as the server, checked first for a quick answer (the server checks again).
+      if (!CHAT_FILE_TYPES.includes(chatFileType(file.name, file.type))) {
+        setFileError(t('chat.fileTypeRefused', {name: file.name}));
+        continue;
+      }
+      if (file.size < 1 || file.size > CHAT_FILE_MAX_BYTES) {
+        setFileError(t('chat.fileTooBig', {name: file.name, max: '100 MB'}));
+        continue;
+      }
+      const key = ++trayKey;
+      const abort = new AbortController();
+      const image = chatFileType(file.name, file.type).startsWith('image/');
+      setTray(list => [...list, {key, name: file.name, size: file.size, image, status: 'uploading', abort}]);
+      uploadChatFile(conversationId, file, abort.signal).then(
+        done => {
+          // Taken out while it uploaded: drop the file it became.
+          if (abort.signal.aborted || !trayRef.current.some(f => f.key === key)) return void removeUnsentFile(done.id);
+          patchTray(key, {status: 'ready', file: done});
+        },
+        error => {
+          if (abort.signal.aborted) return;
+          patchTray(key, {status: 'failed', error: errorMessage(error)});
+        }
+      );
+    }
+  };
+  const removeFile = (key: number) => {
+    const f = trayRef.current.find(x => x.key === key);
+    if (!f) return;
+    f.abort.abort();
+    if (f.status === 'ready' && f.file) void removeUnsentFile(f.file.id);
+    setTray(list => list.filter(x => x.key !== key));
+    window.requestAnimationFrame(() => area.current?.focus());
+  };
+  // Leaving the conversation with files not sent: stop the uploads and take the files out.
+  useEffect(
+    () => () => {
+      for (const f of trayRef.current) {
+        f.abort.abort();
+        if (f.status === 'ready' && f.file) void removeUnsentFile(f.file.id);
+      }
+    },
+    []
+  );
   const listId = cardHits.length > 0 ? `${id}-cardlist` : `${id}-people`;
 
   useLayoutEffect(() => {
@@ -128,16 +197,19 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
   const submit = () => {
     setTried(true);
     const body = text.trim();
-    if (!body || over > 0) return;
-    void onSend(body, mentionedIds(body, [...chosen, ...people]), cards.map(c => c.id));
+    if (uploading) return setFileError(t('chat.waitForUploads'));
+    if ((!body && readyFiles.length === 0) || over > 0) return;
+    void onSend(body, body ? mentionedIds(body, [...chosen, ...people]) : [], cards.map(c => c.id), readyFiles);
     setChosen([]);
     setCards([]);
+    setTray([]);
+    setFileError('');
     setText('');
     setCaret(0);
     setTried(false);
   };
 
-  const error = over > 0 ? t('chat.tooLong', {n: over}) : tried && !text.trim() ? t('chat.writeSomething') : '';
+  const error = over > 0 ? t('chat.tooLong', {n: over}) : fileError || (tried && !text.trim() && readyFiles.length === 0 ? t('chat.writeSomething') : '');
 
   return (
     <form
@@ -146,7 +218,29 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
       onSubmit={event => {
         event.preventDefault();
         submit();
+      }}
+      onDragOver={event => {
+        if (conversationId && event.dataTransfer.types.includes('Files')) event.preventDefault();
+      }}
+      onDrop={event => {
+        if (!conversationId || event.dataTransfer.files.length === 0) return;
+        event.preventDefault();
+        addFiles([...event.dataTransfer.files]);
       }}>
+      {tray.length > 0 && (
+        <ul className="chat-card-chips chat-card-tray chat-file-tray" id={`${id}-files`} aria-label={t('chat.filesToSend')}>
+          {tray.map(f => (
+            <li key={f.key} className="chat-card-chip chat-file-chip" data-failed={f.status === 'failed' ? '' : undefined} aria-busy={f.status === 'uploading' || undefined}>
+              {f.status === 'uploading' ? <span className="spinner" aria-hidden="true" /> : <Icon name={f.status === 'failed' ? 'alert' : f.image ? 'image' : 'file'} size={14} />}
+              <span className="chat-card-chip-title" title={f.name}>{f.name}</span>
+              <span className="chat-file-chip-meta muted">
+                {f.status === 'uploading' ? t('chat.uploadingFile') : f.status === 'failed' ? (f.error ?? t('chat.uploadFailed')) : bytesLabel(f.size, formatNumber)}
+              </span>
+              <IconButton icon="x" size="sm" label={t('chat.removeFile', {name: f.name})} onClick={() => removeFile(f.key)} />
+            </li>
+          ))}
+        </ul>
+      )}
       {cards.length > 0 && (
         <ul className="chat-card-chips chat-card-tray" id={`${id}-cards`} aria-label={t('chat.attachedCards')}>
           {cards.map(card => (
@@ -175,7 +269,7 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
           value={text}
           placeholder={placeholder}
           aria-controls={listOpen ? listId : undefined}
-          aria-describedby={[error ? `${id}-error` : cards.length ? `${id}-cards` : '', listOpen ? `${id}-hint` : ''].filter(Boolean).join(' ') || undefined}
+          aria-describedby={[error ? `${id}-error` : cards.length ? `${id}-cards` : '', tray.length ? `${id}-files` : '', listOpen ? `${id}-hint` : ''].filter(Boolean).join(' ') || undefined}
           aria-activedescendant={listOpen ? `${id}-p${current}` : undefined}
           aria-invalid={error ? true : undefined}
           onChange={event => {
@@ -184,6 +278,12 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
             setDismissed(false);
           }}
           onSelect={event => setCaret(event.currentTarget.selectionStart)}
+          onPaste={event => {
+            // A pasted screenshot or copied file is attached; pasted text stays text.
+            if (!conversationId || event.clipboardData.files.length === 0) return;
+            event.preventDefault();
+            addFiles([...event.clipboardData.files]);
+          }}
           onKeyDown={event => {
             // An input method (Japanese, Chinese, Korean…) is composing: its Enter and arrows are its own.
             if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -214,6 +314,24 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
           }}
         />
         <div className="chat-composer-tools">
+          {conversationId !== undefined && (
+            <>
+              <IconButton icon="paperclip" size="sm" label={t('chat.attachFile')} disabled={tray.filter(f => f.status !== 'failed').length >= CHAT_FILES_PER_MESSAGE} onClick={() => picker.current?.click()} />
+              <input
+                ref={picker}
+                type="file"
+                multiple
+                hidden
+                tabIndex={-1}
+                accept={CHAT_FILE_ACCEPT}
+                onChange={event => {
+                  addFiles([...(event.target.files ?? [])]);
+                  event.target.value = '';
+                }}
+              />
+              <span className="chat-composer-sep" aria-hidden="true" />
+            </>
+          )}
           <IconButton icon="hash" size="sm" label={t('chat.attachCard')} disabled={cards.length >= MAX_CARDS || !workspaceId} onClick={startCardTag} />
           <span className="chat-composer-sep" aria-hidden="true" />
           <IconButton icon="at-sign" size="sm" label={t('chat.mentionSomeone')} onClick={startMention} />
@@ -236,7 +354,7 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
               ))}
             </div>
           </Popover>
-          <Button type="submit" size="sm" icon="send" disabled={!text.trim()} aria-label={submitLabel ?? t('chat.send')}>
+          <Button type="submit" size="sm" icon="send" disabled={(!text.trim() && readyFiles.length === 0) || uploading} aria-label={submitLabel ?? t('chat.send')}>
             <span className="chat-send-label">{submitLabel ?? t('chat.send')}</span>
           </Button>
         </div>

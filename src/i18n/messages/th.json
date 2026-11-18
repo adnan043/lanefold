@@ -1948,5 +1948,17 @@
   "chat.viewThread": "ดูเธรด",
   "chat.mentionSomeone": "กล่าวถึงใครสักคน",
   "chat.insertEmoji": "อีโมจิ",
-  "chat.sendHint": "Enter เพื่อส่ง · Shift + Enter เพื่อขึ้นบรรทัดใหม่"
+  "chat.sendHint": "Enter เพื่อส่ง · Shift + Enter เพื่อขึ้นบรรทัดใหม่",
+  "chat.attachFile": "แนบไฟล์",
+  "chat.filesToSend": "ไฟล์ที่จะส่ง",
+  "chat.uploadingFile": "กำลังอัปโหลด…",
+  "chat.uploadFailed": "อัปโหลดไม่สำเร็จ",
+  "chat.removeFile": "นำ {name} ออก",
+  "chat.fileTooBig": "{name} มีขนาดเกิน {max}",
+  "chat.fileTypeRefused": "ส่ง {name} ที่นี่ไม่ได้ โปรดส่งไฟล์ PDF, Word, Excel, PowerPoint, ข้อความ, CSV, ZIP หรือรูปภาพ",
+  "chat.tooManyFiles": "ส่งได้ครั้งละไม่เกิน {n} ไฟล์",
+  "chat.waitForUploads": "โปรดรอให้อัปโหลดไฟล์เสร็จก่อน",
+  "chat.messageFiles": "ไฟล์",
+  "chat.downloadFile": "ดาวน์โหลด {name}",
+  "chat.openFile": "เปิด {name}"
 }

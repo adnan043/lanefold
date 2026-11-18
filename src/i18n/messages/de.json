@@ -1961,5 +1961,17 @@
   "chat.viewThread": "Thread ansehen",
   "chat.mentionSomeone": "Jemanden erwähnen",
   "chat.insertEmoji": "Emoji",
-  "chat.sendHint": "Enter zum Senden · Umschalt + Enter für eine neue Zeile"
+  "chat.sendHint": "Enter zum Senden · Umschalt + Enter für eine neue Zeile",
+  "chat.attachFile": "Datei anhängen",
+  "chat.filesToSend": "Zu sendende Dateien",
+  "chat.uploadingFile": "Wird hochgeladen…",
+  "chat.uploadFailed": "Hochladen fehlgeschlagen",
+  "chat.removeFile": "{name} entfernen",
+  "chat.fileTooBig": "{name} ist größer als {max}.",
+  "chat.fileTypeRefused": "{name} kann hier nicht gesendet werden. Sende eine PDF-, Word-, Excel-, PowerPoint-, Text-, CSV-, ZIP- oder Bilddatei.",
+  "chat.tooManyFiles": "Sende bis zu {n} Dateien auf einmal.",
+  "chat.waitForUploads": "Warte, bis die Dateien hochgeladen sind.",
+  "chat.messageFiles": "Dateien",
+  "chat.downloadFile": "{name} herunterladen",
+  "chat.openFile": "{name} öffnen"
 }

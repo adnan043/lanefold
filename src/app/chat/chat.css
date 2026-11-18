@@ -1141,3 +1141,67 @@ a.chat-card-ref:focus-visible {
 .chat-thread .chat-rows > li:first-child > .chat-day {
   display: none;
 }
+
+/* Files waiting in the composer (uploading, ready, failed) and files sent with a message. */
+.chat-file-chip .chat-card-chip-title { max-inline-size: 16rem; }
+.chat-file-chip-meta { flex: none; font-size: 0.75rem; }
+.chat-file-chip[data-failed] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.chat-file-chip[data-failed] .chat-file-chip-meta { color: var(--danger); }
+
+.chat-files-block { display: grid; gap: 0.4rem; margin-block-start: 0.35rem; }
+.chat-files,
+.chat-file-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chat-file {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: min(100%, 22rem);
+  padding: 0.35rem 0.35rem 0.35rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+}
+.chat-file > .icon { flex: none; color: var(--muted); }
+.chat-file-name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+a.chat-file-name:hover { text-decoration: underline; }
+a.chat-file-name:focus-visible,
+.chat-file-image:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.chat-file-size { flex: none; font-size: 0.75rem; }
+.chat-file-image {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.chat-file-image img {
+  display: block;
+  max-inline-size: min(18rem, 70vw);
+  max-block-size: 14rem;
+  inline-size: auto;
+  block-size: auto;
+  object-fit: contain;
+}

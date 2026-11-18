@@ -1961,5 +1961,17 @@
   "chat.viewThread": "থ্রেড দেখুন",
   "chat.mentionSomeone": "কাউকে উল্লেখ করুন",
   "chat.insertEmoji": "ইমোজি",
-  "chat.sendHint": "পাঠাতে Enter · নতুন লাইনের জন্য Shift + Enter"
+  "chat.sendHint": "পাঠাতে Enter · নতুন লাইনের জন্য Shift + Enter",
+  "chat.attachFile": "ফাইল যুক্ত করুন",
+  "chat.filesToSend": "পাঠানোর ফাইল",
+  "chat.uploadingFile": "আপলোড হচ্ছে…",
+  "chat.uploadFailed": "আপলোড ব্যর্থ হয়েছে",
+  "chat.removeFile": "{name} সরান",
+  "chat.fileTooBig": "{name} {max}-এর চেয়ে বড়।",
+  "chat.fileTypeRefused": "{name} এখানে পাঠানো যায় না। PDF, Word, Excel, PowerPoint, টেক্সট, CSV, ZIP বা ছবির ফাইল পাঠান।",
+  "chat.tooManyFiles": "একবারে সর্বোচ্চ {n}টি ফাইল পাঠান।",
+  "chat.waitForUploads": "ফাইলগুলোর আপলোড শেষ হওয়া পর্যন্ত অপেক্ষা করুন।",
+  "chat.messageFiles": "ফাইল",
+  "chat.downloadFile": "{name} ডাউনলোড করুন",
+  "chat.openFile": "{name} খুলুন"
 }

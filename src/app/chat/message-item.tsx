@@ -9,7 +9,9 @@ import {Link} from '../nav';
 import {useWriteCooldown} from '../write-cooldown';
 import {CardChips} from './card-chip';
 import {CreateCardDialog} from './create-card-dialog';
-import {type ChatPersonT, displayName, type MessageT, type ReactionT} from './api';
+import type {ChatFileT} from '../../lib/chat-files';
+import {bytesLabel} from '../cards/parts';
+import {type ChatPersonT, chatFileUrl, displayName, type MessageT, type ReactionT} from './api';
 import {MAX_BODY, mentionedIds, segments} from './mentions';
 import type {PendingMessage} from './use-message-feed';
 
@@ -159,7 +161,7 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
   };
 
   const menu: MenuItem[] = [];
-  if (own && canWrite && !message.deleted) menu.push({label: t('chat.edit'), icon: 'pencil', onSelect: startEdit});
+  if (own && canWrite && !message.deleted && message.body !== '') menu.push({label: t('chat.edit'), icon: 'pencil', onSelect: startEdit});
   if (cardTarget && canWrite && !message.deleted && message.kind !== 'system' && (message.cardIds?.length ?? 0) < 10) menu.push({label: t('chat.createCard'), icon: 'layout-kanban', onSelect: () => setCardOpen(true)});
   if (canPin && !message.deleted && !pin.isPending) menu.push({label: message.pinned ? t('chat.unpin') : t('chat.pin'), icon: 'pin', onSelect: () => pin.mutate(!message.pinned)});
   if ((own || canModerate) && !message.deleted) menu.push({label: t('chat.delete'), icon: 'trash', danger: true, onSelect: remove});
@@ -235,7 +237,8 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
           </div>
         ) : (
           <>
-            <Body message={message} people={people} />
+            {message.body !== '' && <Body message={message} people={people} />}
+            <MessageFiles files={message.files ?? []} />
             <CardChips cardIds={message.cardIds ?? []} />
             {message.edited && <span className="chat-edited muted">{t('chat.edited')}</span>}
           </>
@@ -347,7 +350,17 @@ export function PendingItem({pending, onRetry, onDiscard}: {pending: PendingMess
     <li className="chat-msg chat-msg-pending" data-failed={failed ? '' : undefined} aria-busy={!failed || undefined}>
       <span className="chat-msg-gutter" />
       <div className="chat-msg-main">
-        <p className="chat-body" dir="auto">{pending.body}</p>
+        {pending.body !== '' && <p className="chat-body" dir="auto">{pending.body}</p>}
+        {(pending.files?.length ?? 0) > 0 && (
+          <ul className="chat-files" aria-label={t('chat.messageFiles')}>
+            {pending.files!.map(f => (
+              <li key={f.id} className="chat-file">
+                <Icon name={f.isImage ? 'image' : 'file'} size={16} />
+                <span className="chat-file-name">{f.name}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         {failed ? (
           <p className="chat-pending-note" role="alert">
             <Icon name="alert" size={14} /> {pending.error || t('errors.unknown')}
@@ -379,5 +392,48 @@ function SaveEditButton({pending, onSave}: {pending: boolean; onSave: () => void
     <Button size="sm" pending={pending} pendingLabel={t('common.saving')} disabled={cooldown.blocked} onClick={onSave}>
       {t('common.save')}
     </Button>
+  );
+}
+
+/**
+ * The files sent with a message: pictures as a small preview (opens full size), every other file as a row with its
+ * size and a download link. Each link goes through the server, which checks access on every view.
+ */
+function MessageFiles({files}: {files: readonly ChatFileT[]}) {
+  const t = useT();
+  const {formatNumber} = useI18n();
+  if (files.length === 0) return null;
+  const images = files.filter(f => f.isImage);
+  const others = files.filter(f => !f.isImage);
+  return (
+    <div className="chat-files-block">
+      {images.length > 0 && (
+        <ul className="chat-file-images" aria-label={t('chat.messageFiles')}>
+          {images.map(f => (
+            <li key={f.id}>
+              <a href={chatFileUrl(f.id)} target="_blank" rel="noopener noreferrer" className="chat-file-image" aria-label={t('chat.openFile', {name: f.name})}>
+                <img src={chatFileUrl(f.id)} alt={f.name} loading="lazy" decoding="async" />
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      {others.length > 0 && (
+        <ul className="chat-files" aria-label={t('chat.messageFiles')}>
+          {others.map(f => (
+            <li key={f.id} className="chat-file">
+              <Icon name="file" size={16} />
+              <a className="chat-file-name" href={chatFileUrl(f.id)} target="_blank" rel="noopener noreferrer" title={f.name}>
+                {f.name}
+              </a>
+              <span className="chat-file-size muted">{bytesLabel(f.size, formatNumber)}</span>
+              <a className="button button-ghost button-sm icon-button" href={chatFileUrl(f.id, true)} aria-label={t('chat.downloadFile', {name: f.name})} title={t('chat.downloadFile', {name: f.name})}>
+                <Icon name="download" size={16} />
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
