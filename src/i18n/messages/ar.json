@@ -1162,6 +1162,7 @@
   "billing.cancelConfirm": "إلغاء الخطة",
   "billing.cancelling": "جارٍ الإلغاء…",
   "billing.cancelled": "تم إلغاء الخطة. يستمر الوصول حتى نهاية الفترة.",
+  "billing.cancelOwnerOnly": "لا يمكن إلغاء هذه الخطة إلا لمالك مساحة العمل أو للمسؤول الذي اشتراها.",
   "ui.presetColours": "ألوان جاهزة",
   "ui.previousMonth": "الشهر السابق",
   "ui.nextMonth": "الشهر التالي",

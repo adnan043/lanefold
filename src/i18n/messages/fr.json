@@ -1150,6 +1150,7 @@
   "billing.cancelConfirm": "Annuler le forfait",
   "billing.cancelling": "Annulation…",
   "billing.cancelled": "Forfait annulé. L’accès continue jusqu’à la fin de la période.",
+  "billing.cancelOwnerOnly": "Seul le propriétaire de l'espace de travail, ou l'administrateur qui a acheté ce forfait, peut l'annuler.",
   "ui.presetColours": "Couleurs prédéfinies",
   "ui.previousMonth": "Mois précédent",
   "ui.nextMonth": "Mois suivant",

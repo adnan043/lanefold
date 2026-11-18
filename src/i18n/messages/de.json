@@ -1146,6 +1146,7 @@
   "billing.cancelConfirm": "Tarif kündigen",
   "billing.cancelling": "Wird gekündigt…",
   "billing.cancelled": "Tarif gekündigt. Der Zugriff bleibt bis zum Ende des Zeitraums bestehen.",
+  "billing.cancelOwnerOnly": "Nur der Workspace-Inhaber oder der Admin, der diesen Plan gekauft hat, kann ihn kündigen.",
   "ui.presetColours": "Voreingestellte Farben",
   "ui.previousMonth": "Vorheriger Monat",
   "ui.nextMonth": "Nächster Monat",

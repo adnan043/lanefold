@@ -1142,6 +1142,7 @@
   "billing.cancelConfirm": "요금제 해지",
   "billing.cancelling": "해지하는 중…",
   "billing.cancelled": "요금제를 해지했습니다. 기간이 끝날 때까지 이용할 수 있습니다.",
+  "billing.cancelOwnerOnly": "이 요금제는 워크스페이스 소유자나 구매한 관리자만 취소할 수 있습니다.",
   "ui.presetColours": "기본 색상",
   "ui.previousMonth": "이전 달",
   "ui.nextMonth": "다음 달",

@@ -1146,6 +1146,7 @@
   "billing.cancelConfirm": "Cancel plan",
   "billing.cancelling": "Cancelling…",
   "billing.cancelled": "Plan cancelled. Access continues until the period ends.",
+  "billing.cancelOwnerOnly": "Only the workspace owner, or the admin who bought this plan, can cancel it.",
   "ui.presetColours": "Preset colors",
   "ui.previousMonth": "Previous month",
   "ui.nextMonth": "Next month",

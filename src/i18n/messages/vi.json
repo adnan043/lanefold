@@ -1142,6 +1142,7 @@
   "billing.cancelConfirm": "Hủy gói",
   "billing.cancelling": "Đang hủy…",
   "billing.cancelled": "Đã hủy gói. Bạn vẫn truy cập được đến hết kỳ.",
+  "billing.cancelOwnerOnly": "Chỉ chủ sở hữu không gian làm việc, hoặc quản trị viên đã mua gói này, mới có thể hủy gói.",
   "ui.presetColours": "Màu có sẵn",
   "ui.previousMonth": "Tháng trước",
   "ui.nextMonth": "Tháng sau",

@@ -302,7 +302,8 @@ function Subscription({workspaceId}: {workspaceId: number}) {
     <Card
       title={t('billing.subscription')}
       actions={
-        ending ? undefined : (
+        // Only the owner, or the admin who bought it, may cancel (the server refuses anyone else).
+        ending || !row.canCancel ? undefined : (
           <Button variant="danger" icon="x" onClick={() => void ask()} pending={cancel.isPending} pendingLabel={t('billing.cancelling')} disabled={cancel.isPending || cooldown.blocked}>
             {t('billing.cancelPlan')}
           </Button>
@@ -311,6 +312,7 @@ function Subscription({workspaceId}: {workspaceId: number}) {
       <p>
         {date ? t(ending ? 'billing.accessUntil' : 'billing.renewsOn', {date: formatDate(date)}) : planName(t, row.priceKey)}
       </p>
+      {!ending && !row.canCancel && <p className="muted">{t('billing.cancelOwnerOnly')}</p>}
     </Card>
   );
 }

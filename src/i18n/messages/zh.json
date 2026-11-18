@@ -1142,6 +1142,7 @@
   "billing.cancelConfirm": "取消套餐",
   "billing.cancelling": "正在取消…",
   "billing.cancelled": "套餐已取消，在周期结束前仍可使用。",
+  "billing.cancelOwnerOnly": "只有工作区所有者或购买此套餐的管理员才能取消。",
   "ui.presetColours": "预设颜色",
   "ui.previousMonth": "上个月",
   "ui.nextMonth": "下个月",

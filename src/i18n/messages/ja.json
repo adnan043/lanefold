@@ -1142,6 +1142,7 @@
   "billing.cancelConfirm": "プランを解約",
   "billing.cancelling": "解約中…",
   "billing.cancelled": "プランを解約しました。期間の終了までアクセスできます。",
+  "billing.cancelOwnerOnly": "このプランを解約できるのは、ワークスペースのオーナーか、購入した管理者だけです。",
   "ui.presetColours": "プリセットカラー",
   "ui.previousMonth": "前の月",
   "ui.nextMonth": "次の月",

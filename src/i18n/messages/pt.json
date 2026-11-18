@@ -1150,6 +1150,7 @@
   "billing.cancelConfirm": "Cancelar plano",
   "billing.cancelling": "Cancelando…",
   "billing.cancelled": "Plano cancelado. O acesso continua até o fim do período.",
+  "billing.cancelOwnerOnly": "Somente o proprietário do espaço de trabalho, ou o administrador que comprou este plano, pode cancelá-lo.",
   "ui.presetColours": "Cores predefinidas",
   "ui.previousMonth": "Mês anterior",
   "ui.nextMonth": "Próximo mês",

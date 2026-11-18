@@ -1142,6 +1142,7 @@
   "billing.cancelConfirm": "Batalkan paket",
   "billing.cancelling": "Membatalkan…",
   "billing.cancelled": "Paket dibatalkan. Akses berlanjut hingga periode berakhir.",
+  "billing.cancelOwnerOnly": "Hanya pemilik ruang kerja, atau admin yang membeli paket ini, yang dapat membatalkannya.",
   "ui.presetColours": "Warna bawaan",
   "ui.previousMonth": "Bulan sebelumnya",
   "ui.nextMonth": "Bulan berikutnya",

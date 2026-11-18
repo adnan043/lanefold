@@ -1146,6 +1146,7 @@
   "billing.cancelConfirm": "প্ল্যান বাতিল করুন",
   "billing.cancelling": "বাতিল করা হচ্ছে…",
   "billing.cancelled": "প্ল্যান বাতিল হয়েছে। মেয়াদ শেষ পর্যন্ত অ্যাক্সেস থাকবে।",
+  "billing.cancelOwnerOnly": "শুধু ওয়ার্কস্পেসের মালিক বা যে অ্যাডমিন এই প্ল্যানটি কিনেছেন, তিনিই এটি বাতিল করতে পারেন।",
   "ui.presetColours": "প্রিসেট রং",
   "ui.previousMonth": "আগের মাস",
   "ui.nextMonth": "পরের মাস",

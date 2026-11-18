@@ -1146,6 +1146,7 @@
   "billing.cancelConfirm": "پلان منسوخ کریں",
   "billing.cancelling": "منسوخ کیا جا رہا ہے…",
   "billing.cancelled": "پلان منسوخ ہو گیا۔ مدت ختم ہونے تک رسائی جاری رہے گی۔",
+  "billing.cancelOwnerOnly": "اس پلان کو صرف ورک اسپیس کا مالک یا اسے خریدنے والا ایڈمن ہی منسوخ کر سکتا ہے۔",
   "ui.presetColours": "پہلے سے طے رنگ",
   "ui.previousMonth": "پچھلا مہینہ",
   "ui.nextMonth": "اگلا مہینہ",

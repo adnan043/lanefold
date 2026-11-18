@@ -1146,6 +1146,7 @@
   "billing.cancelConfirm": "Ghairi mpango",
   "billing.cancelling": "Inaghairi…",
   "billing.cancelled": "Mpango umeghairiwa. Ufikiaji unaendelea hadi kipindi kiishe.",
+  "billing.cancelOwnerOnly": "Ni mmiliki wa eneo la kazi pekee, au msimamizi aliyenunua mpango huu, anayeweza kuughairi.",
   "ui.presetColours": "Rangi zilizowekwa",
   "ui.previousMonth": "Mwezi uliopita",
   "ui.nextMonth": "Mwezi ujao",

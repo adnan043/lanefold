@@ -1146,6 +1146,7 @@
   "billing.cancelConfirm": "प्लान रद्द करें",
   "billing.cancelling": "रद्द किया जा रहा है…",
   "billing.cancelled": "प्लान रद्द हो गया। अवधि समाप्त होने तक पहुँच जारी रहेगी।",
+  "billing.cancelOwnerOnly": "इस प्लान को केवल वर्कस्पेस का मालिक या इसे खरीदने वाला एडमिन ही रद्द कर सकता है।",
   "ui.presetColours": "पहले से तय रंग",
   "ui.previousMonth": "पिछला महीना",
   "ui.nextMonth": "अगला महीना",

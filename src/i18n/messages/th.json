@@ -1142,6 +1142,7 @@
   "billing.cancelConfirm": "ยกเลิกแพ็กเกจ",
   "billing.cancelling": "กำลังยกเลิก…",
   "billing.cancelled": "ยกเลิกแพ็กเกจแล้ว ยังเข้าถึงได้จนสิ้นสุดรอบ",
+  "billing.cancelOwnerOnly": "เฉพาะเจ้าของพื้นที่ทำงาน หรือผู้ดูแลที่ซื้อแพ็กเกจนี้เท่านั้นที่ยกเลิกได้",
   "ui.presetColours": "สีที่ตั้งไว้",
   "ui.previousMonth": "เดือนก่อนหน้า",
   "ui.nextMonth": "เดือนถัดไป",

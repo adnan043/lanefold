@@ -1154,6 +1154,7 @@
   "billing.cancelConfirm": "Отменить тариф",
   "billing.cancelling": "Отмена…",
   "billing.cancelled": "Тариф отменён. Доступ сохранится до конца периода.",
+  "billing.cancelOwnerOnly": "Отменить этот тариф может только владелец рабочего пространства или администратор, который его купил.",
   "ui.presetColours": "Готовые цвета",
   "ui.previousMonth": "Предыдущий месяц",
   "ui.nextMonth": "Следующий месяц",

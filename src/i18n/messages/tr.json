@@ -1146,6 +1146,7 @@
   "billing.cancelConfirm": "Planı iptal et",
   "billing.cancelling": "İptal ediliyor…",
   "billing.cancelled": "Plan iptal edildi. Erişim dönem sonuna kadar devam eder.",
+  "billing.cancelOwnerOnly": "Bu planı yalnızca çalışma alanının sahibi veya planı satın alan yönetici iptal edebilir.",
   "ui.presetColours": "Hazır renkler",
   "ui.previousMonth": "Önceki ay",
   "ui.nextMonth": "Sonraki ay",

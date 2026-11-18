@@ -1146,6 +1146,7 @@
   "billing.cancelConfirm": "لغو طرح",
   "billing.cancelling": "در حال لغو…",
   "billing.cancelled": "طرح لغو شد. دسترسی تا پایان دوره ادامه دارد.",
+  "billing.cancelOwnerOnly": "فقط مالک فضای کار یا مدیری که این طرح را خریده است می‌تواند آن را لغو کند.",
   "ui.presetColours": "رنگ‌های آماده",
   "ui.previousMonth": "ماه قبل",
   "ui.nextMonth": "ماه بعد",
