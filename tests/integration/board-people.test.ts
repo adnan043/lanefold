@@ -65,4 +65,17 @@ describe.skipIf(!DATABASE_URL)('board people (integration, real Postgres)', () =
     await db.board.update({where: {id: boardA}, data: {visibility: 'private'}});
     expect((await people(ben)).status).toBe(404);
   });
+
+  it('a guest sees only the people seated on the board and the workspace admins, not the whole workspace', async () => {
+    // bob (another workspace) gets a guest seat on a board every member of A can see.
+    const bobId = (await db.user.findUniqueOrThrow({where: {email: 'bob@example.test'}, select: {id: true}})).id;
+    await db.boardMember.create({data: {boardId: boardA, userId: bobId, workspaceId: wsA, role: 'member'}});
+    await db.boardMember.create({data: {boardId: boardA, userId: benId, workspaceId: wsA, role: 'member'}});
+    const res = await people(bob);
+    expect(res.status).toBe(200);
+    // ann: owner (runs every board); ben: seated. cy (a viewer of A without a seat) is not named to the guest.
+    expect(res.json.items.map((p: J) => p.id).sort()).toEqual([annId, benId].sort());
+    // A member of the workspace still sees everyone who can see the board.
+    expect((await people(ben)).json.items.map((p: J) => p.id).sort()).toEqual([annId, benId, cyId].sort());
+  });
 });
