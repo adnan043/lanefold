@@ -434,8 +434,8 @@
 }
 .lf-card:hover .lf-grip,
 .lf-card:hover .menu-trigger,
-.lf-card:focus-within .lf-grip,
-.lf-card:focus-within .menu-trigger {
+.lf-card:is(:focus-visible, :has(:focus-visible)) .lf-grip,
+.lf-card:is(:focus-visible, :has(:focus-visible)) .menu-trigger {
   opacity: 1;
 }
 @media (hover: none) {

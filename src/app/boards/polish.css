@@ -160,7 +160,7 @@
   padding-inline-end: var(--lf-done-room);
 }
 .lf-card:hover .lf-card-top:has(> .lf-done-toggle),
-.lf-card:has(:focus-visible) .lf-card-top:has(> .lf-done-toggle),
+.lf-card:is(:focus-visible, :has(:focus-visible)) .lf-card-top:has(> .lf-done-toggle),
 .lf-card-top:has(> .lf-done-toggle[data-done]) {
   padding-inline-end: 0;
 }
@@ -187,7 +187,7 @@
   cursor: pointer;
 }
 .lf-card:hover .lf-done-toggle,
-.lf-card:has(:focus-visible) .lf-done-toggle,
+.lf-card:is(:focus-visible, :has(:focus-visible)) .lf-done-toggle,
 .lf-done-toggle[data-done] {
   inline-size: 16px;
   margin-inline-end: 0.125rem;

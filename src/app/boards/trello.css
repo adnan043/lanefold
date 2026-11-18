@@ -201,7 +201,7 @@
   pointer-events: none;
 }
 .app-shell .lf-card:hover::after,
-.app-shell .lf-card:focus-within::after {
+.app-shell .lf-card:is(:focus-visible, :has(:focus-visible))::after {
   opacity: 1;
 }
 /* While any card is held, no other card shows the hover ring; the held card keeps its shadow. */
@@ -232,7 +232,7 @@
   opacity: 0;
 }
 .app-shell .lf-card:hover .lf-card-tools,
-.app-shell .lf-card:focus-within .lf-card-tools {
+.app-shell .lf-card:is(:focus-visible, :has(:focus-visible)) .lf-card-tools {
   opacity: 1;
 }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
@@ -431,7 +431,7 @@
   opacity: 0;
 }
 .app-shell .lf-card:hover .lf-card-tools .menu-trigger,
-.app-shell .lf-card:focus-within .lf-card-tools .menu-trigger,
+.app-shell .lf-card:is(:focus-visible, :has(:focus-visible)) .lf-card-tools .menu-trigger,
 .app-shell .lf-card-tools .menu-trigger[aria-expanded='true'] {
   opacity: 1;
 }
