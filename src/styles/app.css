@@ -2439,24 +2439,225 @@
   gap: 0.5rem 0.75rem;
 }
 
-.screen-roles .roles-title {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+/* Roles: one card per role, the same height across a row; members and Edit pinned to the bottom. */
+.screen-roles .roles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr));
+  gap: 1rem;
+  align-items: stretch;
 }
 
-.screen-roles .roles-body {
-  display: grid;
+.screen-roles .roles-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.screen-roles .roles-card > .card-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.screen-roles .roles-head {
+  display: flex;
+  align-items: flex-start;
   gap: 0.75rem;
 }
 
-.screen-roles .roles-body p {
+.screen-roles .roles-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--muted);
+}
+
+.screen-roles .roles-icon-fixed {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.screen-roles .roles-icon-custom {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.screen-roles .roles-heading {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 0.25rem;
+  min-inline-size: 0;
+}
+
+.screen-roles .roles-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.screen-roles .roles-slug {
+  justify-self: start;
+  padding: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .screen-roles .roles-description {
+  margin: 0;
   color: var(--ink);
+  line-height: 1.5;
+}
+
+.screen-roles .roles-perms {
+  display: grid;
+  gap: 0.625rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--line);
+}
+
+.screen-roles .roles-perms-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.screen-roles .roles-perms-count {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+/* How much of the catalogue the role grants, as a thin bar (the count beside the heading says it in words). */
+.screen-roles .roles-meter {
+  appearance: none;
+  display: block;
+  inline-size: 100%;
+  block-size: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hover);
+  overflow: hidden;
+}
+
+.screen-roles .roles-meter::-webkit-progress-bar {
+  background: var(--hover);
+}
+
+.screen-roles .roles-meter::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.screen-roles .roles-meter::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.screen-roles .roles-groups {
+  display: grid;
+  gap: 0.625rem;
+  margin: 0.125rem 0 0;
+}
+
+.screen-roles .roles-group {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.screen-roles .roles-group dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.screen-roles .roles-group dd {
+  margin: 0;
+}
+
+.screen-roles .roles-all {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.125rem 0 0;
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.screen-roles .roles-all .icon {
+  flex: none;
+  margin-block-start: 0.125rem;
+  color: var(--accent-text);
+}
+
+.screen-roles .roles-all-warn {
+  background: var(--warning-soft);
+}
+
+.screen-roles .roles-all-warn .icon {
+  color: var(--warning);
+}
+
+.screen-roles .roles-none {
+  margin: 0.125rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.screen-roles .roles-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-block-start: auto;
+  padding-block-start: 0.75rem;
+  border-block-start: 1px solid var(--line);
+}
+
+/* As tall as the small Edit button, so a footer without one (Owner) lines up with its neighbours. */
+.screen-roles .roles-members {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-block-size: 32px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+@media (pointer: coarse) {
+  .screen-roles .roles-members {
+    min-block-size: 44px;
+  }
+}
+
+@media (max-width: 560px) {
+  .screen-roles .roles-group {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.375rem;
+  }
 }
 
 .screen-activity .list-row-title strong {
@@ -2472,15 +2673,6 @@
   .screen-activity .list-row {
     align-items: flex-start;
   }
-}
-
-.screen-roles .roles-members {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  margin: 0.5rem 0 0;
-  font-size: 0.85rem;
-  color: var(--muted);
 }
 
 /* ------------------------------------------- kit: popover and pickers -- */

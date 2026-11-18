@@ -1,6 +1,7 @@
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {useState} from 'react';
 
+import {grants} from '../../platform/auth/codenames';
 import {rules} from '../../lib/rules';
 import type {PermissionRow, RoleRow} from '../../lib/types';
 import {api, ApiError, read} from '../api';
@@ -9,6 +10,7 @@ import {useMe} from '../shared';
 import {
   Badge,
   Icon,
+  type IconName,
   Button,
   Card,
   Checkbox,
@@ -39,6 +41,44 @@ const ROLE_RULES = {
 };
 
 const OWNER = 'owner';
+const ALL = '*';
+
+/** Owner a key, Admin a shield, Member one person; any other role (custom ones) a group. */
+const ROLE_ICONS: Record<string, IconName> = {[OWNER]: 'key', admin: 'shield', member: 'user'};
+const roleIcon = (role: RoleRow): IconName => ROLE_ICONS[role.slug] ?? (role.isSystem ? 'shield' : 'users');
+
+/** "24 people", "100+ people", "1 person". */
+function peopleLabel(members: {count: number; more: boolean}) {
+  if (members.count === 0) return 'Nobody yet';
+  const one = members.count === 1 && !members.more;
+  return `${members.count}${members.more ? '+' : ''} ${one ? 'person' : 'people'}`;
+}
+
+/**
+ * What a role holds, as the catalogue's groups. A permission another held
+ * wildcard already covers (`site:user:read` under `site:user:*`) is left out:
+ * it adds nothing, and the list stays short.
+ */
+function groupPermissions(held: string[], catalogue: PermissionRow[]) {
+  const byCode = new Map(catalogue.map(p => [p.codename, p]));
+  const covered = (codename: string) =>
+    held.some(other => other !== codename && other.endsWith('*') && grants(new Set([other]), codename));
+  const order = [...new Set(catalogue.map(p => p.group))];
+  const groups = new Map<string, {codename: string; title: string}[]>();
+  for (const codename of held) {
+    if (covered(codename)) continue;
+    const row = byCode.get(codename);
+    const group = row?.group ?? 'Other';
+    groups.set(group, [...(groups.get(group) ?? []), {codename, title: row?.title ?? codename}]);
+  }
+  const rank = (codename: string) => {
+    const at = catalogue.findIndex(p => p.codename === codename);
+    return at === -1 ? Number.MAX_SAFE_INTEGER : at;
+  };
+  return [...groups]
+    .sort(([a], [b]) => (order.indexOf(a) + 1 || Infinity) - (order.indexOf(b) + 1 || Infinity))
+    .map(([group, items]) => ({group, items: items.sort((a, b) => rank(a.codename) - rank(b.codename))}));
+}
 
 /**
  * `/roles` (site:role:read): what each role allows. Editing needs
@@ -59,7 +99,6 @@ export function Roles() {
     mutationFn: (slug: string) => read(api.admin.roles[':slug'].$delete({param: {slug}})),
     onSuccess: () => queryClient.invalidateQueries({queryKey: ['roles']}),
   });
-  const titles = new Map(catalogue.data?.permissions.map(p => [p.codename, p.title]));
 
   const askDelete = async (role: RoleRow) => {
     const done = await confirm({
@@ -89,12 +128,12 @@ export function Roles() {
       {roles.error ? (
         <ErrorNote error={roles.error} />
       ) : roles.isPending ? (
-        <div className="grid-2">
+        <div className="roles-grid">
           <Card>
-            <LoadingBlock rows={2} />
+            <LoadingBlock rows={3} />
           </Card>
           <Card>
-            <LoadingBlock rows={2} />
+            <LoadingBlock rows={3} />
           </Card>
         </div>
       ) : roles.data.roles.length === 0 ? (
@@ -109,81 +148,18 @@ export function Roles() {
           </EmptyState>
         </Card>
       ) : (
-        <div className="grid-2">
-          {roles.data.roles.map(role => {
-            const fixed = role.slug === OWNER;
-            const busy = remove.isPending && remove.variables === role.slug;
-            return (
-              <Card
-                key={role.slug}
-                className="roles-card"
-                title={
-                  <span className="roles-title">
-                    {role.name}
-                    {fixed ? (
-                      <Badge tone="brand" icon="lock">
-                        Fixed
-                      </Badge>
-                    ) : (
-                      role.isSystem && <Badge>Built-in</Badge>
-                    )}
-                  </span>
-                }
-                description={<code>{role.slug}</code>}
-                actions={
-                  canEdit &&
-                  !fixed && (
-                    <Menu
-                      label={`Actions for the ${role.name} role`}
-                      disabled={busy}
-                      items={[
-                        {label: 'Edit', icon: 'pencil', onSelect: () => setEditing(role)},
-                        ...(role.isSystem
-                          ? []
-                          : [
-                              'separator' as const,
-                              {
-                                label: 'Delete',
-                                icon: 'trash' as const,
-                                danger: true,
-                                onSelect: () => void askDelete(role),
-                              },
-                            ]),
-                      ]}
-                    />
-                  )
-                }>
-                <div className="roles-body" aria-busy={busy || undefined}>
-                  {role.description && (
-                    <p className="roles-description">{role.description}</p>
-                  )}
-                  {role.members && (
-                    <p className="roles-members">
-                      <Icon name="users" size={14} />
-                      {role.members.count === 0
-                        ? 'Nobody has this role yet'
-                        : `${role.members.count}${role.members.more ? '+' : ''} ${role.members.count === 1 && !role.members.more ? 'person' : 'people'}`}
-                    </p>
-                  )}
-                  {fixed ? (
-                    <p className="muted">
-                      Everything, always. The owner role cannot be changed.
-                    </p>
-                  ) : role.permissions.length ? (
-                    <span className="badges">
-                      {role.permissions.map(codename => (
-                        <span key={codename} title={codename}>
-                          <Badge>{titles.get(codename) ?? codename}</Badge>
-                        </span>
-                      ))}
-                    </span>
-                  ) : (
-                    <p className="muted">Signed in, nothing more.</p>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
+        <div className="roles-grid">
+          {roles.data.roles.map(role => (
+            <RoleCard
+              key={role.slug}
+              role={role}
+              catalogue={catalogue.data?.permissions}
+              canEdit={canEdit}
+              busy={remove.isPending && remove.variables === role.slug}
+              onEdit={() => setEditing(role)}
+              onDelete={() => void askDelete(role)}
+            />
+          ))}
         </div>
       )}
 
@@ -206,6 +182,139 @@ export function Roles() {
         />
       )}
     </div>
+  );
+}
+
+/** One role: who it is for, what it allows (grouped), and how many people hold it. */
+function RoleCard({
+  role,
+  catalogue,
+  canEdit,
+  busy,
+  onEdit,
+  onDelete,
+}: {
+  role: RoleRow;
+  catalogue: PermissionRow[] | undefined;
+  canEdit: boolean;
+  busy: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const fixed = role.slug === OWNER;
+  const everything = fixed || role.permissions.includes(ALL);
+  const held = new Set(role.permissions);
+  // Every concrete permission the role grants, wildcards resolved: "7 of 18".
+  const concrete = catalogue?.filter(p => !p.codename.endsWith('*'));
+  const granted = concrete?.filter(p => everything || grants(held, p.codename)).length;
+  const groups = groupPermissions(role.permissions.filter(c => c !== ALL), catalogue ?? []);
+  const editable = canEdit && !fixed;
+
+  return (
+    <Card className={fixed ? 'roles-card roles-card-fixed' : 'roles-card'}>
+      <div className="roles-head">
+        <span className={`roles-icon roles-icon-${fixed ? 'fixed' : role.isSystem ? 'system' : 'custom'}`} aria-hidden="true">
+          <Icon name={roleIcon(role)} size={18} />
+        </span>
+        <div className="roles-heading">
+          <h3 className="roles-title">
+            {role.name}
+            {fixed ? (
+              <Badge tone="brand" icon="lock">
+                Fixed
+              </Badge>
+            ) : role.isSystem ? (
+              <Badge>Built-in</Badge>
+            ) : (
+              <Badge tone="info">Custom</Badge>
+            )}
+          </h3>
+          <code className="roles-slug">{role.slug}</code>
+        </div>
+        {editable && !role.isSystem && (
+          <Menu
+            label={`Actions for the ${role.name} role`}
+            disabled={busy}
+            items={[
+              {label: 'Edit', icon: 'pencil', onSelect: onEdit},
+              'separator',
+              {label: 'Delete', icon: 'trash', danger: true, onSelect: onDelete},
+            ]}
+          />
+        )}
+      </div>
+
+      {role.description && <p className="roles-description">{role.description}</p>}
+
+      <section className="roles-perms" aria-label={`What the ${role.name} role allows`} aria-busy={busy || undefined}>
+        <div className="roles-perms-head">
+          <span>Permissions</span>
+          {concrete && granted !== undefined && (
+            <span className="roles-perms-count">
+              {everything ? 'All' : `${granted} of ${concrete.length}`}
+            </span>
+          )}
+        </div>
+        {concrete && granted !== undefined && (
+          <progress className="roles-meter" aria-hidden="true" max={concrete.length || 1} value={everything ? concrete.length || 1 : granted} />
+        )}
+        {everything ? (
+          fixed ? (
+            <p className="roles-all">
+              <Icon name="lock" size={16} />
+              <span>
+                <strong>Every permission, always.</strong> Plus what only the Owner can do.
+              </span>
+            </p>
+          ) : (
+            // `*` is meant for the Owner alone: on any other role it is worth a second look. It still
+            // stops short of the Owner: full email addresses, finding people by email and changing
+            // the owner check the owner ROLE (src/platform/auth/admin.ts), not a permission.
+            <p className="roles-all roles-all-warn">
+              <Icon name="warning" size={16} />
+              <span>
+                <strong>Holds “Everything”.</strong> Every permission, including ones added later. Owner-only
+                actions stay with the Owner.
+                {editable && ' Edit the role to give only what it needs.'}
+              </span>
+            </p>
+          )
+        ) : groups.length ? (
+          <dl className="roles-groups">
+            {groups.map(({group, items}) => (
+              <div className="roles-group" key={group}>
+                <dt>{group}</dt>
+                <dd className="badges">
+                  {items.map(item => (
+                    <span key={item.codename} title={item.codename}>
+                      <Badge>{item.title}</Badge>
+                    </span>
+                  ))}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="roles-none">No extra permissions. People with only this role can sign in, nothing more.</p>
+        )}
+      </section>
+
+      <div className="roles-foot">
+        {role.members ? (
+          <span className="roles-members">
+            <Icon name="users" size={14} />
+            {peopleLabel(role.members)}
+          </span>
+        ) : (
+          <span />
+        )}
+        {editable && (
+          <Button variant="secondary" size="sm" icon="pencil" onClick={onEdit} disabled={busy}>
+            Edit
+          </Button>
+        )}
+      </div>
+    </Card>
   );
 }
 
