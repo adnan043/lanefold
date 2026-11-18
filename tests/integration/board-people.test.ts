@@ -78,4 +78,18 @@ describe.skipIf(!DATABASE_URL)('board people (integration, real Postgres)', () =
     // A member of the workspace still sees everyone who can see the board.
     expect((await people(ben)).json.items.map((p: J) => p.id).sort()).toEqual([annId, benId, cyId].sort());
   });
+
+  it('the card people picker shows a guest the same narrowed list (GET /cards/:id/people)', async () => {
+    const bobId = (await db.user.findUniqueOrThrow({where: {email: 'bob@example.test'}, select: {id: true}})).id;
+    await db.boardMember.create({data: {boardId: boardA, userId: bobId, workspaceId: wsA, role: 'member'}});
+    await db.boardMember.create({data: {boardId: boardA, userId: benId, workspaceId: wsA, role: 'member'}});
+    const lane = (await db.lane.findFirstOrThrow({where: {boardId: boardA}, select: {id: true}})).id;
+    const card = (await ann.post(`/site-api/lanes/${lane}/cards`, {title: 'Plan'})).json.card.id;
+    const picker = (who: Browser) => who.get(`/site-api/cards/${card}/people`);
+    const asGuest = await picker(bob);
+    expect(asGuest.status).toBe(200);
+    // Workspace members only (the guest is not one): ann (owner) and ben (seated); never cy (no seat).
+    expect(asGuest.json.items.map((p: J) => p.id).sort()).toEqual([annId, benId].sort());
+    expect((await picker(ben)).json.items.map((p: J) => p.id).sort()).toEqual([annId, benId, cyId].sort());
+  });
 });

@@ -168,7 +168,8 @@ const httpUrl = (v: unknown): string | null => {
   if (typeof v !== 'string' || v.length > IMPORT_LIMITS.url || /\u0000/.test(v)) return null;
   try {
     const u = new URL(v);
-    if ((u.protocol !== 'https:' && u.protocol !== 'http:') || u.username || u.password) return null;
+    // https only, like a link attached by hand (card-detail.ts): a plain-http link is dropped.
+    if (u.protocol !== 'https:' || u.username || u.password) return null;
     return u.toString().slice(0, IMPORT_LIMITS.url);
   } catch {
     return null;

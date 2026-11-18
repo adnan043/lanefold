@@ -323,7 +323,7 @@ describe('parseTrelloExport: checklists, comments, labels, links', () => {
     const r = ok(board({cards: [card(1)], labels: [{id: 'b1', name: 'x', color: '__proto__'}]}));
     expect(checkLabels(JSON.parse(JSON.stringify(r.plan.labels))).ok).toBe(true);
   });
-  it('only plain http(s) links without credentials survive', () => {
+  it('only https links without credentials survive', () => {
     const urls = [
       'javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:alert(1)', 'data:text/html,<script>1</script>', 'file:///tmp/secret.txt', 'ftp://x.test/f', 'mailto:a@b.c',
       'vbscript:x', 'blob:https://x.test/1', '//evil.test', '/relative', 'https://user:pw@x.test/', 'https://@x.test/', 'not a url', '', 'https://', 'http://[::1', 'trello.com/x',
@@ -331,8 +331,8 @@ describe('parseTrelloExport: checklists, comments, labels, links', () => {
     ];
     const r = ok(board({cards: [card(1, {attachments: urls.map(u => ({name: 'n', url: u})).concat([{name: 'n', url: null as never}, {name: 'n', url: 5 as never}])})]}));
     const links = r.plan.cards[0]!.links;
-    for (const l of links) expect(l.url).toMatch(/^https?:\/\/[^@]*$/);
-    expect(links.map(l => l.url)).toEqual(['https://x.test/', 'https://ok.test/a%20b', 'http://ok.test/UP']); // an empty-credential "https://@x.test/" is normalized, harmless
+    for (const l of links) expect(l.url).toMatch(/^https:\/\/[^@]*$/);
+    expect(links.map(l => l.url)).toEqual(['https://x.test/', 'https://ok.test/a%20b']); // plain http ("HTTP://OK.TEST/UP") is dropped; an empty-credential "https://@x.test/" is normalized, harmless
     expectRoundTrip(r.plan.cards);
   });
   it('a nameless attachment is named after its host; Trello uploads are counted', () => {
