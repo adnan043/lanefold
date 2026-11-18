@@ -1973,5 +1973,6 @@
   "chat.waitForUploads": "صبر کنید تا بارگذاری فایل‌ها تمام شود.",
   "chat.messageFiles": "فایل‌ها",
   "chat.downloadFile": "دانلود {name}",
-  "chat.openFile": "باز کردن {name}"
+  "chat.openFile": "باز کردن {name}",
+  "chat.morePictures": "{n} تصویر دیگر"
 }

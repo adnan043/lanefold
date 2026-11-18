@@ -1973,5 +1973,6 @@
   "chat.waitForUploads": "Wait for the files to finish uploading.",
   "chat.messageFiles": "Files",
   "chat.downloadFile": "Download {name}",
-  "chat.openFile": "Open {name}"
+  "chat.openFile": "Open {name}",
+  "chat.morePictures": "{n} more pictures"
 }

@@ -1960,5 +1960,6 @@
   "chat.waitForUploads": "โปรดรอให้อัปโหลดไฟล์เสร็จก่อน",
   "chat.messageFiles": "ไฟล์",
   "chat.downloadFile": "ดาวน์โหลด {name}",
-  "chat.openFile": "เปิด {name}"
+  "chat.openFile": "เปิด {name}",
+  "chat.morePictures": "รูปภาพอีก {n} รูป"
 }

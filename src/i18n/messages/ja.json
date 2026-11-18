@@ -1960,5 +1960,6 @@
   "chat.waitForUploads": "ファイルのアップロードが終わるまでお待ちください。",
   "chat.messageFiles": "ファイル",
   "chat.downloadFile": "{name} をダウンロード",
-  "chat.openFile": "{name} を開く"
+  "chat.openFile": "{name} を開く",
+  "chat.morePictures": "ほか {n} 枚の画像"
 }

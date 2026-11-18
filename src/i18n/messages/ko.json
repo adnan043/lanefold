@@ -1960,5 +1960,6 @@
   "chat.waitForUploads": "파일 업로드가 끝날 때까지 기다려 주세요.",
   "chat.messageFiles": "파일",
   "chat.downloadFile": "{name} 다운로드",
-  "chat.openFile": "{name} 열기"
+  "chat.openFile": "{name} 열기",
+  "chat.morePictures": "사진 {n}장 더"
 }

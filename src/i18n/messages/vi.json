@@ -1960,5 +1960,6 @@
   "chat.waitForUploads": "Hãy chờ các tệp tải lên xong.",
   "chat.messageFiles": "Tệp",
   "chat.downloadFile": "Tải xuống {name}",
-  "chat.openFile": "Mở {name}"
+  "chat.openFile": "Mở {name}",
+  "chat.morePictures": "Thêm {n} hình ảnh"
 }

@@ -1999,5 +1999,6 @@
   "chat.waitForUploads": "Дождитесь окончания загрузки файлов.",
   "chat.messageFiles": "Файлы",
   "chat.downloadFile": "Скачать {name}",
-  "chat.openFile": "Открыть {name}"
+  "chat.openFile": "Открыть {name}",
+  "chat.morePictures": "Ещё изображений: {n}"
 }

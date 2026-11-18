@@ -1321,9 +1321,11 @@ a.chat-file-name:focus-visible,
   white-space: nowrap;
 }
 .chat-viewer {
+  position: relative;
   display: grid;
   place-items: center;
   padding: 0.5rem;
+  overflow: hidden;
   border-radius: 18px;
   background: var(--surface);
 }
@@ -1334,13 +1336,9 @@ a.chat-file-name:focus-visible,
   border-radius: 14px;
   object-fit: contain;
 }
-.chat-viewer-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-inline-end: auto;
-}
 .chat-viewer-count {
+  margin-inline-end: auto;
+  align-self: center;
   min-inline-size: 3.5ch;
   font-size: 0.875rem;
   text-align: center;
@@ -1353,4 +1351,110 @@ a.chat-file-name:focus-visible,
   inline-size: auto;
   block-size: auto;
   object-fit: contain;
+}
+
+/* A message's pictures: one keeps its own shape; two to four sit in a grid of at most two columns (three: the
+   third spans both); past four, the fourth tile is covered with "+N". */
+.chat-file-images {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 11rem));
+  gap: 0.35rem;
+}
+.chat-file-images[data-count='1'] {
+  grid-template-columns: minmax(0, max-content);
+}
+.chat-file-images[data-count='3'] > li:last-child {
+  grid-column: span 2;
+}
+.chat-file-image {
+  position: relative;
+}
+.chat-file-images:not([data-count='1']) .chat-file-image {
+  inline-size: 100%;
+  aspect-ratio: 1;
+}
+.chat-file-images[data-count='3'] > li:last-child .chat-file-image {
+  aspect-ratio: 2 / 1;
+}
+.chat-file-images:not([data-count='1']) .chat-file-image img {
+  inline-size: 100%;
+  block-size: 100%;
+  max-inline-size: none;
+  max-block-size: none;
+  object-fit: cover;
+}
+.chat-file-more {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, black 55%, transparent);
+  color: white;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: background-color 120ms ease;
+}
+.chat-file-image:hover .chat-file-more {
+  background: color-mix(in srgb, black 65%, transparent);
+}
+
+/* The viewer's round arrows on either side of the picture (mirrored in RTL with the chevrons). */
+.chat-viewer-arrow {
+  position: absolute;
+  inset-block-start: 50%;
+  display: grid;
+  place-items: center;
+  inline-size: 44px;
+  block-size: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--ink);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+.chat-viewer-arrow[data-side='prev'] {
+  inset-inline-start: 0.875rem;
+}
+.chat-viewer-arrow[data-side='next'] {
+  inset-inline-end: 0.875rem;
+}
+.chat-viewer-arrow:hover {
+  background: var(--card);
+  transform: translateY(-50%) scale(1.06);
+}
+.chat-viewer-arrow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Moving to another picture slides it in from the side it came from. */
+@keyframes chat-slide-from-end {
+  from { opacity: 0; transform: translateX(3rem); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes chat-slide-from-start {
+  from { opacity: 0; transform: translateX(-3rem); }
+  to { opacity: 1; transform: none; }
+}
+.chat-viewer img[data-slide='next'] {
+  animation: chat-slide-from-end 220ms ease-out;
+}
+.chat-viewer img[data-slide='prev'] {
+  animation: chat-slide-from-start 220ms ease-out;
+}
+.chat-viewer:dir(rtl) img[data-slide='next'] {
+  animation-name: chat-slide-from-start;
+}
+.chat-viewer:dir(rtl) img[data-slide='prev'] {
+  animation-name: chat-slide-from-end;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-viewer img[data-slide] {
+    animation: none;
+  }
 }

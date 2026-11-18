@@ -1960,5 +1960,6 @@
   "chat.waitForUploads": "请等待文件上传完成。",
   "chat.messageFiles": "文件",
   "chat.downloadFile": "下载 {name}",
-  "chat.openFile": "打开 {name}"
+  "chat.openFile": "打开 {name}",
+  "chat.morePictures": "还有 {n} 张图片"
 }

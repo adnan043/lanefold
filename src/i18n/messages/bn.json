@@ -1973,5 +1973,6 @@
   "chat.waitForUploads": "ফাইলগুলোর আপলোড শেষ হওয়া পর্যন্ত অপেক্ষা করুন।",
   "chat.messageFiles": "ফাইল",
   "chat.downloadFile": "{name} ডাউনলোড করুন",
-  "chat.openFile": "{name} খুলুন"
+  "chat.openFile": "{name} খুলুন",
+  "chat.morePictures": "আরও {n}টি ছবি"
 }

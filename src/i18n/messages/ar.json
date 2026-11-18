@@ -2025,5 +2025,6 @@
   "chat.waitForUploads": "انتظر حتى ينتهي رفع الملفات.",
   "chat.messageFiles": "الملفات",
   "chat.downloadFile": "تنزيل {name}",
-  "chat.openFile": "فتح {name}"
+  "chat.openFile": "فتح {name}",
+  "chat.morePictures": "{n} صور أخرى"
 }

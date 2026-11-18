@@ -1973,5 +1973,6 @@
   "chat.waitForUploads": "Dosyaların yüklenmesi bitene kadar bekleyin.",
   "chat.messageFiles": "Dosyalar",
   "chat.downloadFile": "{name} indir",
-  "chat.openFile": "{name} aç"
+  "chat.openFile": "{name} aç",
+  "chat.morePictures": "{n} resim daha"
 }

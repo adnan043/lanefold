@@ -1973,5 +1973,6 @@
   "chat.waitForUploads": "Subiri faili zimalize kupakiwa.",
   "chat.messageFiles": "Faili",
   "chat.downloadFile": "Pakua {name}",
-  "chat.openFile": "Fungua {name}"
+  "chat.openFile": "Fungua {name}",
+  "chat.morePictures": "Picha {n} zaidi"
 }

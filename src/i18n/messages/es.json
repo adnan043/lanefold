@@ -1986,5 +1986,6 @@
   "chat.waitForUploads": "Espera a que terminen de subirse los archivos.",
   "chat.messageFiles": "Archivos",
   "chat.downloadFile": "Descargar {name}",
-  "chat.openFile": "Abrir {name}"
+  "chat.openFile": "Abrir {name}",
+  "chat.morePictures": "{n} imágenes más"
 }

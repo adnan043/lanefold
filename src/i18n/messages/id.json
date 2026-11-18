@@ -1960,5 +1960,6 @@
   "chat.waitForUploads": "Tunggu hingga file selesai diunggah.",
   "chat.messageFiles": "File",
   "chat.downloadFile": "Unduh {name}",
-  "chat.openFile": "Buka {name}"
+  "chat.openFile": "Buka {name}",
+  "chat.morePictures": "{n} gambar lagi"
 }
