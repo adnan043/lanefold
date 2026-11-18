@@ -22,6 +22,11 @@ type Options = {
   parentId?: string | null;
   /** The conversation's `lastSeq` from the pulse: when it grows past what we know, fetch what is new. */
   pulseSeq?: number;
+  /**
+   * The conversation's `editRev` from the pulse: it moves on edits, deletes, reactions, pins, linked cards and new
+   * replies. While it is known the window is re-read only when it moves (and every few minutes as a safety net).
+   */
+  pulseEditRev?: number;
   /** A fallback poll of `after` on this interval, for a list with no pulse (off by default: threads follow the pulse too). */
   pollMs?: number | null;
   me: number | undefined;
@@ -31,6 +36,8 @@ type Options = {
 const WINDOW_MS = 20_000;
 /** Every this many window refreshes, ONE older page already open is re-read too (round robin): ~100 s per page. */
 const OLDER_EVERY = 5;
+/** With the pulse's `editRev` to go by: the window is still re-read this often (permissions, an archive, a deleted card). */
+const WINDOW_SAFETY_MS = 3 * 60_000;
 /**
  * The most messages a list keeps. Back at the newest, the oldest are dropped (Load older brings them back); while
  * the reader is further up, the newest far below them are dropped (`trimNewest`; scrolling down loads them again).
@@ -116,7 +123,7 @@ export function mergeMessages(prev: MessageT[], incoming: readonly MessageT[]): 
  *   - the window refresh slows down while the person is idle (`windowDelayMs`) and never runs in a hidden tab,
  *   - a sent message shows at once as pending; a failed one keeps its `clientId`, so Retry never duplicates it.
  */
-export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollMs = null, me}: Options) {
+export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulseEditRev, pollMs = null, me}: Options) {
   const {errorMessage} = useI18n();
   const [items, setItems] = useState<MessageT[]>([]);
   const [pending, setPending] = useState<PendingMessage[]>([]);
@@ -136,6 +143,11 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
   /** `before` cursors of the older pages already loaded: the refresh re-reads one of them now and then, in turn. */
   const olderCursors = useRef<number[]>([]);
   const ticks = useRef(0);
+  /** The `editRev` the list last showed (from a page), or null before the first page. */
+  const seenRev = useRef<number | null>(null);
+  const olderTurn = useRef(0);
+  const pulseRev = useRef(pulseEditRev);
+  pulseRev.current = pulseEditRev;
   const [known, setKnown] = useState(0);
   const knownRef = useRef(0);
   const generation = useRef(0);
@@ -186,6 +198,7 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
       setCanModerate(page.canModerate ?? false);
       setArchived(page.archived ?? false);
       lastWindow.current = Date.now();
+      seenRev.current = page.editRev ?? null;
       knownRef.current = page.lastSeq;
       setKnown(page.lastSeq);
       setStatus('ready');
@@ -226,6 +239,7 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
       setCanWrite(page.canWrite);
       if (page.canModerate !== undefined) setCanModerate(page.canModerate);
       setArchived(page.archived ?? false);
+      seenRev.current = page.editRev ?? seenRev.current;
       setKnownSeq(page.lastSeq);
     } catch {
       // Quiet: the list keeps what it shows; the next refresh or a click tries again.
@@ -260,11 +274,13 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
   }, [url, merge, setKnownSeq, status]);
 
   /** The newest window again: shows edits, deletes and reactions that `after` cannot. */
-  const refreshWindow = useCallback(async () => {
+  const refreshWindow = useCallback(async (changed = false) => {
     if (busy.current || refreshing.current || sending.current > 0 || status !== 'ready') return;
     refreshing.current = true;
     lastWindow.current = Date.now();
     const mine = generation.current;
+    // What the pulse said when this started: a list not at the newest reads no window, yet has caught up to it.
+    const startRev = pulseRev.current;
     try {
       // The newest window only when the list reaches the newest: merged into a list missing the newer messages it
       // would leave a gap.
@@ -275,13 +291,15 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
         setCanWrite(page.canWrite);
         if (page.canModerate !== undefined) setCanModerate(page.canModerate);
         setArchived(page.archived ?? false);
-      }
-      // Older pages already open: edits, deletes and pins there too, one page now and then, newest first, in turn.
+        seenRev.current = Math.max(seenRev.current ?? 0, page.editRev ?? startRev ?? 0);
+      } else if (startRev !== undefined) seenRev.current = Math.max(seenRev.current ?? 0, startRev);
+      // Older pages already open: edits, deletes and pins there too, newest first, in turn: one page on each refresh a
+      // change started, else one every OLDER_EVERY refreshes.
       ticks.current += 1;
       const cursors = olderCursors.current;
-      if (cursors.length > 0 && ticks.current % OLDER_EVERY === 0) {
-        const round = ticks.current / OLDER_EVERY - 1;
-        const before = cursors[cursors.length - 1 - (round % cursors.length)]!;
+      if (cursors.length > 0 && (changed || ticks.current % OLDER_EVERY === 0)) {
+        olderTurn.current += 1;
+        const before = cursors[cursors.length - 1 - ((olderTurn.current - 1) % cursors.length)]!;
         const older = await call<MessagePage>('GET', url({before}));
         if (mine !== generation.current || sending.current > 0) return;
         // Only what the list still holds: a page reaches below its cursor, so after a trim it would otherwise bring
@@ -307,10 +325,23 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pollM
   useEffect(() => {
     if (pulseSeq !== undefined && pulseSeq > knownRef.current) void poll();
   }, [pulseSeq, poll]);
+  // Something changed that `after` cannot see (an edit, a reaction…): the window again, at once.
+  useEffect(() => {
+    if (pulseEditRev !== undefined && seenRev.current !== null && pulseEditRev > seenRev.current) void refreshWindow(true);
+  }, [pulseEditRev, refreshWindow]);
   useVisibleInterval(() => void poll(), pollMs);
-  // Ticks every 20 s in a visible tab; refreshes when the idle-aware delay has passed (20 s active, then 1 and 3 min).
+  // Ticks every 20 s in a visible tab. With the pulse's editRev: a refresh when it moved (one the effect above could
+  // not start), else only the slow safety net. Without it (a channel not joined yet): the idle-aware delay (20 s
+  // active, then 1 and 3 min).
   useVisibleInterval(() => {
-    if (Date.now() - lastWindow.current >= windowDelayMs(idleMs()) - 1000) void refreshWindow();
+    const since = Date.now() - lastWindow.current;
+    const rev = pulseRev.current;
+    if (rev !== undefined && seenRev.current !== null) {
+      if (rev > seenRev.current) void refreshWindow(true);
+      else if (since >= Math.max(WINDOW_SAFETY_MS, windowDelayMs(idleMs())) - 1000) void refreshWindow();
+      return;
+    }
+    if (since >= windowDelayMs(idleMs()) - 1000) void refreshWindow();
   }, status === 'ready' ? WINDOW_MS : null);
   useEffect(() => {
     const wake = () => {

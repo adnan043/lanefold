@@ -140,6 +140,14 @@ describe.skipIf(!DATABASE_URL)('chat extras (integration, real Postgres)', () =>
       expect((await post(ann, 'abc', {laneId: lane})).status).toBe(404);
     });
 
+    it('someone who may only read the conversation gets 403 (a workspace viewer, an archived channel)', async () => {
+      await db.workspaceMember.update({where: {workspaceId_userId: {workspaceId: wsA, userId: ids.mia!}}, data: {role: 'viewer'}});
+      expect((await post(mia, msg, {laneId: lane})).status).toBe(403);
+      expect((await ann.request('PUT', `/site-api/conversations/${channel}/archive`, {})).status).toBe(200);
+      expect((await post(ann, msg, {laneId: lane})).status).toBe(403);
+      expect(await db.messageCardRef.count({where: {messageId: BigInt(msg)}})).toBe(0);
+    });
+
     it('a viewer of the board gets 403', async () => {
       await db.boardMember.create({data: {boardId: board, workspaceId: wsA, userId: ids.mia!, role: 'viewer'}});
       expect((await post(mia, msg, {laneId: lane})).status).toBe(403);

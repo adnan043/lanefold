@@ -9,7 +9,7 @@ import {CARD_TITLE_MAX, descriptionFromMessage, titleFromMessage} from '../../li
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {reserveCardNumbers} from '../card-number';
 import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
-import {conversationAccess, unreadOf} from './chat';
+import {bumpEditRev, conversationAccess, unreadOf} from './chat';
 import {idOf, intField, invalid, likeEscape, objectOf, textField, type FieldError} from '../validation';
 import {boardAccess, notFound, requireWorkspaceRole} from '../workspaces';
 
@@ -64,18 +64,24 @@ export const chatExtraRoutes = new Hono()
     if (!id) return notFound(c, 'conversation');
     const a = await conversationAccess(db, id, me);
     if (!a) return notFound(c, 'conversation');
-    const [conv, board] = await Promise.all([
-      db.conversation.findFirst({where: {id: a.conversationId, workspaceId: a.workspaceId}, select: {name: true, dmKey: true}}),
+    // The conversation and, for a DM, the other person's name (from `dm_key` = "a:b") in ONE read.
+    const [rows, board] = await Promise.all([
+      db.$queryRaw<{name: string | null; dm_key: string | null; peer_name: string | null}[]>`
+        SELECT cv.name, cv.dm_key, u.name AS peer_name
+        FROM conversations cv
+        LEFT JOIN users u ON cv.kind = 'dm' AND u.id = CASE WHEN cv.dm_key ~ '^[0-9]+:[0-9]+$' THEN (
+          CASE WHEN split_part(cv.dm_key, ':', 1) = ${String(me)} THEN split_part(cv.dm_key, ':', 2) ELSE split_part(cv.dm_key, ':', 1) END
+        )::int END
+        WHERE cv.id = ${a.conversationId} AND cv.workspace_id = ${a.workspaceId}
+        LIMIT 1`,
       a.boardId ? db.board.findFirst({where: {id: a.boardId, workspaceId: a.workspaceId}, select: {name: true}}) : Promise.resolve(null),
     ]);
+    const conv = rows[0];
     if (!conv) return notFound(c, 'conversation');
     let peer: {id: number; name: string} | null = null;
-    if (a.kind === 'dm' && conv.dmKey) {
-      const other = conv.dmKey.split(':').map(Number).find(n => n !== me);
-      if (other) {
-        const user = await db.user.findFirst({where: {id: other}, select: {name: true}});
-        peer = {id: other, name: user?.name ?? ''};
-      }
+    if (a.kind === 'dm' && conv.dm_key) {
+      const other = conv.dm_key.split(':').map(Number).find(n => n !== me);
+      if (other) peer = {id: other, name: conv.peer_name ?? ''};
     }
     return c.json({
       conversation: {
@@ -173,7 +179,7 @@ export const chatExtraRoutes = new Hono()
     // Then, together: my access to the conversation (its board chat's access check runs alongside), my access to the
     // lane's board, the plan, and the board chat's name for the description.
     const [a, laneAccess, ent, sourceBoard] = await Promise.all([
-      conversationAccess(db, msg.conversationId, me, conv.kind === 'board' && conv.boardId ? conv.boardId : undefined),
+      conversationAccess(db, msg.conversationId, me),
       laneRow && laneRow.workspaceId === conv.workspaceId ? boardAccess(db, laneRow.boardId, me) : null,
       getEntitlements(db, conv.workspaceId),
       conv.kind === 'board' && conv.boardId
@@ -181,6 +187,9 @@ export const chatExtraRoutes = new Hono()
         : null,
     ]);
     if (!a || msg.deletedAt || msg.kind !== 'user') return notFound(c, 'message');
+    // A card chip shows under the message for every reader: only someone who may write here adds one (never a viewer,
+    // never in an archived channel or board chat).
+    if (!a.canWrite) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
 
     // The lane must be in the conversation's workspace; the board's own access decides the rest.
     const lane = laneRow && laneRow.workspaceId === a.workspaceId ? laneRow : null;
@@ -239,6 +248,8 @@ export const chatExtraRoutes = new Hono()
         data: {workspaceId, boardId, cardId: card.id, actorId: me, kind: 'card.created', meta: {title: card.title, fromMessage: true}},
       });
       await tx.messageCardRef.create({data: {messageId: msg.id, cardId: card.id}});
+      // The chip shows to the others on their next window refresh.
+      await bumpEditRev(tx, {conversationId: msg.conversationId, workspaceId});
       return {card, rev};
     });
     if (out === 'refs') return c.json(problem('too_many_cards', `A message links up to ${MAX_CARD_REFS} cards.`), 409);

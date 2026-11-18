@@ -9,9 +9,12 @@ import {distinctCardNumbers, MAX_REFS_PER_PAGE} from '../../lib/card-number-refs
 import {mentionsAll} from '../../lib/mention-all';
 import {getEntitlements} from '../entitlements';
 import {notify} from '../notifications';
-import {boardAccess, notFound, rankOf, requireWorkspaceRole, type WorkspaceRole} from '../workspaces';
+import {boardAccess, notFound, rankOf, requireWorkspaceRole, resolveBoardRole, type BoardRole, type WorkspaceRole} from '../workspaces';
+
+const BOARD_ROLES = new Set<string>(['admin', 'member', 'viewer']);
 import {idOf, invalid, objectOf, textField, type FieldError} from '../validation';
-import {afterResponse} from '../after-response';
+import {afterResponse, type WithExecutionCtx} from '../after-response';
+import {softCheck} from '../soft-limit';
 
 /**
  * Phase 4b: chat. Mounted ONCE at `/` in `app.ts`. Real time is polling (SPEC §8): `pulse` says which
@@ -119,6 +122,8 @@ type Access = {
   kind: string;
   boardId: number | null;
   lastSeq: number;
+  /** `conversations.edit_rev`: moves on edits, deletes, reactions, pins, linked cards and new replies. */
+  editRev: number;
   workspaceRole: WorkspaceRole;
   canRead: true;
   /** May send, react and edit own messages. */
@@ -139,35 +144,41 @@ type AccessRow = {
   kind: string;
   board_id: number | null;
   last_seq: bigint;
+  edit_rev: bigint;
   role: string;
   last_read_seq: bigint | null;
   muted_at: Date | null;
   joined: boolean;
   channel_archived: boolean;
+  /** A board chat's board, read in the same query (null otherwise, or when it is in another workspace). */
+  b_id: number | null;
+  b_visibility: string | null;
+  b_inbox_of: number | null;
+  b_archived: boolean | null;
+  bm_role: string | null;
 };
 
 /**
  * What the visitor may do in one conversation, or null: missing, another workspace (or an archived one), a DM or
- * group they are not in, a board they cannot see. ONE query (the conversation, my workspace role and my
- * conversation_members row), plus `boardAccess` for a board chat. `boardHint`: a caller that already knows the board
- * (or is about to check it) may pass its id so `boardAccess` runs side by side with the read; its answer is used only
- * when the conversation really is that board's chat.
+ * group they are not in, a board they cannot see. ONE query: the conversation, my workspace role, my
+ * conversation_members row and, for a board chat, its board and my seat on it (resolved with boardAccess()'s rules).
  */
-export async function conversationAccess(db: PrismaClient, conversationId: number, userId: number, boardHint?: number): Promise<Access | null> {
-  const [rows, hinted] = await Promise.all([
-    // The workspace membership gates everything: another workspace's conversation is "missing" (INNER JOIN).
-    db.$queryRaw<AccessRow[]>`
-      SELECT cv.id, cv.workspace_id, cv.kind, cv.board_id, cv.last_seq, wm.role,
-             cm.last_read_seq, cm.muted_at, (cm.user_id IS NOT NULL) AS joined,
-             (cv.kind = 'channel' AND cv.archived_at IS NOT NULL) AS channel_archived
-      FROM conversations cv
-      JOIN workspace_members wm ON wm.workspace_id = cv.workspace_id AND wm.user_id = ${userId}
-      JOIN workspaces w ON w.id = cv.workspace_id AND w.archived_at IS NULL
-      LEFT JOIN conversation_members cm ON cm.conversation_id = cv.id AND cm.user_id = ${userId}
-      WHERE cv.id = ${conversationId}
-      LIMIT 1`,
-    boardHint ? boardAccess(db, boardHint, userId) : null,
-  ]);
+export async function conversationAccess(db: PrismaClient, conversationId: number, userId: number): Promise<Access | null> {
+  // The workspace membership gates everything: another workspace's conversation is "missing" (INNER JOIN).
+  const rows = await db.$queryRaw<AccessRow[]>`
+    SELECT cv.id, cv.workspace_id, cv.kind, cv.board_id, cv.last_seq, cv.edit_rev, wm.role,
+           cm.last_read_seq, cm.muted_at, (cm.user_id IS NOT NULL) AS joined,
+           (cv.kind = 'channel' AND cv.archived_at IS NOT NULL) AS channel_archived,
+           b.id AS b_id, b.visibility AS b_visibility, b.inbox_of AS b_inbox_of,
+           (b.archived_at IS NOT NULL) AS b_archived, bm.role AS bm_role
+    FROM conversations cv
+    JOIN workspace_members wm ON wm.workspace_id = cv.workspace_id AND wm.user_id = ${userId}
+    JOIN workspaces w ON w.id = cv.workspace_id AND w.archived_at IS NULL
+    LEFT JOIN conversation_members cm ON cm.conversation_id = cv.id AND cm.user_id = ${userId}
+    LEFT JOIN boards b ON cv.kind = 'board' AND b.id = cv.board_id AND b.workspace_id = cv.workspace_id
+    LEFT JOIN board_members bm ON bm.board_id = b.id AND bm.user_id = ${userId}
+    WHERE cv.id = ${conversationId}
+    LIMIT 1`;
   const conv = rows[0];
   if (!conv) return null;
   const role = conv.role as WorkspaceRole;
@@ -179,6 +190,7 @@ export async function conversationAccess(db: PrismaClient, conversationId: numbe
     kind: conv.kind,
     boardId: conv.board_id,
     lastSeq: Number(conv.last_seq),
+    editRev: Number(conv.edit_rev),
     workspaceRole: role,
     canRead: true as const,
     archived: false,
@@ -196,26 +208,54 @@ export async function conversationAccess(db: PrismaClient, conversationId: numbe
     return {...base, canWrite: true, canModerate: false};
   }
   if (conv.kind === 'board' && conv.board_id) {
-    const access = boardHint === conv.board_id ? hinted : await boardAccess(db, conv.board_id, userId);
-    if (!access || access.workspaceId !== conv.workspace_id) return null;
-    return {...base, archived: access.archived, canWrite: access.canWrite && !access.archived, canModerate: access.canAdmin && !access.archived};
+    // boardAccess()'s rules on the joined row. I am a workspace member here (the INNER JOIN), so never a guest, and
+    // the board is in this conversation's (live) workspace (the JOIN), which is what boardReachable() asks.
+    if (conv.b_id === null || conv.b_visibility === null) return null;
+    if (conv.b_inbox_of !== null && conv.b_inbox_of !== userId) return null;
+    const override = conv.bm_role && BOARD_ROLES.has(conv.bm_role) ? (conv.bm_role as BoardRole) : null;
+    const boardRole = conv.b_inbox_of === userId ? (role === 'viewer' ? 'viewer' : 'admin') : resolveBoardRole(role, conv.b_visibility, override);
+    if (!boardRole) return null;
+    const archived = Boolean(conv.b_archived);
+    return {...base, archived, canWrite: boardRole !== 'viewer' && !archived, canModerate: boardRole === 'admin' && !archived};
   }
   return null;
 }
 
-type ChatVars = {viewer: {id: number | null}; db: PrismaClient; access: Access};
+type ChatVars = {viewer: {id: number | null}; db: PrismaClient; access: Access; limit: {limited: boolean; record: () => Promise<void>} | null};
+
+/**
+ * Soft per-user limits (Site Cache, per minute) on the chat writes other than sending, which has its own exact limit:
+ * a script cannot hammer edits, reactions, pins, read markers or mute. Generous for people, a cost guard for scripts.
+ */
+type ChatLimit = {name: string; max: number};
+const LIMIT_EDIT: ChatLimit = {name: 'chat-edit', max: 60};
+const LIMIT_REACT: ChatLimit = {name: 'chat-react', max: 120};
+const LIMIT_PIN: ChatLimit = {name: 'chat-pin', max: 60};
+const LIMIT_READ: ChatLimit = {name: 'chat-read', max: 300};
+const LIMIT_MUTE: ChatLimit = {name: 'chat-mute', max: 30};
+
+/** The 429 of a soft limit (the Retry-After lets the client's cooldown wait it out). */
+function tooFast(c: {header: (k: string, v: string) => void; json: (b: unknown, s: 429) => Response}) {
+  c.header('Retry-After', '30');
+  return c.json(problem('rate_limited', 'You are doing that too fast. Wait a moment and try again.'), 429);
+}
+
+/** Moves the conversation's edit counter (never `updated_at`: that orders the list by new messages). */
+export const bumpEditRev = (db: Pick<PrismaClient, '$executeRaw'>, a: {conversationId: number; workspaceId: number}) =>
+  db.$executeRaw`UPDATE conversations SET edit_rev = edit_rev + 1 WHERE id = ${a.conversationId} AND workspace_id = ${a.workspaceId}`;
 
 /**
  * Route guard: the `:id` conversation must be reachable (else 404); `write` / `moderate` raise it to 403.
  * `send` is `write` WITHOUT the read-only plan check: the route MUST call `readOnlyBlock` (or read the entitlements)
  * itself before it writes anything, so that read can share a round trip with its other reads.
  */
-const requireConversation = (need: 'read' | 'write' | 'send' | 'moderate' = 'read') =>
+const requireConversation = (need: 'read' | 'write' | 'send' | 'moderate' = 'read', limit?: ChatLimit) =>
   createMiddleware<{Variables: ChatVars}>(async (c, next) => {
     const id = idOf(c.req.param('id'));
     if (!id) return notFound(c, 'conversation');
-    const access = await conversationAccess(c.var.db, id, c.var.viewer.id!);
+    const [access, gate] = await Promise.all([conversationAccess(c.var.db, id, c.var.viewer.id!), limit ? softCheck(c.var.viewer.id!, limit.name, limit.max, 60) : null]);
     if (!access) return notFound(c, 'conversation');
+    c.set('limit', gate);
     if (((need === 'write' || need === 'send') && !access.canWrite) || (need === 'moderate' && !access.canModerate)) {
       return c.json(problem('forbidden', 'You do not have access to this.'), 403);
     }
@@ -522,10 +562,12 @@ async function mentionable(db: PrismaClient, a: Access, ids: number[]): Promise<
     a.kind === 'board' && a.boardId
       ? db.board.findFirst({
           where: {id: a.boardId, workspaceId: a.workspaceId},
-          select: {visibility: true, boardMembers: {where: {userId: {in: ids}}, select: {userId: true}, take: MAX_MENTIONS}},
+          select: {visibility: true, inboxOf: true, boardMembers: {where: {userId: {in: ids}}, select: {userId: true}, take: MAX_MENTIONS}},
         })
       : null,
   ]);
+  // A personal Inbox is seen by its owner alone (boardAccess() refuses everyone else, owners and admins too).
+  if (board && board.inboxOf !== null) return rows.filter(r => r.userId === board.inboxOf).map(r => r.userId);
   // A private board's chat names only people who can see the board (workspace owners/admins and board members), like card mentions.
   if (board && board.visibility === 'private') {
     const seated = new Set(board.boardMembers.map(m => m.userId));
@@ -744,8 +786,8 @@ async function boardChatOf(db: PrismaClient, boardId: number, me: number) {
  * is dropped for an Inbox board, or a private board without my seat unless I am owner/admin of that workspace.
  */
 export async function pulseRows(db: PrismaClient, me: number, cap = PULSE_CAP) {
-  const rows = await db.$queryRaw<{id: number; workspace_id: number; last_seq: bigint; last_read_seq: bigint; muted_at: Date | null}[]>`
-    SELECT cv.id, cv.workspace_id, cv.last_seq, cm.last_read_seq, cm.muted_at
+  const rows = await db.$queryRaw<{id: number; workspace_id: number; last_seq: bigint; edit_rev: bigint; last_read_seq: bigint; muted_at: Date | null}[]>`
+    SELECT cv.id, cv.workspace_id, cv.last_seq, cv.edit_rev, cm.last_read_seq, cm.muted_at
     FROM conversation_members cm
     JOIN conversations cv ON cv.id = cm.conversation_id
     JOIN workspace_members wm ON wm.workspace_id = cm.workspace_id AND wm.user_id = ${me}
@@ -763,7 +805,7 @@ export async function pulseRows(db: PrismaClient, me: number, cap = PULSE_CAP) {
   return rows.map(r => ({
     lastReadSeq: r.last_read_seq,
     mutedAt: r.muted_at,
-    conversation: {id: r.id, workspaceId: r.workspace_id, lastSeq: r.last_seq},
+    conversation: {id: r.id, workspaceId: r.workspace_id, lastSeq: r.last_seq, editRev: r.edit_rev},
   }));
 }
 
@@ -780,6 +822,7 @@ export const chatRoutes = new Hono()
         conversationId: r.conversation.id,
         workspaceId: r.conversation.workspaceId,
         lastSeq: Number(r.conversation.lastSeq),
+        editRev: Number(r.conversation.editRev),
         lastReadSeq: Number(r.lastReadSeq),
         unread: unreadOf(r.conversation.lastSeq, r.lastReadSeq),
         muted: r.mutedAt !== null,
@@ -802,10 +845,12 @@ export const chatRoutes = new Hono()
       db.conversationMember.findMany({
         where: {userId: me, workspaceId, conversation: {kind: {in: ['dm', 'group', 'board']}}},
         select: {lastReadSeq: true, mutedAt: true, conversation: {select: convCols}},
-        orderBy: {conversationId: 'asc'},
+        // The most recently active ones, like the pulse: a busy DM is never the one left out (and re-fetched on each poll).
+        orderBy: [{conversation: {updatedAt: 'desc'}}, {conversationId: 'desc'}],
         take: LIST_CAP,
       }),
     ]);
+    mineRows.sort((a, b) => a.conversation.id - b.conversation.id);
     // Board chats only for boards I can still see: workspace admins see all, others every non-private board or one they sit on.
     const boardIds = mineRows.filter(r => r.conversation.kind === 'board' && r.conversation.boardId).map(r => r.conversation.boardId!);
     // The names of the people in DMs and groups do not depend on which boards are visible (a board chat has no dmKey):
@@ -1022,6 +1067,7 @@ export const chatRoutes = new Hono()
       nextBefore: !polling && more ? items[0]!.seq : null,
       more: polling ? more : false,
       lastSeq: a.lastSeq,
+      editRev: a.editRev,
       lastReadSeq: a.lastReadSeq,
       canWrite: a.canWrite,
       canModerate: a.canModerate,
@@ -1104,7 +1150,7 @@ export const chatRoutes = new Hono()
           : Prisma.empty;
       const [made] = await db.$queryRaw<{id: bigint; seq: bigint; created_at: Date}[]>`
         WITH s AS (
-          UPDATE conversations SET last_seq = last_seq + 1, updated_at = CURRENT_TIMESTAMP
+          UPDATE conversations SET last_seq = last_seq + 1, updated_at = CURRENT_TIMESTAMP${input.parentId !== null ? Prisma.sql`, edit_rev = edit_rev + 1` : Prisma.empty}
           WHERE id = ${a.conversationId} AND workspace_id = ${a.workspaceId}
           RETURNING last_seq
         ), m AS (
@@ -1159,16 +1205,21 @@ export const chatRoutes = new Hono()
     }
   })
 
-  .post('/conversations/:id/read', readBody, withViewer, requireAuth, withDb, requireConversation('read'), noStore, async c => {
+  .post('/conversations/:id/read', readBody, withViewer, requireAuth, withDb, requireConversation('read', LIMIT_READ), noStore, async c => {
     const a = c.var.access;
     // Never past the last message that exists.
     const seq = Math.min(c.req.valid('json').seq, a.lastSeq);
+    // Over the soft limit: nothing written and no 429 (it would freeze every write button); the marker is unchanged.
+    if (c.var.limit?.limited) return c.json({lastReadSeq: a.lastReadSeq, unread: unreadOf(a.lastSeq, a.lastReadSeq)});
+    await afterResponse(c, 'chat limiter', () => c.var.limit?.record() ?? Promise.resolve());
     await markRead(c.var.db, a, c.var.viewer.id!, seq);
     return c.json({lastReadSeq: Math.max(seq, a.lastReadSeq), unread: unreadOf(a.lastSeq, Math.max(seq, a.lastReadSeq))});
   })
 
-  .put('/conversations/:id/mute', withViewer, requireAuth, withDb, requireConversation('read'), noStore, async c => {
+  .put('/conversations/:id/mute', withViewer, requireAuth, withDb, requireConversation('read', LIMIT_MUTE), noStore, async c => {
     const a = c.var.access;
+    if (c.var.limit?.limited) return tooFast(c);
+    await afterResponse(c, 'chat limiter', () => c.var.limit?.record() ?? Promise.resolve());
     // Joins (marker 0 when new) and mutes in ONE statement.
     await c.var.db.$executeRaw`
       INSERT INTO conversation_members (conversation_id, user_id, workspace_id, last_read_seq, muted_at)
@@ -1178,8 +1229,10 @@ export const chatRoutes = new Hono()
     return c.json({muted: true});
   })
 
-  .delete('/conversations/:id/mute', withViewer, requireAuth, withDb, requireConversation('read'), noStore, async c => {
+  .delete('/conversations/:id/mute', withViewer, requireAuth, withDb, requireConversation('read', LIMIT_MUTE), noStore, async c => {
     const a = c.var.access;
+    if (c.var.limit?.limited) return tooFast(c);
+    await afterResponse(c, 'chat limiter', () => c.var.limit?.record() ?? Promise.resolve());
     await c.var.db.conversationMember.updateMany({
       where: {conversationId: a.conversationId, workspaceId: a.workspaceId, userId: c.var.viewer.id!},
       data: {mutedAt: null},
@@ -1269,11 +1322,11 @@ export const chatRoutes = new Hono()
   .patch('/messages/:id', editBody, withViewer, requireAuth, withDb, noStore, async c => {
     const me = c.var.viewer.id!;
     const {db} = c.var;
-    const found = await ownMessage(c, me, true);
+    const found = await ownMessage(c, me, true, LIMIT_EDIT);
     if (found instanceof Response) return found;
-    const {a, row} = found;
+    const {a, row, ent} = found;
     if (!a.canWrite) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
-    const blocked = await readOnlyBlock(c, db, a.workspaceId);
+    const blocked = readOnlyAnswer(c, ent);
     if (blocked) return blocked;
     const input = c.req.valid('json');
     // Absent = unchanged; present = replaced (mentions only those really named in the new text).
@@ -1296,6 +1349,7 @@ export const chatRoutes = new Hono()
         await tx.messageCardRef.deleteMany({where: {messageId: row.id}});
         await tx.messageCardRef.createMany({data: cardIds.map(cardId => ({messageId: row.id, cardId}))});
       }
+      await bumpEditRev(tx, a);
       return tx.message.findFirst({where: {id: row.id, conversationId: a.conversationId}, select: messageCols});
     });
     if (!updated) return notFound(c, 'message');
@@ -1306,9 +1360,9 @@ export const chatRoutes = new Hono()
   .delete('/messages/:id', withViewer, requireAuth, withDb, noStore, async c => {
     const me = c.var.viewer.id!;
     const {db} = c.var;
-    const found = await ownMessage(c, me, false);
+    const found = await ownMessage(c, me, false, LIMIT_EDIT);
     if (found instanceof Response) return found;
-    const {a, row} = found;
+    const {a, row, ent} = found;
     const own = row.senderId === me;
     if (row.kind === 'system') return c.json(problem('forbidden', 'You do not have access to this.'), 403);
     if (!own && !a.canModerate) return notFound(c, 'message');
@@ -1316,7 +1370,7 @@ export const chatRoutes = new Hono()
     if (a.archived && a.kind === 'channel') return c.json(problem('forbidden', 'You do not have access to this.'), 403);
     // Deleting your OWN message always works (it heals a read-only workspace); a moderator's delete does not.
     if (!own) {
-      const blocked = await readOnlyBlock(c, db, a.workspaceId);
+      const blocked = readOnlyAnswer(c, ent);
       if (blocked) return blocked;
     }
     await db.$transaction(async tx => {
@@ -1328,6 +1382,7 @@ export const chatRoutes = new Hono()
       await tx.messageMention.deleteMany({where: {messageId: row.id}});
       await tx.messageCardRef.deleteMany({where: {messageId: row.id}});
       await tx.messageReaction.deleteMany({where: {messageId: row.id}});
+      await bumpEditRev(tx, a);
       // A deleted reply leaves the count of its thread honest.
       if (row.parentId !== null) {
         await tx.message.updateMany({
@@ -1350,22 +1405,26 @@ export const chatRoutes = new Hono()
   .put('/messages/:id/reactions', emojiBody, withViewer, requireAuth, withDb, noStore, async c => {
     const me = c.var.viewer.id!;
     const {db} = c.var;
-    const found = await ownMessage(c, me, false);
+    // The emoji other people put on it are read with the access check: mine is replaced, so it never counts.
+    const found = await ownMessage(c, me, false, LIMIT_REACT, id =>
+      db.messageReaction.findMany({where: {messageId: id, userId: {not: me}}, select: {emoji: true}, distinct: ['emoji'], take: MAX_EMOJI_PER_MESSAGE + 1})
+    );
     if (found instanceof Response) return found;
-    const {a, row} = found;
+    const {a, row, ent, extra: others} = found;
     if (!a.canWrite || row.deletedAt) return row.deletedAt ? notFound(c, 'message') : c.json(problem('forbidden', 'You do not have access to this.'), 403);
-    const blocked = await readOnlyBlock(c, db, a.workspaceId);
+    const blocked = readOnlyAnswer(c, ent);
     if (blocked) return blocked;
     const {emoji} = c.req.valid('json');
-    const kinds = await db.messageReaction.findMany({where: {messageId: row.id}, select: {emoji: true}, distinct: ['emoji'], take: MAX_EMOJI_PER_MESSAGE + 1});
-    if (kinds.length >= MAX_EMOJI_PER_MESSAGE && !kinds.some(k => k.emoji === emoji)) {
+    // After this, the message holds the others' emoji plus mine: switching mine never counts against the cap.
+    if (others.length >= MAX_EMOJI_PER_MESSAGE && !others.some(k => k.emoji === emoji)) {
       return c.json(problem('limit_reached', 'That message has enough different reactions.'), 409);
     }
-    // One reaction per person per message: another emoji replaces mine. The unique (message_id, user_id) index holds the
-    // rule under concurrent requests (the losing insert is skipped), so a person never ends up with two.
+    // One reaction per person per message: another emoji replaces mine. The (message_id, user_id) key holds the rule
+    // under concurrent requests (the losing insert is skipped), so a person never ends up with two.
     await db.$transaction([
       db.messageReaction.deleteMany({where: {messageId: row.id, userId: me, emoji: {not: emoji}}}),
       db.messageReaction.createMany({data: [{messageId: row.id, userId: me, emoji}], skipDuplicates: true}),
+      bumpEditRev(db, a),
     ]);
     const groups = (await reactionsFor(db, [row.id], me)).get(String(row.id)) ?? [];
     return c.json({reactions: groups});
@@ -1374,13 +1433,14 @@ export const chatRoutes = new Hono()
   .delete('/messages/:id/reactions', emojiBody, withViewer, requireAuth, withDb, noStore, async c => {
     const me = c.var.viewer.id!;
     const {db} = c.var;
-    const found = await ownMessage(c, me, false);
+    const found = await ownMessage(c, me, false, LIMIT_REACT);
     if (found instanceof Response) return found;
-    const {a, row} = found;
+    const {a, row, ent} = found;
     if (!a.canWrite) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
-    const blocked = await readOnlyBlock(c, db, a.workspaceId);
+    const blocked = readOnlyAnswer(c, ent);
     if (blocked) return blocked;
-    await db.messageReaction.deleteMany({where: {messageId: row.id, userId: me, emoji: c.req.valid('json').emoji}});
+    const {count} = await db.messageReaction.deleteMany({where: {messageId: row.id, userId: me, emoji: c.req.valid('json').emoji}});
+    if (count) await bumpEditRev(db, a);
     const groups = (await reactionsFor(db, [row.id], me)).get(String(row.id)) ?? [];
     return c.json({reactions: groups});
   })
@@ -1388,41 +1448,58 @@ export const chatRoutes = new Hono()
   .put('/messages/:id/pin', withViewer, requireAuth, withDb, noStore, pin(true))
   .delete('/messages/:id/pin', withViewer, requireAuth, withDb, noStore, pin(false));
 
-/** Loads the message AND proves the visitor reaches its conversation; null/404 otherwise. `ownOnly` = only the sender's. */
-async function ownMessage(
-  c: {req: {param: (n: string) => string}; var: {db: PrismaClient}; json: (b: unknown, s: 404) => Response},
+type OwnRow = {id: bigint; senderId: number | null; parentId: bigint | null; deletedAt: Date | null; kind: string};
+
+/**
+ * Loads the message AND proves the visitor reaches its conversation; 404 otherwise. `ownOnly` = only the sender's.
+ * After the message read, ONE parallel stage: the access check, the plan (read-only state), the soft limit and the
+ * route's own `extra` read (by message id). Over the limit: 429 (the hit is counted after the answer).
+ */
+async function ownMessage<X = undefined>(
+  c: WithExecutionCtx & {req: {param: (n: string) => string}; var: {db: PrismaClient}; json: (b: unknown, s: 404 | 429) => Response; header: (k: string, v: string) => void},
   me: number,
-  ownOnly: boolean
-): Promise<Response | {a: Access; row: {id: bigint; senderId: number | null; parentId: bigint | null; deletedAt: Date | null; kind: string}}> {
+  ownOnly: boolean,
+  limit: ChatLimit,
+  extra?: (id: bigint) => Promise<X>
+): Promise<Response | {a: Access; row: OwnRow; ent: Awaited<ReturnType<typeof getEntitlements>>; extra: X}> {
   const id = messageIdOf(c.req.param('id'));
   if (!id) return notFound(c, 'message');
-  const row = await c.var.db.message.findFirst({
+  const {db} = c.var;
+  const row = await db.message.findFirst({
     // Workspace membership is enforced right after, by conversationAccess.
     where: {id, ...(ownOnly ? {senderId: me} : {})},
-    select: {id: true, senderId: true, parentId: true, deletedAt: true, kind: true, conversationId: true},
+    select: {id: true, senderId: true, parentId: true, deletedAt: true, kind: true, conversationId: true, workspaceId: true},
   });
   if (!row) return notFound(c, 'message');
-  const a = await conversationAccess(c.var.db, row.conversationId, me);
-  if (!a) return notFound(c, 'message');
+  const [a, ent, gate, more] = await Promise.all([
+    conversationAccess(db, row.conversationId, me),
+    getEntitlements(db, row.workspaceId),
+    softCheck(me, limit.name, limit.max, 60),
+    extra ? extra(row.id) : (undefined as X),
+  ]);
+  if (!a || a.workspaceId !== row.workspaceId) return notFound(c, 'message');
   if (ownOnly && row.deletedAt) return notFound(c, 'message');
-  return {a, row};
+  if (gate.limited) return tooFast(c);
+  await afterResponse(c, 'chat limiter', gate.record);
+  return {a, row, ent, extra: more};
 }
 
 function pin(on: boolean) {
   return async (c: any) => {
     const me = c.var.viewer.id as number;
-    const found = await ownMessage(c, me, false);
+    const found = await ownMessage(c, me, false, LIMIT_PIN);
     if (found instanceof Response) return found;
-    const {a, row} = found;
+    const {a, row, ent} = found;
     // Moderators in channels and board chats; any participant in a DM or group.
     const may = a.kind === 'dm' || a.kind === 'group' ? a.canWrite : a.canModerate;
     if (!may) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
-    const blocked = await readOnlyBlock(c, c.var.db, a.workspaceId);
+    const blocked = readOnlyAnswer(c, ent);
     if (blocked) return blocked;
     const {count} = await c.var.db.message.updateMany({
       where: {id: row.id, conversationId: a.conversationId, workspaceId: a.workspaceId, deletedAt: null},
       data: {pinnedAt: on ? new Date() : null},
     });
+    if (count) await bumpEditRev(c.var.db, a);
     return count ? c.json({pinned: on}) : notFound(c, 'message');
   };
 }
