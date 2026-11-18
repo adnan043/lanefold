@@ -41,7 +41,7 @@ const name = site?.name ?? 'Lanefold';
 const image = !cover ? null : typeof cover === 'string' ? cover : (await getImage({src: cover, width: 1200, format: 'jpg'})).src;
 ---
 
-<Base site={site} viewer={viewer} isStatic title={title} description={description} image={image} imageAlt={coverAlt} type="article" publishedAt={publishedAt} updatedAt={updatedAt} jsonLd={postJsonLd({name, logo: site?.logo}, {path: `/blog/${post.id}/`, title, description, publishedAt, updatedAt, author, image})}>
+<Base site={site} viewer={viewer} smoothScroll isStatic title={title} description={description} image={image} imageAlt={coverAlt} type="article" publishedAt={publishedAt} updatedAt={updatedAt} jsonLd={postJsonLd({name, logo: site?.logo}, {path: `/blog/${post.id}/`, title, description, publishedAt, updatedAt, author, image})}>
   <main id="main" tabindex="-1" class="pub">
     <article class="article">
       <header>

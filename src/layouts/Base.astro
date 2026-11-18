@@ -71,6 +71,8 @@ interface Props {
    * back to the website, and there is no footer.
    */
   bare?: boolean;
+  /** A marketing page: eased mouse-wheel scrolling (src/platform/smooth-scroll.ts). */
+  smoothScroll?: boolean;
 }
 
 const {
@@ -89,6 +91,7 @@ const {
   secretInUrl = false,
   jsonLd,
   bare = false,
+  smoothScroll = false,
 } = Astro.props;
 const name = site?.name ?? 'Lanefold';
 // Home has no `title`: it gets the name plus what the product is.
@@ -121,7 +124,7 @@ const brandHref = Astro.isPrerendered ? BRAND_CSS_PATH : await brandCssHref();
 <!doctype html>
 {/* The public website is always light (owner's choice): `data-theme="light"` turns off the dark
     tokens in global.css and the brand colours. The app and dashboard (App.astro) keep their theme setting. */}
-<html lang={SITE.lang} data-theme="light">
+<html lang={SITE.lang} data-theme="light" data-smooth-scroll={smoothScroll ? '' : undefined}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -292,6 +295,7 @@ const brandHref = Astro.isPrerendered ? BRAND_CSS_PATH : await brandCssHref();
       import {logout, refreshSession, siteFetch} from '../platform/browser';
       import {hydrateStaticPage} from '../platform/static-page';
       import {notifyPaymentOpener} from '../lib/checkout-session';
+      import {stopSmoothScroll, syncSmoothScroll} from '../platform/smooth-scroll';
       // Every button shows when it is busy (AGENTS.md "Buttons and forms").
       const busy = (button: HTMLButtonElement, label?: string) => {
         button.disabled = true;
@@ -299,8 +303,12 @@ const brandHref = Astro.isPrerendered ? BRAND_CSS_PATH : await brandCssHref();
         if (label) button.textContent = label;
       };
 
+      // Eased wheel scrolling on the pages that ask for it (`smoothScroll`); off while the next page swaps in.
+      document.addEventListener('astro:before-swap', stopSmoothScroll);
+
       // Each page, the first load and every client navigation (ClientRouter): the body is new.
       document.addEventListener('astro:page-load', () => {
+        syncSmoothScroll();
         // Back from the payment provider INSIDE the payment window: tell the checkout page, close.
         notifyPaymentOpener();
         if (document.body.dataset.static === '1') void hydrateStaticPage().then(fillUserMenu);

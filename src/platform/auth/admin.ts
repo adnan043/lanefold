@@ -17,7 +17,7 @@ import {normalizeEmail} from './input';
  * `/site-api/admin/*`: users, roles and the audit log, for the portal's admin
  * screens. Every route: signed in + a core codename (`codenames.ts`).
  *
- *   GET    /users?before=&email=&status=     site:user:read
+ *   GET    /users?before=&q=&email=&status=  site:user:read
  *   GET    /users/:id                        site:user:read
  *   PATCH  /users/:id        {status}        site:user:update
  *   PUT    /users/:id/roles  {roles}         site:user:update
@@ -193,6 +193,8 @@ export const adminRoutes = new Hono<Env>()
     validator('query', value => ({
       before: typeof value.before === 'string' ? value.before : '',
       email: typeof value.email === 'string' ? value.email.trim() : '',
+      // Free text: part of a name (anyone), or part of an email (the owner only).
+      q: typeof value.q === 'string' ? value.q.trim().slice(0, 254) : '',
       status: value.status === 'active' || value.status === 'suspended' ? value.status : '',
     })),
     withViewer,
@@ -211,9 +213,18 @@ export const adminRoutes = new Hono<Env>()
       // Email search is an EXACT match on the unique index; a malformed one finds nobody.
       const email = query.email ? normalizeEmail(query.email) : null;
       if (query.email && !email) return c.json({users: [], nextBefore: null});
+      // `q` matches part of a name, case-insensitive. Only the owner, who sees every address
+      // anyway, also matches part of an email: for anyone else it would reveal hidden addresses.
+      const q = query.q;
+      const text = q
+        ? view.owner
+          ? {OR: [{name: {contains: q, mode: 'insensitive' as const}}, {email: {contains: q.toLowerCase()}, platformOwnerId: null}]}
+          : {name: {contains: q, mode: 'insensitive' as const}}
+        : {};
       const rows = await c.var.db.user.findMany({
         select: userSelect,
         where: {
+          ...text,
           ...(email ? {email} : {}),
           ...(status ? {status} : {}),
           ...(before ? {id: {lt: before}} : {}),
