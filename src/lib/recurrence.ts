@@ -80,8 +80,14 @@ export function upcoming(rule: RepeatRule, from: string, n: number): string[] {
   return out;
 }
 
-export type RuleInput = {frequency: unknown; interval: unknown; startOn: unknown; endsOn?: unknown};
-export type RuleCheck = {ok: true; value: {frequency: Frequency; interval: number; startOn: string; endsOn: string | null}} | {ok: false; fields: Record<string, string>};
+/**
+ * `startOn` is the day of the first copy; `anchorOn` (optional, defaults to `startOn`) is the day the rule is counted
+ * from: its day of the month (or weekday) is kept. They differ when the first copy falls in a short month: a card due
+ * Jan 31 that starts repeating monthly on Feb 5 makes its first copy on Feb 28, and keeps the 31st after that (Mar 31,
+ * Apr 30), because the anchor stays Jan 31. `startOn` must be an occurrence of the rule counted from `anchorOn`.
+ */
+export type RuleInput = {frequency: unknown; interval: unknown; startOn: unknown; endsOn?: unknown; anchorOn?: unknown};
+export type RuleCheck = {ok: true; value: {frequency: Frequency; interval: number; startOn: string; anchorOn: string; endsOn: string | null}} | {ok: false; fields: Record<string, string>};
 
 /** Shared by the route and the form, so both say the same thing. `today` is the UTC day. */
 export function checkRule(input: RuleInput, today: string): RuleCheck {
@@ -101,6 +107,18 @@ export function checkRule(input: RuleInput, today: string): RuleCheck {
     else if (start !== null && end < start) fields.endsOn = 'before_start';
     else endsOn = rawEnd as string;
   }
+  const rawAnchor = input.anchorOn ?? null;
+  let anchorOn = input.startOn as string;
+  if (rawAnchor !== null && rawAnchor !== '') {
+    const anchor = parseDay(rawAnchor);
+    if (anchor === null || (start !== null && anchor > start)) fields.anchorOn = 'invalid';
+    else anchorOn = rawAnchor as string;
+  }
   if (Object.keys(fields).length) return {ok: false, fields};
-  return {ok: true, value: {frequency: input.frequency as Frequency, interval: interval as number, startOn: input.startOn as string, endsOn}};
+  const frequency = input.frequency as Frequency;
+  // The first copy must be a day of the rule, or the job would make it on a day the rule never names.
+  if (anchorOn !== input.startOn && onOrAfter({frequency, interval: interval as number, anchor: anchorOn, endsOn: null}, input.startOn as string) !== input.startOn) {
+    return {ok: false, fields: {startOn: 'off_rule'}};
+  }
+  return {ok: true, value: {frequency, interval: interval as number, startOn: input.startOn as string, anchorOn, endsOn}};
 }

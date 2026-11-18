@@ -461,9 +461,10 @@ function DatesPop({detail, actions, anchor, onClose}: {detail: DetailT; actions:
       if (chosenRepeat !== savedRepeat) {
         if (chosenRepeat === 'never') await stopRule();
         else {
-          // The first copy: the next day of the rule after today, counted from the due (or start) date.
+          // The first copy: the next day of the rule after today, counted from the due (or start) date. That date is
+          // sent as the anchor too, so a monthly rule keeps its day (the 31st) after a first copy clamped to a short month.
           const startOnDay = nextAfter({frequency: chosenRepeat, interval: 1, anchor: base, endsOn: null}, today) ?? addDays(today, 1);
-          await saveRule({frequency: chosenRepeat, interval: 1, startOn: startOnDay, endsOn: null});
+          await saveRule({frequency: chosenRepeat, interval: 1, startOn: startOnDay, anchorOn: base <= startOnDay ? base : startOnDay, endsOn: null});
         }
       }
       onClose();

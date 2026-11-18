@@ -6,7 +6,7 @@ import {Button, ErrorNote, Field, LoadingBlock, Select, useConfirm, useToast} fr
 import {todayISO} from '../../portal/ui/date';
 import {DatePicker} from '../../portal/ui/popover';
 import {Section, useAction} from '../cards/parts';
-import {useRecurrence, useRecurrenceActions, type RecurrenceT} from './api';
+import {useRecurrence, useRecurrenceActions, type RecurrenceInput, type RecurrenceT} from './api';
 import './recurrence.css';
 
 type Errors = Partial<Record<'frequency' | 'interval' | 'startOn' | 'endsOn', string>>;
@@ -105,7 +105,7 @@ function Summary({rule}: {rule: RecurrenceT | null}) {
   );
 }
 
-function RuleForm({rule, pending, onSave, onCancel}: {rule: RecurrenceT | null; pending: boolean; onSave: (v: {frequency: Frequency; interval: number; startOn: string; endsOn: string | null}) => Promise<void>; onCancel: () => void}) {
+function RuleForm({rule, pending, onSave, onCancel}: {rule: RecurrenceT | null; pending: boolean; onSave: (v: RecurrenceInput) => Promise<void>; onCancel: () => void}) {
   const t = useT();
   const {locale, firstDayOfWeek} = useI18n();
   const [frequency, setFrequency] = useState<Frequency>(rule?.frequency ?? 'weekly');
@@ -140,7 +140,11 @@ function RuleForm({rule, pending, onSave, onCancel}: {rule: RecurrenceT | null; 
   }
   const submit = () => {
     if (!validate()) return;
-    void onSave({frequency, interval: Number(interval.trim()), startOn, endsOn: endsOn || null});
+    const n = Number(interval.trim());
+    // Editing a rule without moving its next day keeps the day it counts from (a monthly rule on the 31st whose next
+    // copy is clamped to the 28th stays on the 31st). A new first day, frequency or interval starts counting afresh.
+    const keepAnchor = rule !== null && rule.nextRunOn === startOn && rule.frequency === frequency && rule.interval === n && rule.startOn <= startOn;
+    void onSave({frequency, interval: n, startOn, endsOn: endsOn || null, ...(keepAnchor ? {anchorOn: rule.startOn} : {})});
   };
   return (
     <form
