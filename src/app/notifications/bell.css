@@ -80,9 +80,19 @@
 .notif-item[data-unread] .notif-text > span {
   font-weight: 600;
 }
+.notif-avatar {
+  flex: none;
+  display: inline-flex;
+}
+.notif-avatar-system {
+  display: inline-grid;
+  place-items: center;
+  color: var(--muted);
+}
 .notif-text {
   display: grid;
   gap: 0.1rem;
+  min-width: 0;
 }
 .notif-text time {
   font-size: 0.75rem;

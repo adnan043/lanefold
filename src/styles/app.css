@@ -2177,64 +2177,6 @@
   font-size: 0.8rem;
 }
 
-/* Setup checklist on the overview: a done step shows a tick in a filled circle. */
-.checklist-mark {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 50%;
-  color: transparent;
-}
-
-.checklist-mark[data-done] {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-
-.list-row[data-done] .list-row-title {
-  color: var(--muted);
-  text-decoration: line-through;
-  text-decoration-color: var(--line-strong);
-}
-
-/* The overview's setup checklist: a step with a screen is one link, the whole row. */
-.checklist-progress {
-  padding-top: 0.25rem;
-  padding-bottom: 0.75rem;
-}
-
-.checklist-row:has(.checklist-link) {
-  padding: 0;
-}
-
-.checklist-link {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex: 1;
-  padding: 0.75rem 1.25rem;
-  color: inherit;
-  text-decoration: none;
-}
-
-.checklist-link:hover {
-  background: var(--hover);
-}
-
-.checklist-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.checklist-card:last-child .list .list-row:last-child,
-.checklist-card .list li:last-child .checklist-link {
-  border-radius: 0 0 var(--radius) var(--radius);
-}
-
 /* -------------------------------------------- account security bits -- */
 
 .recovery-codes {

@@ -160,6 +160,7 @@ export function BoardScreen() {
           if (ok) latest.current.toast.success(latest.current.t('card.linkCopied'));
           else latest.current.toast.danger(latest.current.t('card.linkCopyFailed'));
         }),
+      onToggleCardDone: card => void latest.current.actions.updateCard(card.id, {completed: !card.completed}),
       onEditLane: setEditLane,
       onRenameLane: (lane, name) =>
         void latest.current.actions.updateLane(lane.id, {name}).catch(error => latest.current.toast.danger(latest.current.errorMessage(error))),

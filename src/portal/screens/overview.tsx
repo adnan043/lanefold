@@ -24,11 +24,9 @@ import {
   EmptyState,
   ErrorNote,
   Icon,
-  type IconName,
   LoadingBlock,
   Notice,
   PageHeader,
-  ProgressBar,
   Skeleton,
   Stat,
   StatusBadge,
@@ -37,8 +35,7 @@ import {
 
 /**
  * `/` of the dashboard: what is on YOUR plate in Lanefold first (cards due,
- * unread notifications, your workspaces), then your account, a setup
- * checklist and, for admins, the site's numbers and recent activity.
+ * unread notifications, your workspaces), then your account and, for admins, the site's numbers and recent activity.
  * Every number is cheap (one bounded read, never a count per request):
  * docs/agent/performance.md.
  */
@@ -106,39 +103,6 @@ export function Overview() {
   const role = me.data ? capitalise(me.data.roles.find(name => name !== 'member') ?? 'member') : null;
   const devices = sessions.data?.sessions.length;
 
-  // The checklist: only steps this person can do, each done from real data.
-  const steps: {label: string; detail: string; done: boolean | undefined; to?: string; href?: string; icon: IconName}[] = [
-    {
-      label: 'Confirm your email',
-      detail: 'So you can always get back in.',
-      done: viewer?.emailVerified,
-      icon: 'mail',
-    },
-    {
-      label: 'Join or create a workspace',
-      detail: 'Boards, cards and chat live in a workspace.',
-      done: workspaces.data ? workspaces.data.length > 0 : undefined,
-      href: '/app/boards',
-      icon: 'layout-kanban',
-    },
-    {
-      label: 'Turn on two-step sign-in',
-      detail: 'A code from your phone, so a password alone is not enough.',
-      done: twoFactor.data?.enabled,
-      to: '/account',
-      icon: 'lock',
-    },
-  ];
-  if (abilities?.manageUsers)
-    steps.push({
-      label: 'Give someone else admin access',
-      detail: 'So the site never depends on one person.',
-      done: users.data ? users.data.users.filter(user => user.roles.some(name => name === 'admin' || name === 'owner')).length > 1 : undefined,
-      to: '/users',
-      icon: 'user-plus',
-    });
-  const done = steps.filter(step => step.done).length;
-  const setupLeft = steps.some(step => step.done === false);
 
   const summary = myDay.data
     ? overdue + dueToday
@@ -454,45 +418,6 @@ export function Overview() {
               </div>
             </dl>
           </Card>
-
-          {setupLeft && (
-            <Card title="Get started" description={`${done} of ${steps.length} done`} flush className="checklist-card">
-              <div className="card-body checklist-progress">
-                <ProgressBar value={done} max={steps.length} label="Setup progress" />
-              </div>
-              <ul className="list">
-                {steps.map(step => {
-                  const body = (
-                    <>
-                      <span className="checklist-mark" data-done={step.done ? '' : undefined}>
-                        <Icon name="check" size={14} />
-                      </span>
-                      <span className="list-row-text">
-                        <span className="list-row-title">{step.label}</span>
-                        <span className="list-row-sub">{step.detail}</span>
-                      </span>
-                      {(step.to || step.href) && !step.done && <Icon name="chevron-right" size={16} className="muted" />}
-                    </>
-                  );
-                  return (
-                    <li key={step.label} className="list-row checklist-row" data-done={step.done ? '' : undefined}>
-                      {step.to && !step.done ? (
-                        <Link className="checklist-link" to={step.to}>
-                          {body}
-                        </Link>
-                      ) : step.href && !step.done ? (
-                        <a className="checklist-link" href={step.href}>
-                          {body}
-                        </a>
-                      ) : (
-                        body
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </Card>
-          )}
         </div>
       </div>
     </div>

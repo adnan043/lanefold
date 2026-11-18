@@ -8,8 +8,10 @@ import { useState, type RefObject } from "react";
 
 import { useI18n, useT, type MessageKey } from "../../i18n";
 import {
+  Avatar,
   Button,
   EmptyState,
+  Icon,
   ErrorNote,
   LoadMore,
   LoadingBlock,
@@ -182,6 +184,16 @@ export default function NotificationPanel({
                 onClick={() => go(n)}
               >
                 <span className="notif-dot" aria-hidden="true" />
+                {/* Who did it: their photo when one exists, else their initials; a system notice (digest) shows a bell. */}
+                <span className="notif-avatar" aria-hidden="true">
+                  {n.actor ? (
+                    <Avatar name={n.actor.name || "?"} size="sm" />
+                  ) : (
+                    <span className="avatar avatar-sm notif-avatar-system">
+                      <Icon name="bell" size={14} />
+                    </span>
+                  )}
+                </span>
                 <span className="notif-text">
                   <span>
                     {t(KIND_KEYS[n.kind] ?? "notif.kind.other", {
