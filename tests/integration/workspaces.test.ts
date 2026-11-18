@@ -38,7 +38,7 @@ describe.skipIf(!DATABASE_URL)('workspaces and entitlements (integration, real P
     await resetDatabase();
     // Other files edit plan_limits (and a crashed run can leave them edited): start from the seeded plans.
     await db.$executeRaw`UPDATE plan_limits SET max_members = 10, max_file_bytes = 10485760, storage_quota_bytes = 1073741824, max_flows = 0, audit_log = false WHERE plan = 'free'`;
-    await db.$executeRaw`UPDATE plan_limits SET max_members = 100, max_file_bytes = 104857600, storage_quota_bytes = 107374182400, max_flows = 100, audit_log = true WHERE plan = 'team'`;
+    await db.$executeRaw`UPDATE plan_limits SET max_members = 500, max_file_bytes = 104857600, storage_quota_bytes = 107374182400, max_flows = 100, audit_log = true WHERE plan = 'team'`;
     await setMode('PAID');
     ann = await signedIn(app, 'ann@example.test', undefined, '203.0.113.31');
     bob = await signedIn(app, 'bob@example.test', undefined, '203.0.113.32');
@@ -113,7 +113,7 @@ describe.skipIf(!DATABASE_URL)('workspaces and entitlements (integration, real P
     expect(free.usage.members).toBe(1);
     await db.workspace.update({where: {id: wsA}, data: {plan: 'team'}});
     const team = (await ent(wsA))!;
-    expect(team.limits).toMatchObject({maxMembers: 100, maxFileBytes: 100 * 1024 * 1024});
+    expect(team.limits).toMatchObject({maxMembers: 500, maxFileBytes: 100 * 1024 * 1024});
     expect(team.features.auditLog).toBe(true);
   });
 

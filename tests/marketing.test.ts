@@ -15,11 +15,12 @@ function seedRows() {
   const dir = join(root, 'prisma/migrations');
   const sql = readdirSync(dir)
     .filter(name => !name.includes('.'))
+    .sort()
     .map(name => read(`prisma/migrations/${name}/migration.sql`))
     .join('\n');
   const insert = /INSERT INTO "plan_limits"[^;]*VALUES([^;]*);/.exec(sql);
   expect(insert, 'plan_limits seed not found').toBeTruthy();
-  return [...insert![1]!.matchAll(/\('(\w+)',\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*'[^']*',\s*(true|false)/g)].map(m => ({
+  const rows = [...insert![1]!.matchAll(/\('(\w+)',\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*'[^']*',\s*(true|false)/g)].map(m => ({
     plan: m[1]!,
     maxMembers: Number(m[2]),
     maxFileBytes: Number(m[3]),
@@ -27,6 +28,12 @@ function seedRows() {
     maxFlows: Number(m[5]),
     auditLog: m[6] === 'true',
   }));
+  // Later migrations that change a plan's member limit, applied in order: what the live database holds.
+  for (const m of sql.matchAll(/UPDATE "plan_limits" SET "max_members" = (\d+)[^;]*WHERE "plan" = '(\w+)';/g)) {
+    const row = rows.find(r => r.plan === m[2]);
+    if (row) row.maxMembers = Number(m[1]);
+  }
+  return rows;
 }
 
 const MB = 1024 ** 2;
