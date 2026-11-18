@@ -19,7 +19,7 @@ import type {Viewer} from '../../platform/types';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {reserveCardNumbers} from '../card-number';
 import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
-import {softLimited} from '../soft-limit';
+import {softCheck} from '../soft-limit';
 import {CSV_COLUMNS, csvRow, safeFileBase} from '../export-format';
 import {invalid, idOf, intField, objectOf, textField, type FieldError} from '../validation';
 import {boardAccess, membership, notFound, rankOf} from '../workspaces';
@@ -183,6 +183,7 @@ const startRecord = (db: PrismaClient | Tx, userId: number, importId: string) =>
 class TooManyCards extends Error {}
 class LaneFull extends Error {}
 class UnknownLane extends Error {}
+class ChunkLimited extends Error {}
 
 /* ----------------------------------------------------------------- export */
 
@@ -633,10 +634,9 @@ export const importExportRoutes = new Hono()
     if (!access.canWrite) return forbidden(c);
     if (access.archived) return c.json(problem('board_archived', 'This board is archived.'), 409);
     // Each chunk can write a few thousand rows (cards, checklist items, comments): a per-user hourly cap (two full
-    // 5,000-card imports' worth) keeps a script from filling the database (security.md A06).
-    if (await softLimited(userId, 'import-chunk', IMPORT_CHUNKS_PER_HOUR, 3600)) {
-      return c.json(problem('rate_limited', 'You imported a lot in the last hour. Try again later.'), 429);
-    }
+    // 5,000-card imports' worth) keeps a script from filling the database (security.md A06). Only a chunk that
+    // creates cards counts and is refused: a retried chunk already imported writes nothing (answered "skipped").
+    const limit = await softCheck(userId, 'import-chunk', IMPORT_CHUNKS_PER_HOUR, 3600);
     const ent = await getEntitlements(db, access.workspaceId);
     if (ent?.readOnly) return readOnly(c);
     const {workspaceId} = access;
@@ -654,6 +654,7 @@ export const importExportRoutes = new Hono()
         const have = new Set(known.map(k => k.externalId));
         const fresh = body.cards.filter(card => !have.has(card.ext));
         if (!fresh.length) return {created: 0, skipped: body.cards.length, rev: access.rev};
+        if (limit.limited) throw new ChunkLimited();
         const already = await tx.card.count({where: {boardId, importId: body.importId}});
         if (already + fresh.length > meta.totalCards) throw new TooManyCards();
         if (fresh.some(card => own(meta.lanes, card.lane) === undefined)) throw new UnknownLane();
@@ -759,11 +760,13 @@ export const importExportRoutes = new Hono()
         return {created: made.length, skipped: body.cards.length - made.length, rev};
       });
     } catch (err) {
+      if (err instanceof ChunkLimited) return c.json(problem('rate_limited', 'You imported a lot in the last hour. Try again later.'), 429);
       if (err instanceof TooManyCards) return c.json(problem('import_too_large', 'This import holds more cards than it announced.'), 409);
       if (err instanceof LaneFull) return c.json(problem('lane_card_limit', `A lane holds up to ${MAX_CARDS_PER_LANE} cards.`), 409);
       if (err instanceof UnknownLane) return invalid(c, {cards: {code: 'invalid', message: 'A card names a lane that is not in this import.'}});
       throw err;
     }
+    if (result.created > 0) await limit.record();
     return c.json({created: result.created, skipped: result.skipped, rev: String(result.rev)});
   })
 

@@ -161,7 +161,8 @@ export async function applyWorkspacePlan(membership: PlatformMembership, mode?: 
   // Conditional on the plan we read: two events at once change it once.
   const {count} = await db.workspace.updateMany({where: {id: workspaceId, plan: workspace.plan}, data: {plan: target, memberLimit: limits.maxMembers}});
   if (!count) return {changed: false};
-  await startGraceForOverLimit(db, {workspaceId});
+  // A plan change: a clock that ran out on the old plan starts again (a new over-limit event).
+  await startGraceForOverLimit(db, {workspaceId, restartExpired: true});
   await audit(db, {actorUserId: null, action: 'workspace.plan_changed', target: ['workspace', workspaceId], meta: {from: workspace.plan, to: target}});
   return {changed: true};
 }

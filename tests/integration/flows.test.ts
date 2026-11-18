@@ -108,6 +108,20 @@ describe.skipIf(!DATABASE_URL)('flows (integration, real Postgres)', () => {
     expect(counts.reduce((n, l) => n + l.cardCount, 0)).toBe(1); // counters stay consistent
   });
 
+  it('a bulk move of more than 20 cards runs the flow on every card, not just the first slice', async () => {
+    expect((await flow({trigger: {kind: 'card_moved', laneId: lanes[1]}, actions: [{type: 'comment', body: 'Moved'}, {type: 'add_label', labelId: label}]})).status).toBe(201);
+    const ids: number[] = [];
+    for (const titles of [Array.from({length: 20}, (_, i) => `a${i}`), Array.from({length: 15}, (_, i) => `b${i}`)]) {
+      ids.push(...((await ann.post(`/site-api/lanes/${lanes[0]}/cards`, {titles})).json.items as J[]).map(c => c.id as number));
+    }
+    expect(ids).toHaveLength(35);
+    const res = await ann.post(`/site-api/boards/${board}/cards/bulk`, {cardIds: ids, action: 'move', laneId: lanes[1]});
+    expect(res.status).toBe(200);
+    const rows = await db.card.findMany({where: {id: {in: ids}}, select: {commentCount: true}});
+    expect(rows.every(r => r.commentCount === 1)).toBe(true);
+    expect(await db.cardLabel.count({where: {cardId: {in: ids}, labelId: label}})).toBe(35);
+  });
+
   it('runs created flows once per card, conditions respected, disabled flows ignored', async () => {
     const on = (await flow({trigger: {kind: 'card_created', laneId: lanes[0]}, actions: [{type: 'comment', body: 'Welcome'}]})).json.flow.id;
     await flow({name: 'Cond', trigger: {kind: 'card_created'}, conditions: {labelId: label}, actions: [{type: 'comment', body: 'never'}]});
@@ -170,6 +184,20 @@ describe.skipIf(!DATABASE_URL)('flows (integration, real Postgres)', () => {
     expect(await runDailyFlows(db, now, {cardsPerFlow: 1})).toEqual({claimed: 0, cards: 0});
     expect((await cardRow(first)).commentCount).toBe(1);
     expect((await cardRow(second)).commentCount).toBe(1);
+  });
+
+  it('daily job: chained card_moved flows have their own budget, so every due card is handled', async () => {
+    // Each due card moves to Doing (2 actions), which chains a 3-action flow: a shared budget of cards x 2 ran out after the first card.
+    expect((await flow({trigger: {kind: 'daily_due', dueInDays: 1}, actions: [{type: 'move', laneId: lanes[1]}, {type: 'comment', body: 'Due'}]})).status).toBe(201);
+    expect((await flow({name: 'Chain', trigger: {kind: 'card_moved', laneId: lanes[1]}, actions: [{type: 'comment', body: 'a'}, {type: 'comment', body: 'b'}, {type: 'add_label', labelId: label}]})).status).toBe(201);
+    const now = new Date('2026-11-10T06:00:00Z');
+    const cards = [await addCard(), await addCard(), await addCard()];
+    for (const id of cards) await db.card.update({where: {id}, data: {dueDate: new Date('2026-11-11T00:00:00Z')}});
+    expect(await runDailyFlows(db, now)).toEqual({claimed: 1, cards: 3});
+    for (const id of cards) expect(await cardRow(id)).toEqual({laneId: lanes[1], commentCount: 3});
+    expect(await db.cardLabel.count({where: {cardId: {in: cards}, labelId: label}})).toBe(3);
+    // Nothing left part-way: the day is done.
+    expect((await db.flow.findFirstOrThrow({where: {boardId: board, triggerKind: 'daily_due'}})).resumeAfter).toBeNull();
   });
 
   it('refuses writes when the plan has no Flows, and never runs them', async () => {

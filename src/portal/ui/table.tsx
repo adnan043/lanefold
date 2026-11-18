@@ -1,10 +1,13 @@
-import {useVirtualizer} from '@tanstack/react-virtual';
-import {type ReactNode, useRef} from 'react';
+import {lazy, type ReactNode, type Ref, Suspense} from 'react';
 
 import {Button} from './button';
 import {ErrorNote, Skeleton} from './display';
 import {useUiLabels} from './labels';
-import {VIRTUAL_MIN_ROWS, spacerSizes} from './virtual-rows';
+import {VIRTUAL_MIN_ROWS} from './virtual-rows';
+
+// The windowing code (@tanstack/virtual-core, ~34 KB) is fetched only when a table is long enough to window: it is
+// not in the shared chunk every screen (and the /app shell) loads.
+const VirtualTable = lazy(() => import('./virtual-table'));
 
 export type Column<Row> = {
   /** Unique per table. */
@@ -20,28 +23,7 @@ export type Column<Row> = {
   actions?: boolean;
 };
 
-/**
- * THE table of the portal. It draws all three states itself, so no screen
- * forgets one: `loading` (skeleton rows), `error` (the message, in place) and
- * an `empty` state (pass an `<EmptyState>` with its call to action).
- *
- * On a phone each row becomes a card: every cell shows its column header as
- * its label (`data-label`), so nothing scrolls sideways.
- *
- * `busyKey`: the row an action is running on (`aria-busy`, dimmed): only that
- * row's buttons show pending (AGENTS.md "Per row").
- */
-export function DataTable<Row>({
-  columns,
-  rows,
-  rowKey,
-  caption,
-  loading,
-  error,
-  empty,
-  busyKey,
-  virtualize,
-}: {
+export type DataTableProps<Row> = {
   columns: Column<Row>[];
   rows: Row[] | undefined;
   rowKey: (row: Row) => string | number;
@@ -53,23 +35,55 @@ export function DataTable<Row>({
   busyKey?: string | number | null;
   /** Long lists only (at least `VIRTUAL_MIN_ROWS` rows): draws just the rows in view inside a scrolling region. `estimate` is a row's height in px. */
   virtualize?: {estimate: number};
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const windowed = Boolean(virtualize) && (rows?.length ?? 0) >= VIRTUAL_MIN_ROWS;
-  const virtualizer = useVirtualizer({
-    count: windowed ? rows!.length : 0,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => virtualize?.estimate ?? 48,
-    overscan: 8,
-    getItemKey: index => (rows ? rowKey(rows[index]!) : index),
-  });
-  const items = windowed ? virtualizer.getVirtualItems() : [];
-  const spacer = spacerSizes(items, virtualizer.getTotalSize());
-  const shown = windowed ? items.map(item => rows![item.index]!) : rows;
+};
+
+/** The window a virtual table draws (virtual-table.tsx): the rows' indexes and the blank space around them. */
+export type TableWindow = {
+  scrollRef: Ref<HTMLDivElement>;
+  indexes: number[];
+  spacer: {top: number; bottom: number};
+  measure: (el: Element | null) => void;
+};
+
+/**
+ * THE table of the portal. It draws all three states itself, so no screen
+ * forgets one: `loading` (skeleton rows), `error` (the message, in place) and
+ * an `empty` state (pass an `<EmptyState>` with its call to action).
+ *
+ * On a phone each row becomes a card: every cell shows its column header as
+ * its label (`data-label`), so nothing scrolls sideways.
+ *
+ * `busyKey`: the row an action is running on (`aria-busy`, dimmed): only that
+ * row's buttons show pending (AGENTS.md "Per row").
+ */
+export function DataTable<Row>(props: DataTableProps<Row>) {
+  const windowed = Boolean(props.virtualize) && (props.rows?.length ?? 0) >= VIRTUAL_MIN_ROWS;
+  if (!windowed) return <TableFrame {...props} />;
+  // Until the windowing chunk arrives (a moment, once per visit): the first rows, drawn whole.
+  return (
+    <Suspense fallback={<TableFrame {...props} rows={props.rows!.slice(0, VIRTUAL_MIN_ROWS)} />}>
+      <VirtualTable {...(props as DataTableProps<unknown>)} />
+    </Suspense>
+  );
+}
+
+/** The table markup, whole (no `win`) or windowed (`win` from virtual-table.tsx). Internal to the kit. */
+export function TableFrame<Row>({
+  columns,
+  rows,
+  rowKey,
+  caption,
+  loading,
+  error,
+  empty,
+  busyKey,
+  win,
+}: DataTableProps<Row> & {win?: TableWindow}) {
+  const shown = win ? win.indexes.map(index => rows![index]!) : rows;
   if (error && !rows?.length) return <ErrorNote error={error} />;
   if (!loading && rows && rows.length === 0) return <>{empty}</>;
   return (
-    <div className={windowed ? 'table-wrap table-wrap-virtual' : 'table-wrap'} ref={scrollRef} tabIndex={0} role="region" aria-label={caption}>
+    <div className={win ? 'table-wrap table-wrap-virtual' : 'table-wrap'} ref={win?.scrollRef} tabIndex={0} role="region" aria-label={caption}>
       <table className="data-table">
         <caption className="visually-hidden">{caption}</caption>
         <thead>
@@ -97,14 +111,14 @@ export function DataTable<Row>({
                 </tr>
               ))
             : [
-                windowed ? <SpacerRow key="spacer-top" size={spacer.top} cols={columns.length} /> : null,
+                win ? <SpacerRow key="spacer-top" size={win.spacer.top} cols={columns.length} /> : null,
                 ...(shown ?? []).map((row, i) => {
                 const key = rowKey(row);
                 return (
                   <tr
                     key={key}
-                    ref={windowed ? virtualizer.measureElement : undefined}
-                    data-index={windowed ? items[i]!.index : undefined}
+                    ref={win ? win.measure : undefined}
+                    data-index={win ? win.indexes[i] : undefined}
                     aria-busy={busyKey === key || undefined}>
                     {columns.map(column => (
                       <td
@@ -117,7 +131,7 @@ export function DataTable<Row>({
                   </tr>
                 );
               }),
-                windowed ? <SpacerRow key="spacer-bottom" size={spacer.bottom} cols={columns.length} /> : null,
+                win ? <SpacerRow key="spacer-bottom" size={win.spacer.bottom} cols={columns.length} /> : null,
               ]}
         </tbody>
       </table>

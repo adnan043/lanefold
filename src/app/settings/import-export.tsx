@@ -47,6 +47,8 @@ export function ImportExport() {
   const [result, setResult] = useState<{boardId: number; cards: number} | null>(null);
   // The board made by this import, kept so a retry resumes it (the server also remembers it by `importId`).
   const boardOf = useRef<{id: number; lanes: Record<string, number>} | null>(null);
+  // Chunks the server confirmed for that board: a retry goes on from the next one instead of resending them all.
+  const confirmed = useRef(0);
 
   const canImport = current?.role === 'owner' || current?.role === 'admin' || current?.role === 'member';
   const cooldown = useWriteCooldown();
@@ -58,6 +60,7 @@ export function ImportExport() {
     setResult(null);
     setFailure(null);
     boardOf.current = null;
+    confirmed.current = 0;
     setStage('idle');
   }, [stale]);
   const busy = stage === 'checking' || stage === 'importing';
@@ -71,6 +74,7 @@ export function ImportExport() {
     setResult(null);
     setLoaded(null);
     boardOf.current = null;
+    confirmed.current = 0;
     if (file.size > IMPORT_LIMITS.fileBytes) {
       setFileError(t('importExport.file.tooBig'));
       setStage('idle');
@@ -139,13 +143,18 @@ export function ImportExport() {
           totalCards: plan.cards.length,
         });
         boardOf.current = {id: started.board.id, lanes: started.lanes};
+        confirmed.current = 0;
       }
       const boardId = boardOf.current.id;
-      // Always from the first chunk: the ones already imported answer "skipped" (cheap), so a retry needs no bookkeeping.
-      let done = 0;
-      setProgress({done: 0, total: plan.cards.length, starting: false});
-      for (const chunk of chunks) {
+      // A retry goes on after the last chunk the server confirmed. The one that failed is sent again: if it did land
+      // before the failure, the server answers "skipped" for its cards (idempotent under importId).
+      const from = Math.min(confirmed.current, chunks.length);
+      let done = chunks.slice(0, from).reduce((n, chunk) => n + chunk.length, 0);
+      setProgress({done, total: plan.cards.length, starting: false});
+      for (let i = from; i < chunks.length; i++) {
+        const chunk = chunks[i]!;
         await send(`/boards/${boardId}/import/trello/cards`, {importId, cards: chunk});
+        confirmed.current = i + 1;
         done += chunk.length;
         setProgress({done, total: plan.cards.length, starting: false});
       }

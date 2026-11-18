@@ -32,7 +32,7 @@ describe('sweepEndedMemberships', () => {
     expect(await sweepEndedMemberships(db as never)).toEqual({moved: 2});
     expect(db.$queryRaw).toHaveBeenCalledTimes(2);
     expect(m.grace).toHaveBeenCalledTimes(1);
-    expect(m.grace).toHaveBeenCalledWith(db, [9, 10]);
+    expect(m.grace).toHaveBeenCalledWith(db, [9, 10], {restartExpired: true});
     expect(m.forget).toHaveBeenCalledWith(db, 9);
     expect(m.forget).toHaveBeenCalledWith(db, 10);
     expect(db.createMany).toHaveBeenCalledTimes(1);

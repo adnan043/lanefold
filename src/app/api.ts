@@ -142,6 +142,8 @@ export type MembershipT = {
   workspaceId?: number | null;
   currentPeriodEnd: string | null;
   accessEndsAt: string | null;
+  /** Whether this viewer may cancel it: the workspace's owner, or the admin who bought it. */
+  canCancel?: boolean;
 };
 
 /** `api.<route>`: the memberships calls, typed once. */

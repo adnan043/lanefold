@@ -2,6 +2,7 @@ import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 
 import {inRequestScope} from '../../src/platform/request-scope';
 import {app} from '../../src/server/app';
+import {startGraceForWorkspaces} from '../../src/server/entitlements';
 import {applyWorkspacePlan, paymentHooks, recordMembership} from '../../src/server/payments-hooks';
 import {Browser, configureEnv, DATABASE_URL, db, ownerSignedIn, resetDatabase, signedIn, userId} from './support/harness';
 
@@ -260,5 +261,52 @@ describe.skipIf(!DATABASE_URL)('billing (integration, real Postgres)', () => {
     expect((res.json.entitlements as {overLimit: boolean; graceUntil: string | null}).overLimit).toBe(true);
     expect((res.json.entitlements as {graceUntil: string | null}).graceUntil).not.toBeNull();
     expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil).not.toBeNull();
+  });
+
+  it('an expired grace date is dropped once the workspace is back under its limits, so a later overage gets a fresh grace', async () => {
+    const past = new Date(Date.now() - 86_400_000);
+    await db.workspace.update({where: {id: w1}, data: {memberCount: 1, graceUntil: past}});
+    const under = await member.get(`/site-api/workspaces/${w1}/billing`);
+    expect(under.status).toBe(200);
+    expect(under.json.entitlements).toMatchObject({overLimit: false, readOnly: false});
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil).toBeNull();
+    // Over again: a new clock, not read-only.
+    await db.workspace.update({where: {id: w1}, data: {memberCount: 100000}});
+    const over = await member.get(`/site-api/workspaces/${w1}/billing`);
+    expect(over.json.entitlements).toMatchObject({overLimit: true, inGrace: true, readOnly: false});
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil!.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('a plan change restarts a grace clock that already ran out; a plain re-check does not', async () => {
+    const past = new Date(Date.now() - 86_400_000);
+    await db.workspace.update({where: {id: w1}, data: {memberCount: 100000, graceUntil: past}});
+    await startGraceForWorkspaces(db, [w1]);
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil).toEqual(past);
+    await startGraceForWorkspaces(db, [w1], {restartExpired: true});
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil!.getTime()).toBeGreaterThan(Date.now());
+    // A clock still running is never moved.
+    const running = (await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil;
+    await startGraceForWorkspaces(db, [w1], {restartExpired: true});
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil).toEqual(running);
+  });
+
+  it('lists canCancel per plan: the admin who bought it may, an admin who did not may not, the owner may', async () => {
+    const ownerId = await userId('wsmember@example.test');
+    await db.workspaceMember.updateMany({where: {workspaceId: w1, userId: ownerId}, data: {role: 'owner'}});
+    await db.membership.createMany({
+      data: [
+        {subscriptionId: 'sub_cc_owner', priceKey: 'team', status: 'active', userId: ownerId, workspaceId: w1},
+        {subscriptionId: 'sub_cc_admin', priceKey: 'team', status: 'active', userId: adminId, workspaceId: w1},
+        {subscriptionId: 'sub_cc_own', priceKey: 'pro', status: 'active', userId: adminId},
+      ],
+    });
+    const flags = async (who: Browser) =>
+      Object.fromEntries(((await who.get('/site-api/memberships')).json.memberships as {subscriptionId: string; canCancel: boolean}[]).map(m => [m.subscriptionId, m.canCancel]));
+    expect(await flags(admin)).toEqual({sub_cc_owner: false, sub_cc_admin: true, sub_cc_own: true});
+    expect(await flags(member)).toEqual({sub_cc_owner: true, sub_cc_admin: true});
+    // The flag matches the cancel route: the admin's cancel of the owner's plan is refused.
+    expect((await admin.post('/site-api/memberships/sub_cc_owner/cancel', {})).status).toBe(404);
+    // The buyer's user id is not sent.
+    expect(JSON.stringify((await admin.get('/site-api/memberships')).json)).not.toContain('userId');
   });
 });

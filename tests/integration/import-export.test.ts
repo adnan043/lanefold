@@ -1,5 +1,6 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 
+import {cache, userKey} from '../../src/platform/cache';
 import {app} from '../../src/server/app';
 import {Browser, configureEnv, DATABASE_URL, db, resetDatabase, signedIn} from './support/harness';
 
@@ -92,6 +93,25 @@ describe.skipIf(!DATABASE_URL)('import and export (integration, real Postgres)',
     const extra = await ann.post(`/site-api/boards/${boardId}/import/trello/cards`, {importId, cards: [card('c3')]});
     expect(extra.status).toBe(409);
     expect(await db.card.count({where: {boardId}})).toBe(2);
+  });
+
+  it('the hourly chunk limit counts only chunks that create cards: a retried chunk still answers at the limit', async () => {
+    const boardId = ((await start(ann)).json.board as J).id as number;
+    const annId = (await db.user.findUniqueOrThrow({where: {email: 'ann@example.test'}, select: {id: true}})).id;
+    const key = userKey(annId, `rl:import-chunk:${Math.floor(Date.now() / 3_600_000)}`);
+    await cache.del(key); // earlier tests' chunks (ids restart with each reset)
+    const first = {importId, cards: [card('c1')]};
+    expect((await ann.post(`/site-api/boards/${boardId}/import/trello/cards`, first)).status).toBe(200);
+    expect(await cache.get<number>(key)).toBe(1);
+    // A retry of the same chunk creates nothing and is not counted.
+    expect((await ann.post(`/site-api/boards/${boardId}/import/trello/cards`, first)).json).toMatchObject({created: 0, skipped: 1});
+    expect(await cache.get<number>(key)).toBe(1);
+    // At the limit: the already-imported chunk still answers "skipped", a chunk with new cards is refused.
+    await cache.set(key, 300, 3600);
+    expect((await ann.post(`/site-api/boards/${boardId}/import/trello/cards`, first)).json).toMatchObject({created: 0, skipped: 1});
+    expect((await ann.post(`/site-api/boards/${boardId}/import/trello/cards`, {importId, cards: [card('c2')]})).status).toBe(429);
+    expect(await db.card.count({where: {boardId}})).toBe(1);
+    await cache.del(key);
   });
 
   it('rejects malformed chunks and unknown lanes with 422', async () => {

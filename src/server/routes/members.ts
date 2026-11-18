@@ -365,6 +365,25 @@ const EMAIL_PER_HOUR_WORKSPACE = 30;
 const EMAIL_PER_HOUR_INVITER = 10;
 /** Sends per invite (the first one and every Resend), so one row cannot be used to flood an address. */
 const EMAIL_ATTEMPTS_MAX = 5;
+/**
+ * An email still 'queued' this long after it was queued is taken as lost (its job was dropped or gave up without
+ * settling the row) and may be sent again. Safe even if a slow job does run later: a resend rotates the token, and
+ * the job skips a row whose token it does not carry.
+ */
+const QUEUED_STALE_MS = 30 * 60_000;
+type EmailState = { emailStatus: string | null; emailQueuedAt: Date | null };
+/** Whether an invite email may be sent again: it failed, mail was not set up, or it has been queued too long. */
+const emailResendable = (r: EmailState, now = Date.now()) =>
+  r.emailStatus === "failed" ||
+  r.emailStatus === "not_configured" ||
+  (r.emailStatus === "queued" && r.emailQueuedAt !== null && now - r.emailQueuedAt.getTime() > QUEUED_STALE_MS);
+/** The same rule, as a `where` (the conditional update that claims the resend). */
+const resendableWhere = (now = Date.now()): Prisma.WorkspaceInviteWhereInput => ({
+  OR: [
+    { emailStatus: { in: ["failed", "not_configured"] } },
+    { emailStatus: "queued", emailQueuedAt: { lt: new Date(now - QUEUED_STALE_MS) } },
+  ],
+});
 
 export async function emailLimited(
   db: PrismaClient,
@@ -806,6 +825,7 @@ export const memberRoutes = new Hono()
           createdAt: true,
           emailStatus: true,
           emailSentAt: true,
+          emailQueuedAt: true,
         },
       });
       const now = Date.now();
@@ -819,6 +839,8 @@ export const memberRoutes = new Hono()
           // Phase 11: queued | sent | failed | not_configured, or null when no email was requested.
           emailStatus: r.emailStatus,
           emailSentAt: r.emailSentAt,
+          // Whether "Resend" applies (failed, mail not set up, or stuck queued): the screen shows the button on it.
+          emailResendable: r.emailHash !== null && emailResendable(r, now),
           expiresAt: r.expiresAt,
           used: r.usedAt !== null,
           active: r.usedAt === null && r.expiresAt.getTime() > now,
@@ -987,7 +1009,7 @@ export const memberRoutes = new Hono()
           expiresAt: { gt: new Date() },
           ...(await notOwnerMade(db, workspaceId, member.role)),
         },
-        select: { id: true, role: true, emailHash: true, emailStatus: true, emailAttempts: true, expiresAt: true, createdBy: true },
+        select: { id: true, role: true, emailHash: true, emailStatus: true, emailQueuedAt: true, emailAttempts: true, expiresAt: true, createdBy: true },
       });
       if (!invite) return notFound(c, "invite");
       if (!viewer.emailVerified) return c.json(UNVERIFIED_BODY, 403);
@@ -995,7 +1017,7 @@ export const memberRoutes = new Hono()
         invite.emailHash !== null &&
         (invite.emailHash === (await inviteEmailHash(email)) ||
           invite.emailHash === (await sha256Hex(email)));
-      const resendable = invite.emailStatus === "failed" || invite.emailStatus === "not_configured";
+      const resendable = emailResendable(invite);
       // Only the inviter (who knows the address) hears about a mismatch or a not-resendable invite; anyone else
       // gets the same 404 as an unknown invite unless the address matches AND it can be resent, so a guessed
       // address cannot be tested against it (a 409 would otherwise confirm the guess).
@@ -1007,7 +1029,7 @@ export const memberRoutes = new Hono()
             message: "That is not the address this invite was made for.",
           },
         });
-      if (invite.emailStatus !== "failed" && invite.emailStatus !== "not_configured")
+      if (!resendable)
         return c.json(
           problem("not_resendable", "Only a failed invite email can be sent again."),
           409,
@@ -1036,16 +1058,17 @@ export const memberRoutes = new Hono()
           429,
         );
       const token = newToken("iv");
+      const tokenHash = await sha256Hex(token);
       const configured = mailConfigured();
       const rotated = await db.workspaceInvite.updateMany({
         where: {
           id: invite.id,
           workspaceId,
           usedAt: null,
-          emailStatus: { in: ["failed", "not_configured"] },
+          ...resendableWhere(),
         },
         data: {
-          tokenHash: await sha256Hex(token),
+          tokenHash,
           emailStatus: "queued",
           emailQueuedAt: new Date(),
         },
@@ -1070,7 +1093,10 @@ export const memberRoutes = new Hono()
           workspaceId,
           viewer.id!,
           [item],
-          `invite-email-${invite.id}-${invite.emailAttempts + 1}`,
+          // Unique per resend: every resend rotates the token. A counter is not (the job does not count a run that
+          // found mail not configured or the inviter's role gone), and the platform drops a key it saw in 24 h,
+          // which left the invite 'queued' for good.
+          `invite-email-${invite.id}-${tokenHash.slice(0, 16)}`,
         ));
       if (!queued) {
         emailStatus = "failed";

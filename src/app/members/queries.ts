@@ -4,7 +4,7 @@ import {call} from '../api';
 import type {MemberT} from '../chat/api';
 
 export type JoinLinkT = {id: number; role: string; expiresAt: string; maxUses: number; uses: number; revoked: boolean; active: boolean; createdAt: string};
-export type InviteT = {id: number; role: string; boundToEmail: boolean; emailStatus: 'queued' | 'sent' | 'failed' | 'not_configured' | null; emailSentAt: string | null; expiresAt: string; used: boolean; active: boolean; createdAt: string};
+export type InviteT = {id: number; role: string; boundToEmail: boolean; emailStatus: 'queued' | 'sent' | 'failed' | 'not_configured' | null; emailSentAt: string | null; emailResendable: boolean; expiresAt: string; used: boolean; active: boolean; createdAt: string};
 export type MembersPage = {items: MemberT[]; nextAfter: number | null; me: {role: string}};
 
 export const membersListQuery = (workspaceId: number) =>

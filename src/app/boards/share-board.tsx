@@ -42,7 +42,7 @@ export type Members = {
 };
 type Candidate = {id: number; name: string; workspaceRole: string};
 type Pending = {id: number; role: Role; expiresAt: string; emailStatus: string | null; canRevoke: boolean};
-type Invited = {result: 'added' | 'already' | 'invited'; link?: string; emailStatus?: string; emailPreview?: {subject: string; text: string; configured: boolean}};
+type Invited = {result: 'invited'; link?: string; emailStatus?: string; emailPreview?: {subject: string; text: string; configured: boolean}};
 
 const candidatesQuery = (boardId: number, q: string) =>
   queryOptions({
@@ -165,7 +165,7 @@ export function SharePanel({board, onLeft}: {board: BoardT; onLeft: () => void})
 
   return (
     <div className="lf-share">
-      {canInvite && <InviteByEmail boardId={board.id} roleChoices={inviteRoles} onDone={() => refresh()} />}
+      {canInvite && <InviteByEmail boardId={board.id} roleChoices={inviteRoles} />}
       {canInvite && <AddPeople boardId={board.id} roleChoices={inviteRoles} onAdded={() => refresh()} />}
       {canInvite && <InviteLink boardId={board.id} />}
       {canInvite && <PendingInvites boardId={board.id} />}
@@ -250,7 +250,7 @@ export function SharePanel({board, onLeft}: {board: BoardT; onLeft: () => void})
   );
 }
 
-function InviteByEmail({boardId, roleChoices, onDone}: {boardId: number; roleChoices: readonly Role[]; onDone: () => Promise<unknown>}) {
+function InviteByEmail({boardId, roleChoices}: {boardId: number; roleChoices: readonly Role[]}) {
   const t = useT();
   const {errorMessage, fieldErrors} = useI18n();
   const toast = useToast();
@@ -270,14 +270,10 @@ function InviteByEmail({boardId, roleChoices, onDone}: {boardId: number; roleCho
     try {
       const res = await call<Invited>('POST', `/boards/${boardId}/invites`, {email: values.email.trim(), role});
       form.reset();
-      if (res.result === 'invited') {
-        setSent(res);
-        toast.success(res.emailStatus === 'queued' ? t('boards.share.inviteSent') : t('boards.share.inviteMade'));
-        await queryClient.invalidateQueries({queryKey: ['board-members', boardId, 'invites']});
-      } else {
-        toast.success(res.result === 'added' ? t('boards.share.addedByEmail') : t('boards.share.alreadyOnBoard'));
-        await onDone();
-      }
+      // Every address gets the same invite (the server never says whether it is someone of the workspace).
+      setSent(res);
+      toast.success(res.emailStatus === 'queued' ? t('boards.share.inviteSent') : t('boards.share.inviteMade'));
+      await queryClient.invalidateQueries({queryKey: ['board-members', boardId, 'invites']});
     } catch (e) {
       form.noteError(e);
       form.setServerErrors(fieldErrors(e));

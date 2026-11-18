@@ -1,6 +1,8 @@
+import {readdirSync, readFileSync} from 'node:fs';
+
 import {describe, expect, it} from 'vitest';
 
-import {parseActions, parseConditions, parseName, parseTrigger, readConfig, references, selfLoop, type Errors} from '../src/server/flows/config';
+import {FLOW_PROBLEMS, parseActions, parseConditions, parseName, parseTrigger, readConfig, references, selfLoop, type Errors} from '../src/server/flows/config';
 import {addDays} from '../src/server/jobs/flows';
 
 describe('flows config validation', () => {
@@ -56,5 +58,15 @@ describe('flows config validation', () => {
 
   it('adds days across a month end in UTC', () => {
     expect(addDays('2026-11-29', 3)).toBe('2026-12-02');
+  });
+
+  it('has a message for every problem code in every locale', () => {
+    const dir = new URL('../src/i18n/messages/', import.meta.url);
+    const files = readdirSync(dir).filter(f => f.endsWith('.json'));
+    expect(files.length).toBeGreaterThanOrEqual(20);
+    for (const file of files) {
+      const messages = JSON.parse(readFileSync(new URL(file, dir), 'utf8')) as Record<string, string>;
+      for (const code of FLOW_PROBLEMS) expect(messages[`flows.problem.${code}`], `${file} flows.problem.${code}`).toBeTruthy();
+    }
   });
 });
