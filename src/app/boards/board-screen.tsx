@@ -366,6 +366,7 @@ export function BoardScreen() {
       <div className="lf-board-head">
         <IconButton
           icon="star"
+          size="sm"
           label={board.starred ? t('boards.starRemove') : t('boards.starAdd')}
           aria-pressed={board.starred}
           className={board.starred ? 'lf-star is-on' : 'lf-star'}
