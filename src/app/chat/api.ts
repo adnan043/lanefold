@@ -1,8 +1,10 @@
 import {queryOptions, useQuery, useQueryClient} from '@tanstack/react-query';
 import {useCallback, useEffect, useRef, useState} from 'react';
 
-import {cardRefsKey} from '../../lib/card-refs';
+import {CARD_REFS_MAX} from '../../lib/card-refs';
 import {ApiError, call} from '../api';
+import {createBatcher} from './card-ref-batch';
+import {pulseDelayMs} from './poll-timing';
 
 /** Wire shapes of `src/server/routes/chat.ts`. Message ids are strings (bigint); everything else is a number. */
 export type ConversationKind = 'channel' | 'group' | 'dm' | 'board';
@@ -16,6 +18,8 @@ export type ConversationT = {
   unread: number;
   joined: boolean;
   muted: boolean;
+  /** An archived channel (read-only, not in the list). */
+  archived?: boolean;
 };
 export type PulseItem = {conversationId: number; workspaceId: number; lastSeq: number; lastReadSeq: number; unread: number; muted: boolean};
 export type NumberRefT = {id: number; boardId: number; title: string};
@@ -33,13 +37,15 @@ export type MessageT = {
   deleted: boolean;
   pinned: boolean;
   mentions: number[];
+  /** The names of `mentions`, same order (from the server, so a mention shows for anyone in the workspace). */
+  mentionNames?: string[];
   cardIds: number[];
   /** `#42` in a board chat that resolved to a card the viewer may open (absent = plain text). */
   numberRefs?: Record<number, NumberRefT>;
   reactions: ReactionT[];
   createdAt: string;
 };
-export type MessagePage = {items: MessageT[]; nextBefore: number | null; more: boolean; lastSeq: number; lastReadSeq: number; canWrite: boolean; canModerate?: boolean};
+export type MessagePage = {items: MessageT[]; nextBefore: number | null; more: boolean; lastSeq: number; lastReadSeq: number; canWrite: boolean; canModerate?: boolean; archived?: boolean};
 export type MemberT = {userId: number; name: string | null; email?: string; maskedEmail?: string; role: string; joinedAt: string; isMe: boolean; canManage: boolean};
 
 export const conversationsQuery = (workspaceId: number) =>
@@ -49,28 +55,31 @@ export const conversationsQuery = (workspaceId: number) =>
     staleTime: 15_000,
   });
 
+export type BoardConversationT = ConversationT & {canWrite: boolean};
+
+/**
+ * The board's chat. The GET only reads; the first open (no chat yet, or no seat for me in it) POSTs once to create
+ * and join it, so opening the Chat tab again writes nothing.
+ */
 export const boardConversationQuery = (boardId: number) =>
   queryOptions({
     queryKey: ['chat', 'board', boardId],
-    queryFn: () => call<{conversation: ConversationT & {canWrite: boolean}}>('GET', `/boards/${boardId}/conversation`).then(r => r.conversation),
+    queryFn: async () => {
+      const got = await call<{conversation: BoardConversationT | null}>('GET', `/boards/${boardId}/conversation`);
+      if (got.conversation?.joined) return got.conversation;
+      return (await call<{conversation: BoardConversationT}>('POST', `/boards/${boardId}/conversation`)).conversation;
+    },
     staleTime: 5 * 60_000,
   });
 
-/** One page of the member directory (mentions, new DM, group). Names only; at most a few pages are read. */
+/** A person of the chat's directory (`GET /workspaces/:id/chat-people`): name and workspace role, never an email. */
+export type ChatPersonT = {userId: number; name: string | null; role: string; isMe?: boolean};
+
+/** The workspace's names and roles in ONE request (mentions, role badges). Workspace members only (a guest gets 404). */
 export const chatPeopleQuery = (workspaceId: number) =>
   queryOptions({
     queryKey: ['chat', 'people', workspaceId],
-    queryFn: async () => {
-      const people: MemberT[] = [];
-      let after: number | null = null;
-      for (let page = 0; page < 4; page += 1) {
-        const res: {items: MemberT[]; nextAfter: number | null} = await call('GET', `/workspaces/${workspaceId}/members${after ? `?after=${after}` : ''}`);
-        people.push(...res.items);
-        after = res.nextAfter;
-        if (!after) break;
-      }
-      return people;
-    },
+    queryFn: () => call<{items: ChatPersonT[]; truncated: boolean}>('GET', `/workspaces/${workspaceId}/chat-people`).then(r => r.items),
     staleTime: 5 * 60_000,
   });
 
@@ -105,7 +114,7 @@ export const conversationQuery = (id: number) =>
 
 export const pulseKey = ['chat', 'pulse'] as const;
 
-/** Seconds since the person last touched the page: the pulse slows down while they are away. */
+/** When the person last touched the page: the polls slow down while they are away. */
 let lastInput = Date.now();
 if (typeof window !== 'undefined') {
   for (const name of ['pointerdown', 'keydown', 'pointermove', 'wheel', 'touchstart'] as const) {
@@ -113,10 +122,13 @@ if (typeof window !== 'undefined') {
   }
 }
 
+/** Milliseconds since the last pointer, key, wheel or touch input on the page. */
+export const idleMs = () => Date.now() - lastInput;
+
 /**
- * The pulse (SPEC §8): ONE small read says which of my conversations moved. `fast` while a chat is open and
- * the person is active (about 3 s), 12 s when they are idle, 30 s otherwise. The tab being hidden pauses it
- * (TanStack's default), focus refetches, and errors back off to 30 s.
+ * The pulse (SPEC §8): ONE small read says which of my conversations moved. `fast` while a chat is open: about 3 s
+ * while the person is active, slower the longer they are away (`pulseDelayMs`: 12 s, 30 s, then 60 s). A hidden tab
+ * never polls (`refetchIntervalInBackground: false`), focus refetches at once, and errors back off to 30 s.
  */
 export function usePulse(fast: boolean) {
   return useQuery({
@@ -124,10 +136,9 @@ export function usePulse(fast: boolean) {
     queryFn: () => call<{items: PulseItem[]}>('GET', '/chat/pulse').then(r => r.items),
     refetchInterval: query => {
       if (query.state.status === 'error' && query.state.fetchFailureCount > 0) return 30_000;
-      const jitter = Math.random() * 500;
-      if (!fast) return 30_000 + jitter;
-      return (Date.now() - lastInput > 60_000 ? 12_000 : 3000) + jitter;
+      return pulseDelayMs(idleMs(), fast) + Math.random() * 500;
     },
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     staleTime: 1000,
   });
@@ -184,20 +195,19 @@ export const cardSearchQuery = (workspaceId: number, q: string) =>
 
 /** A card a message points at, as the light batch answers it (only cards the viewer may open). */
 export type CardRefT = {id: number; number: number | null; title: string; boardId: number; boardName: string; done: boolean};
-export const cardRefsQuery = (ids: readonly number[]) =>
+
+/** Every chip rendered in the same tick shares ONE `GET /cards/refs` per 20 ids (the server's cap and access rule). */
+const loadCardRef = createBatcher<CardRefT>(
+  ids => call<{items: CardRefT[]}>('GET', `/cards/refs?ids=${ids.join(',')}`).then(r => r.items),
+  item => item.id,
+  CARD_REFS_MAX
+);
+
+/** One card's chip data; null when the viewer may not open it (or it is gone). Cached per card, batched per page. */
+export const cardRefQuery = (id: number) =>
   queryOptions({
-    queryKey: cardRefsKey(ids),
-    queryFn: async (): Promise<Record<number, CardRefT>> => {
-      const sorted = [...new Set(ids)].sort((a, b) => a - b);
-      const out: Record<number, CardRefT> = {};
-      // The server takes 20 at a time; a message rarely links more than a couple.
-      for (let i = 0; i < sorted.length; i += 20) {
-        const r = await call<{items: CardRefT[]}>('GET', `/cards/refs?ids=${sorted.slice(i, i + 20).join(',')}`);
-        for (const item of r.items) out[item.id] = item;
-      }
-      return out;
-    },
-    enabled: ids.length > 0,
+    queryKey: ['chat', 'card-ref', id],
+    queryFn: () => loadCardRef(id),
     staleTime: 5 * 60_000,
     retry: false,
   });

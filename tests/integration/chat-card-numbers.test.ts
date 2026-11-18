@@ -36,7 +36,7 @@ describe.skipIf(!DATABASE_URL)('chat card numbers (integration, real Postgres)',
     cardsA = (await ann.post(`/site-api/lanes/${await lane(boardA)}/cards`, {titles: ['Alpha one', 'Alpha two', 'Alpha three']})).json.items;
     await ann.post(`/site-api/lanes/${await lane(boardB)}/cards`, {titles: ['Beta one']});
     secret = (await ann.post(`/site-api/lanes/${await lane(priv)}/cards`, {titles: ['TOP SECRET plan']})).json.items[0];
-    convA = (await ann.get(`/site-api/boards/${boardA}/conversation`)).json.conversation.id;
+    convA = (await ann.post(`/site-api/boards/${boardA}/conversation`)).json.conversation.id;
   });
 
   const send = (b: Browser, conv: number, body: string, extra: J = {}) =>
@@ -62,7 +62,7 @@ describe.skipIf(!DATABASE_URL)('chat card numbers (integration, real Postgres)',
     const sent = await send(ann, convA, '#1');
     expect(sent.json.message.numberRefs['1'].boardId).toBe(boardA);
     expect(JSON.stringify(sent.json)).not.toContain('Beta one');
-    const convB = (await ann.get(`/site-api/boards/${boardB}/conversation`)).json.conversation.id;
+    const convB = (await ann.post(`/site-api/boards/${boardB}/conversation`)).json.conversation.id;
     const other = await send(ann, convB, '#1');
     expect(other.json.message.numberRefs['1'].title).toBe('Beta one');
   });
@@ -73,7 +73,7 @@ describe.skipIf(!DATABASE_URL)('chat card numbers (integration, real Postgres)',
     expect(JSON.stringify(sent.json)).not.toContain('TOP SECRET');
     expect(JSON.stringify(await page(ben, convA))).not.toContain('TOP SECRET');
     // A member with no seat cannot even open the private board's chat.
-    const privConv = (await ann.get(`/site-api/boards/${priv}/conversation`)).json.conversation.id;
+    const privConv = (await ann.post(`/site-api/boards/${priv}/conversation`)).json.conversation.id;
     await send(ann, privConv, 'plan is #1');
     expect((await ben.get(`/site-api/conversations/${privConv}/messages`)).status).toBe(404);
     // A seated member does see it, in that chat only.
