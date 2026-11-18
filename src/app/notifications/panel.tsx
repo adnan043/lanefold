@@ -183,7 +183,6 @@ export default function NotificationPanel({
                 aria-busy={busy === n.id || undefined}
                 onClick={() => go(n)}
               >
-                <span className="notif-dot" aria-hidden="true" />
                 {/* Who did it: their photo when one exists, else their initials; a system notice (digest) shows a bell. */}
                 <span className="notif-avatar" aria-hidden="true">
                   {n.actor ? (
