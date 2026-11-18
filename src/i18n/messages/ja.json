@@ -164,6 +164,8 @@
   "boards.share.roleChanged": "{name} の役割を更新しました。",
   "boards.guestTitle": "ゲストとして参加中のボード",
   "boards.guestHint": "追加された他のワークスペースのボード。そこではこれらのボードだけが見えます。",
+  "boards.share.addedByEmail": "このワークスペースのメンバーなので、ボードに追加しました。",
+  "boards.share.alreadyOnBoard": "その人はすでにこのボードを見られます。",
   "boards.share.copied": "リンクをコピーしました。",
   "boards.share.copy": "リンクをコピー",
   "boards.share.emailExample": "name@example.com",

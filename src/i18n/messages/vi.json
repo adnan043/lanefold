@@ -164,6 +164,8 @@
   "boards.share.roleChanged": "Đã cập nhật vai trò của {name}.",
   "boards.guestTitle": "Bảng với tư cách khách",
   "boards.guestHint": "Các bảng của không gian khác mà bạn được thêm vào. Ở đó bạn chỉ thấy những bảng này.",
+  "boards.share.addedByEmail": "Người này có trong không gian và đã được thêm vào bảng.",
+  "boards.share.alreadyOnBoard": "Người đó đã xem được bảng này.",
   "boards.share.copied": "Đã sao chép liên kết.",
   "boards.share.copy": "Sao chép liên kết",
   "boards.share.emailExample": "name@example.com",

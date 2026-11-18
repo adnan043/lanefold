@@ -166,6 +166,8 @@
   "boards.share.roleChanged": "Rol de {name} actualizado.",
   "boards.guestTitle": "Tableros como invitado",
   "boards.guestHint": "Tableros de otros espacios a los que te añadieron. Allí solo ves estos tableros.",
+  "boards.share.addedByEmail": "Está en este espacio de trabajo y se añadió al tablero.",
+  "boards.share.alreadyOnBoard": "Esa persona ya puede ver este tablero.",
   "boards.share.copied": "Enlace copiado.",
   "boards.share.copy": "Copiar enlace",
   "boards.share.emailExample": "name@example.com",

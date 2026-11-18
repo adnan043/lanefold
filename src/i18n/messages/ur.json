@@ -165,6 +165,8 @@
   "boards.share.roleChanged": "{name} کا کردار اپ ڈیٹ ہو گیا۔",
   "boards.guestTitle": "مہمان بورڈز",
   "boards.guestHint": "دوسرے ورک اسپیسز کے بورڈز جن میں آپ کو شامل کیا گیا۔ وہاں آپ صرف یہی بورڈز دیکھتے ہیں۔",
+  "boards.share.addedByEmail": "وہ اس ورک اسپیس میں ہیں اور انہیں بورڈ میں شامل کر دیا گیا۔",
+  "boards.share.alreadyOnBoard": "وہ شخص پہلے سے یہ بورڈ دیکھ سکتا ہے۔",
   "boards.share.copied": "لنک کاپی ہو گیا۔",
   "boards.share.copy": "لنک کاپی کریں",
   "boards.share.emailExample": "name@example.com",

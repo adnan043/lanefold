@@ -165,6 +165,8 @@
   "boards.share.roleChanged": "Jukumu la {name} limesasishwa.",
   "boards.guestTitle": "Mbao kama mgeni",
   "boards.guestHint": "Mbao za maeneo mengine ya kazi uliyoongezwa. Huko unaona mbao hizi tu.",
+  "boards.share.addedByEmail": "Yuko katika eneo hili la kazi na ameongezwa kwenye ubao.",
+  "boards.share.alreadyOnBoard": "Mtu huyo tayari anaweza kuona ubao huu.",
   "boards.share.copied": "Kiungo kimenakiliwa.",
   "boards.share.copy": "Nakili kiungo",
   "boards.share.emailExample": "name@example.com",
