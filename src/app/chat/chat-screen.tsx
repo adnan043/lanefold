@@ -180,8 +180,9 @@ export function Chat() {
                   event.preventDefault();
                   setJump('');
                 }
-                // Enter opens the first match.
-                if (event.key === 'Enter' && shown[0]) void navigate({to: '/chat', search: {c: shown[0].id} as never});
+                // Enter opens the first match as listed (channels, then direct, then boards), never mid-composition.
+                const first = channels[0] ?? direct[0] ?? boards[0];
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing && first) void navigate({to: '/chat', search: {c: first.id} as never});
               }}
             />
           </div>

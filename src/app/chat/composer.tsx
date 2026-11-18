@@ -61,6 +61,8 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
   const options: PersonRef[] = mention && !dismissed ? [...(offerAll ? [ALL_OPTION] : []), ...hits].slice(0, 6) : [];
   const listOpen = options.length > 0 || cardHits.length > 0;
   const count = cardHits.length > 0 ? cardHits.length : options.length;
+  // The results can shrink under a highlight that was moved first (a slower search answers): keep it on a row.
+  const current = count > 0 ? Math.min(active, count - 1) : 0;
   const over = text.trim().length - MAX_BODY;
   const listId = cardHits.length > 0 ? `${id}-cardlist` : `${id}-people`;
 
@@ -81,6 +83,8 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
     const next = insertMention(text, caret, mention.start, person.name);
     setText(next.text);
     setCaret(next.caret);
+    // `@Ann Lee ` still reads as an `@` query: close the list so the next Enter sends (typing opens it again).
+    setDismissed(true);
     window.requestAnimationFrame(() => {
       area.current?.focus();
       area.current?.setSelectionRange(next.caret, next.caret);
@@ -93,6 +97,7 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
     const next = removeCardTag(text, caret, tag.start);
     setText(next.text);
     setCaret(next.caret);
+    setDismissed(true);
     window.requestAnimationFrame(() => {
       area.current?.focus();
       area.current?.setSelectionRange(next.caret, next.caret);
@@ -171,7 +176,7 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
           placeholder={placeholder}
           aria-controls={listOpen ? listId : undefined}
           aria-describedby={[error ? `${id}-error` : cards.length ? `${id}-cards` : '', listOpen ? `${id}-hint` : ''].filter(Boolean).join(' ') || undefined}
-          aria-activedescendant={listOpen ? `${id}-p${active}` : undefined}
+          aria-activedescendant={listOpen ? `${id}-p${current}` : undefined}
           aria-invalid={error ? true : undefined}
           onChange={event => {
             setText(event.target.value);
@@ -180,16 +185,20 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
           }}
           onSelect={event => setCaret(event.currentTarget.selectionStart)}
           onKeyDown={event => {
+            // An input method (Japanese, Chinese, Korean…) is composing: its Enter and arrows are its own.
+            if (event.nativeEvent.isComposing || event.keyCode === 229) return;
             if (listOpen) {
               if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                 event.preventDefault();
-                setActive(i => (i + (event.key === 'ArrowDown' ? 1 : -1) + count) % count);
+                setActive((current + (event.key === 'ArrowDown' ? 1 : -1) + count) % count);
                 return;
               }
               if (event.key === 'Enter' || event.key === 'Tab') {
                 event.preventDefault();
-                if (cardHits.length > 0) pickCard(cardHits[active]!);
-                else pick(options[active]!);
+                const card = cardHits[current];
+                const person = options[current];
+                if (cardHits.length > 0 && card) pickCard(card);
+                else if (person) pick(person);
                 return;
               }
               if (event.key === 'Escape') {
@@ -198,7 +207,7 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
                 return;
               }
             }
-            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               submit();
             }
@@ -238,8 +247,8 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
                 key={card.id}
                 id={`${id}-p${index}`}
                 role="option"
-                aria-selected={index === active}
-                data-active={index === active ? '' : undefined}
+                aria-selected={index === current}
+                data-active={index === current ? '' : undefined}
                 onPointerDown={event => {
                   event.preventDefault();
                   pickCard(card);
@@ -260,8 +269,8 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
                 key={person.userId}
                 id={`${id}-p${index}`}
                 role="option"
-                aria-selected={index === active}
-                data-active={index === active ? '' : undefined}
+                aria-selected={index === current}
+                data-active={index === current ? '' : undefined}
                 onPointerDown={event => {
                   event.preventDefault();
                   pick(person);

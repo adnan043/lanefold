@@ -330,4 +330,61 @@ describe.skipIf(!DATABASE_URL)('chat (integration, real Postgres)', () => {
     expect(await db.messageReaction.count({where: {messageId: BigInt(msg), userId: ids.ann!}})).toBe(1);
     expect(await db.messageReaction.count({where: {messageId: BigInt(msg), userId: ids.mia!}})).toBe(1);
   });
+  it('switching my emoji is never refused by the 20-kinds cap (only a new kind from someone else is)', async () => {
+    const msg = (await send(ann, channel, 'busy')).json.message.id;
+    const emoji = ['👍', '❤️', '😂', '🎉', '😮', '🙏', '👎', '👏', '🔥', '🚀', '✅', '👀', '😀', '😍', '🤔', '😅', '😢', '😡', '💯', '💡', '⭐', '🙌'];
+    // 19 kinds from 19 other people, then mine: 20 kinds.
+    const others = await db.user.createManyAndReturn({
+      data: emoji.slice(0, 19).map((_, i) => ({email: `reactor${i}@example.test`, name: `Reactor ${i}`, passwordHash: 'x'})),
+      select: {id: true},
+    });
+    await db.messageReaction.createMany({data: others.map((u, i) => ({messageId: BigInt(msg), userId: u.id, emoji: emoji[i]!}))});
+    expect((await ann.request('PUT', `/site-api/messages/${msg}/reactions`, {emoji: emoji[19]})).status).toBe(200);
+    // My only reaction moves to a 21st emoji: still 20 kinds.
+    const switched = await ann.request('PUT', `/site-api/messages/${msg}/reactions`, {emoji: emoji[20]});
+    expect(switched.status).toBe(200);
+    expect(switched.json.reactions).toHaveLength(20);
+    // A new kind from someone else would make 21.
+    const refused = await mia.request('PUT', `/site-api/messages/${msg}/reactions`, {emoji: emoji[21]});
+    expect(refused.status).toBe(409);
+    expect(refused.json.error).toBe('limit_reached');
+  });
+
+  it('the pulse editRev moves on edits, reactions, pins, deletes and replies, never on a plain send', async () => {
+    const rev = async () => ((await ann.get('/site-api/chat/pulse')).json.items as J[]).find(p => p.conversationId === channel)?.editRev as number;
+    const msg = (await send(ann, channel, 'first')).json.message.id;
+    const r0 = await rev();
+    expect(typeof r0).toBe('number');
+    await send(mia, channel, 'second');
+    expect(await rev()).toBe(r0);
+    expect((await ann.request('PATCH', `/site-api/messages/${msg}`, {body: 'first, edited'})).status).toBe(200);
+    expect(await rev()).toBe(r0 + 1);
+    await mia.request('PUT', `/site-api/messages/${msg}/reactions`, {emoji: '👍'});
+    expect(await rev()).toBe(r0 + 2);
+    await mia.request('DELETE', `/site-api/messages/${msg}/reactions`, {emoji: '👍'});
+    expect(await rev()).toBe(r0 + 3);
+    // Removing a reaction I do not have changes nothing.
+    await mia.request('DELETE', `/site-api/messages/${msg}/reactions`, {emoji: '👍'});
+    expect(await rev()).toBe(r0 + 3);
+    expect((await ann.request('PUT', `/site-api/messages/${msg}/pin`, {})).status).toBe(200);
+    expect(await rev()).toBe(r0 + 4);
+    await send(mia, channel, 'a reply', undefined, {parentId: msg});
+    expect(await rev()).toBe(r0 + 5);
+    expect((await ann.request('DELETE', `/site-api/messages/${msg}`, {})).status).toBe(200);
+    expect(await rev()).toBe(r0 + 6);
+    // The messages page carries the same counter.
+    expect((await ann.get(`/site-api/conversations/${channel}/messages`)).json.editRev).toBe(r0 + 6);
+  });
+
+  it("in someone's Inbox chat, nobody else can be mentioned (not even workspace owners)", async () => {
+    expect((await mia.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'note to self'})).status).toBe(201);
+    const inbox = await db.board.findFirstOrThrow({where: {inboxOf: ids.mia!}, select: {id: true}});
+    const chat = (await mia.post(`/site-api/boards/${inbox.id}/conversation`, {})).json.conversation.id;
+    const sent = await send(mia, chat, 'hey @ann and @mia', undefined, {mentions: [ids.ann!, ids.mia!]});
+    expect(sent.status).toBe(201);
+    expect(sent.json.message.mentions).toEqual([ids.mia!]);
+    expect(await db.notification.count({where: {userId: ids.ann!, kind: 'message_mention'}})).toBe(0);
+    // And the owner still cannot open it.
+    expect((await ann.get(`/site-api/conversations/${chat}/messages`)).status).toBe(404);
+  });
 });

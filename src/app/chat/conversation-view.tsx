@@ -341,7 +341,7 @@ function PinnedStrip({items}: {items: MessageT[]}) {
   );
 }
 
-function ThreadPanel({workspaceId, boardId, conversationId, title, parent, pulseSeq, people, peopleList, me, canModerate, canWriteMain, onParentChange, onClose, onSent}: {
+function ThreadPanel({workspaceId, boardId, conversationId, title, parent, pulseSeq, pulseEditRev, people, peopleList, me, canModerate, canWriteMain, onParentChange, onClose, onSent}: {
   workspaceId: number;
   boardId: number | null;
   conversationId: number;
@@ -350,6 +350,7 @@ function ThreadPanel({workspaceId, boardId, conversationId, title, parent, pulse
   parent: MessageT;
   /** The conversation's `lastSeq` from the pulse: a reply moves it, so the thread fetches only when it moved. */
   pulseSeq: number | undefined;
+  pulseEditRev: number | undefined;
   people: ReadonlyMap<number, ChatPersonT>;
   peopleList: readonly ChatPersonT[];
   me: number | undefined;
@@ -362,7 +363,7 @@ function ThreadPanel({workspaceId, boardId, conversationId, title, parent, pulse
   const t = useT();
   // No timer of its own: a reply moves the conversation's `lastSeq`, so the thread asks for new replies only when
   // the pulse (already running for the open chat) moved; edits in the thread come with its 20 s window refresh.
-  const feed = useMessageFeed({conversationId, parentId: parent.id, pulseSeq, me});
+  const feed = useMessageFeed({conversationId, parentId: parent.id, pulseSeq, pulseEditRev, me});
   const cardTarget = useMemo(() => ({workspaceId, boardId}), [workspaceId, boardId]);
   return (
     <aside className="chat-thread" aria-label={t('chat.thread')}>
@@ -438,8 +439,10 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
   const people = useQuery({...chatPeopleQuery(workspaceId), enabled: role !== 'guest'});
   const peopleList = useMemo(() => people.data ?? [], [people.data]);
   const byId = useMemo(() => new Map(peopleList.map(p => [p.userId, p])), [peopleList]);
-  const pulseSeq = pulse.data?.find(p => p.conversationId === conversation.id)?.lastSeq;
-  const feed = useMessageFeed({conversationId: conversation.id, pulseSeq, me});
+  const pulseItem = pulse.data?.find(p => p.conversationId === conversation.id);
+  const pulseSeq = pulseItem?.lastSeq;
+  const pulseEditRev = pulseItem?.editRev;
+  const feed = useMessageFeed({conversationId: conversation.id, pulseSeq, pulseEditRev, me});
   const [thread, setThread] = useState<string | null>(null);
   const [muted, setMuted] = useState(conversation.muted);
   const [muting, setMuting] = useState(false);
@@ -594,6 +597,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
             title={title}
             parent={parent}
             pulseSeq={pulseSeq}
+            pulseEditRev={pulseEditRev}
             people={byId}
             peopleList={peopleList}
             me={me}

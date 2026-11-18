@@ -21,7 +21,7 @@ export type ConversationT = {
   /** An archived channel (read-only, not in the list). */
   archived?: boolean;
 };
-export type PulseItem = {conversationId: number; workspaceId: number; lastSeq: number; lastReadSeq: number; unread: number; muted: boolean};
+export type PulseItem = {conversationId: number; workspaceId: number; lastSeq: number; editRev?: number; lastReadSeq: number; unread: number; muted: boolean};
 export type NumberRefT = {id: number; boardId: number; title: string};
 export type ReactionT = {emoji: string; count: number; mine: boolean};
 export type MessageT = {
@@ -45,7 +45,7 @@ export type MessageT = {
   reactions: ReactionT[];
   createdAt: string;
 };
-export type MessagePage = {items: MessageT[]; nextBefore: number | null; more: boolean; lastSeq: number; lastReadSeq: number; canWrite: boolean; canModerate?: boolean; archived?: boolean};
+export type MessagePage = {items: MessageT[]; nextBefore: number | null; more: boolean; lastSeq: number; editRev?: number; lastReadSeq: number; canWrite: boolean; canModerate?: boolean; archived?: boolean};
 export type MemberT = {userId: number; name: string | null; email?: string; maskedEmail?: string; role: string; joinedAt: string; isMe: boolean; canManage: boolean};
 
 export const conversationsQuery = (workspaceId: number) =>

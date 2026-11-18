@@ -1142,6 +1142,9 @@ model Conversation {
   /// `<smaller user id>:<larger user id>` for a DM, so a pair has one conversation.
   dmKey       String?  @map("dm_key") @db.VarChar(24)
   lastSeq     BigInt   @default(0) @map("last_seq")
+  /// Moves on every change the `after` poll cannot see (edit, delete, reaction, pin, linked card, new reply): the pulse
+  /// carries it so an open chat re-reads its window only when something changed. Bumped with raw SQL (never `updatedAt`).
+  editRev     BigInt   @default(0) @map("edit_rev")
   createdBy   Int?     @map("created_by")
   /// A channel archived by a workspace owner or admin: hidden from the list, read-only. Only channels are archived.
   archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
@@ -1197,7 +1200,6 @@ model Message {
 
   @@unique([conversationId, clientId])
   @@unique([conversationId, seq])
-  @@index([conversationId, parentId, id])
   @@index([conversationId, parentId, seq])
   @@index([senderId, createdAt])
   @@map("messages")
@@ -1211,9 +1213,8 @@ model MessageReaction {
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
-  @@id([messageId, userId, emoji])
   /// One reaction per person per message: reacting with another emoji replaces it.
-  @@unique([messageId, userId])
+  @@id([messageId, userId])
   @@index([userId])
   @@map("message_reactions")
 }

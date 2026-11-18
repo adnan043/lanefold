@@ -83,6 +83,8 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
   if (cardOpen && !cardUsed) setCardUsed(true);
   const pickerButton = useRef<HTMLButtonElement>(null);
   const chipButton = useRef<HTMLButtonElement>(null);
+  const reactionsRow = useRef<HTMLDivElement>(null);
+  const itemRef = useRef<HTMLLIElement>(null);
   const own = message.sender.id === me;
   const name = displayName(message.sender.name, t('chat.deletedUser'));
   // Workspace owners and admins get a small role badge next to their name (from the member directory already loaded).
@@ -91,7 +93,19 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
   const react = useMutation({
     mutationFn: ({emoji, on}: {emoji: string; on: boolean}) =>
       call<{reactions: ReactionT[]}>(on ? 'PUT' : 'DELETE', `/messages/${message.id}/reactions`, {emoji}),
-    onSuccess: ({reactions}) => onChange(message.id, m => ({...m, reactions})),
+    onSuccess: ({reactions}) => {
+      // The last reaction gone: its row (and the button holding focus) unmounts, so focus moves to the toolbar's react
+      // button, or to the message itself, never to <body>.
+      const row = reactionsRow.current;
+      const focusInRow = !!row && (row.contains(document.activeElement) || document.activeElement === document.body);
+      onChange(message.id, m => ({...m, reactions}));
+      if (reactions.length === 0 && focusInRow) {
+        window.requestAnimationFrame(() => {
+          if (document.activeElement && document.activeElement !== document.body && !reactionsRow.current?.contains(document.activeElement)) return;
+          (pickerButton.current ?? itemRef.current)?.focus();
+        });
+      }
+    },
     onError: error => toast.danger(errorMessage(error)),
   });
   const pin = useMutation({
@@ -102,7 +116,6 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
     },
     onError: error => toast.danger(errorMessage(error)),
   });
-  const cooldown = useWriteCooldown();
   const edit = useMutation({
     mutationFn: (body: string) => {
       // Mentions travel only when they changed; linked cards are never sent (the server keeps them when absent).
@@ -147,7 +160,7 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
 
   const menu: MenuItem[] = [];
   if (own && canWrite && !message.deleted) menu.push({label: t('chat.edit'), icon: 'pencil', onSelect: startEdit});
-  if (cardTarget && !message.deleted && message.kind !== 'system' && (message.cardIds?.length ?? 0) < 10) menu.push({label: t('chat.createCard'), icon: 'layout-kanban', onSelect: () => setCardOpen(true)});
+  if (cardTarget && canWrite && !message.deleted && message.kind !== 'system' && (message.cardIds?.length ?? 0) < 10) menu.push({label: t('chat.createCard'), icon: 'layout-kanban', onSelect: () => setCardOpen(true)});
   if (canPin && !message.deleted && !pin.isPending) menu.push({label: message.pinned ? t('chat.unpin') : t('chat.pin'), icon: 'pin', onSelect: () => pin.mutate(!message.pinned)});
   if ((own || canModerate) && !message.deleted) menu.push({label: t('chat.delete'), icon: 'trash', danger: true, onSelect: remove});
 
@@ -170,7 +183,7 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
   }
 
   return (
-    <li id={`msg-${message.id}`} tabIndex={-1} className="chat-msg" data-grouped={grouped ? '' : undefined} data-pinned={message.pinned ? '' : undefined}>
+    <li ref={itemRef} id={`msg-${message.id}`} tabIndex={-1} className="chat-msg" data-grouped={grouped ? '' : undefined} data-pinned={message.pinned ? '' : undefined}>
       <span className="chat-msg-gutter">{!grouped && <Avatar name={message.sender.name ?? ''} size="md" />}</span>
       <div className="chat-msg-main">
         {!grouped && (
@@ -217,9 +230,7 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
               <Button size="sm" variant="secondary" disabled={edit.isPending} onClick={() => setEditing(false)}>
                 {t('common.cancel')}
               </Button>
-              <Button size="sm" pending={edit.isPending} pendingLabel={t('common.saving')} disabled={cooldown.blocked} onClick={saveEdit}>
-                {t('common.save')}
-              </Button>
+              <SaveEditButton pending={edit.isPending} onSave={saveEdit} />
             </div>
           </div>
         ) : (
@@ -230,7 +241,7 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
           </>
         )}
         {message.reactions.length > 0 && (
-          <div className="chat-reactions" role="group" aria-label={t('chat.reactions')}>
+          <div ref={reactionsRow} className="chat-reactions" role="group" aria-label={t('chat.reactions')}>
             {message.reactions.map(r => (
               <button
                 key={r.emoji}
@@ -354,5 +365,19 @@ export function PendingItem({pending, onRetry, onDiscard}: {pending: PendingMess
         )}
       </div>
     </li>
+  );
+}
+
+/**
+ * The edit form's Save, disabled while a 429 cools down. Its own component so only an open edit form watches the
+ * mutation cache: one subscription per visible message re-rendered every row twice a second after any 429.
+ */
+function SaveEditButton({pending, onSave}: {pending: boolean; onSave: () => void}) {
+  const t = useT();
+  const cooldown = useWriteCooldown();
+  return (
+    <Button size="sm" pending={pending} pendingLabel={t('common.saving')} disabled={cooldown.blocked} onClick={onSave}>
+      {t('common.save')}
+    </Button>
   );
 }

@@ -553,7 +553,7 @@ export const ICON_NAMES = Object.keys(ICONS) as IconName[];
  * control goes in `IconButton`, which takes the `label`.
  */
 /** Icons whose meaning points left or right: mirrored in RTL by `.icon-flip:dir(rtl)`. */
-const DIRECTIONAL = new Set<string>(['arrow-left', 'arrow-right', 'chevron-left', 'chevron-right', 'log-out']);
+const DIRECTIONAL = new Set<string>(['arrow-left', 'arrow-right', 'chevron-left', 'chevron-right', 'log-out', 'send']);
 
 export function Icon({name, size = 18, className}: {name: IconName; size?: 12 | 14 | 16 | 18 | 20 | 22 | 24 | 28 | 32; className?: string}) {
   const flip = DIRECTIONAL.has(name) && !className?.includes('icon-flip') ? 'icon-flip' : '';
