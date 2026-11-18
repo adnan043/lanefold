@@ -66,3 +66,6 @@ export const AUTH_RULES = {
   password: [rules.required('Enter your password.')],
   newPassword: [rules.newPassword()],
 };
+
+/** A card's estimate in whole minutes: the card route, card templates and the card panel all use this range. */
+export const CARD_ESTIMATE = {min: 1, max: 99_999} as const;

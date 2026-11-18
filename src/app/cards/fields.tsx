@@ -5,6 +5,7 @@ import {Button, Checkbox, Field, Icon, type IconName, IconButton, Select} from '
 import {Chip} from '../../portal/ui/chips';
 import {COLOR_PRESETS} from '../../portal/ui/contrast';
 import {DatePicker, Popover} from '../../portal/ui/popover';
+import {CARD_ESTIMATE} from '../../lib/rules';
 import {useAction} from './parts';
 import type {CardActions, DetailT, FieldT, FieldType} from './use-card';
 
@@ -49,7 +50,7 @@ function BuiltInFields({detail, actions}: {detail: DetailT; actions: CardActions
     const raw = estimate.trim();
     const next = raw === '' ? null : Number(raw);
     if (next === card.estimateMinutes) return setEstimateError('');
-    if (next !== null && (!Number.isInteger(next) || next < 1 || next > 99999)) return setEstimateError(t('cd.estimateInvalid'));
+    if (next !== null && (!Number.isInteger(next) || next < CARD_ESTIMATE.min || next > CARD_ESTIMATE.max)) return setEstimateError(t('cd.estimateInvalid'));
     setEstimateError('');
     if (!(await run('estimate', () => actions.patchDetails({estimateMinutes: next})))) setEstimate(saved);
   };

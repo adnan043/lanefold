@@ -79,6 +79,25 @@ describe.skipIf(!DATABASE_URL)('card templates (integration, real Postgres)', ()
     expect((await ann.post(`/site-api/cards/${card}/apply-template`, {templateId: foreign})).status).toBe(404);
   });
 
+  it("keeps estimates in the card's range: a new one out of range is refused, an older stored one is capped on apply", async () => {
+    expect((await ann.post(url(), {name: 'Big', payload: {...payload, estimateMinutes: 100_000}})).status).toBe(422);
+    expect((await ann.post(url(), {name: 'Zero', payload: {...payload, estimateMinutes: 0}})).status).toBe(422);
+    // A row saved when templates allowed up to 1,000,000 minutes (written directly, as the old route did).
+    const old = await db.cardTemplate.create({data: {workspaceId: wsA, kind: 'card', name: 'Old', payload: {...payload, estimateMinutes: 1_000_000}}, select: {id: true}});
+    const zero = await db.cardTemplate.create({data: {workspaceId: wsA, kind: 'card', name: 'Old zero', payload: {...payload, estimateMinutes: 0}}, select: {id: true}});
+    const listed = (await ann.get(url())).json.items as J[];
+    expect(listed.find(t => t.id === old.id)?.payload.estimateMinutes).toBe(99_999);
+    expect(listed.find(t => t.id === zero.id)?.payload.estimateMinutes).toBeNull();
+    const card = await newCard();
+    expect((await ann.post(`/site-api/cards/${card}/apply-template`, {templateId: old.id})).status).toBe(200);
+    expect((await db.card.findUniqueOrThrow({where: {id: card}})).estimateMinutes).toBe(99_999);
+    // The card stays saveable after the apply.
+    expect((await ann.request('PATCH', `/site-api/cards/${card}/details`, {title: 'Still fine'})).status).toBe(200);
+    const other = await newCard();
+    await ann.post(`/site-api/cards/${other}/apply-template`, {templateId: zero.id});
+    expect((await db.card.findUniqueOrThrow({where: {id: other}})).estimateMinutes).toBeNull();
+  });
+
   it('applies a template: fills empty fields, adds checklists and matching labels', async () => {
     const label = (await ann.post(`/site-api/boards/${boardA}/labels`, {name: 'bug', colorHex: '#FF0000'})).json;
     const labelId = (label.label?.id ?? label.id) as number;

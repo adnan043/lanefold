@@ -18,6 +18,7 @@ import {HEX_RE, idOf, intField, invalid, likeEscape, objectOf, textField, type F
 import {afterResponse, type WithExecutionCtx} from '../after-response';
 import {cardWithAccess, workspaceReadOnly} from '../board-access-via';
 import {softLimited, softTake} from '../soft-limit';
+import {CARD_ESTIMATE} from '../../lib/rules';
 
 /**
  * Phase 2: everything inside a card. Mounted ONCE at `/` in `app.ts`.
@@ -282,7 +283,7 @@ const detailsBody = body(v => {
   if (v.estimateMinutes !== undefined) {
     if (v.estimateMinutes === null) out.estimateMinutes = null;
     else {
-      const n = intField(v.estimateMinutes, 1, 99_999);
+      const n = intField(v.estimateMinutes, CARD_ESTIMATE.min, CARD_ESTIMATE.max);
       if (n.ok) out.estimateMinutes = n.value;
       else errors.estimateMinutes = n.error;
     }
