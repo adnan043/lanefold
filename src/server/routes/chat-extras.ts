@@ -91,6 +91,7 @@ export const chatExtraRoutes = new Hono()
         muted: a.muted,
         canWrite: a.canWrite,
         canModerate: a.canModerate,
+        archived: a.archived,
       },
     });
   })

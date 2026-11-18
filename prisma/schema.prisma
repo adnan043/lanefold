@@ -1124,6 +1124,8 @@ model Conversation {
   dmKey       String?  @map("dm_key") @db.VarChar(24)
   lastSeq     BigInt   @default(0) @map("last_seq")
   createdBy   Int?     @map("created_by")
+  /// A channel archived by a workspace owner or admin: hidden from the list, read-only. Only channels are archived.
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 

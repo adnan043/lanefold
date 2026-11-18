@@ -88,10 +88,14 @@ describe.skipIf(!DATABASE_URL)('chat (integration, real Postgres)', () => {
     expect((await send(ann, channel, 'ok', 'bad key!')).status).toBe(422);
   });
 
-  it('rate limits sending', async () => {
-    let last = 201;
-    for (let i = 0; i < 22 && last === 201; i++) last = (await send(mia, channel, `spam ${i}`)).status;
-    expect(last).toBe(429);
+  it('rate limits sending at exactly 20 a minute', async () => {
+    for (let i = 0; i < 20; i++) expect((await send(mia, channel, `spam ${i}`)).status, `message ${i + 1}`).toBe(201);
+    const over = await send(mia, channel, 'one too many');
+    expect(over.status).toBe(429);
+    expect(over.headers.get('retry-after')).toBe('30');
+    // A retried send of a message already written is a replay, never refused by the limit.
+    const sent = await db.message.findFirst({where: {conversationId: channel, senderId: ids.mia!}, select: {clientId: true}, orderBy: {seq: 'desc'}});
+    expect((await send(mia, channel, 'spam 19', sent!.clientId)).status).toBe(200);
   });
 
   it('unread math, read marker and pulse', async () => {
@@ -116,7 +120,7 @@ describe.skipIf(!DATABASE_URL)('chat (integration, real Postgres)', () => {
   });
 
   it('board chat follows the board role; private boards hide it', async () => {
-    const conv = (await mia.get(`/site-api/boards/${boardA}/conversation`)).json.conversation.id;
+    const conv = (await mia.post(`/site-api/boards/${boardA}/conversation`)).json.conversation.id;
     expect((await send(mia, conv, 'on the board')).status).toBe(201);
     expect((await send(vic, conv, 'viewer')).status).toBe(403);
     await ann.request('PATCH', `/site-api/boards/${boardA}`, {visibility: 'private'});
@@ -153,6 +157,101 @@ describe.skipIf(!DATABASE_URL)('chat (integration, real Postgres)', () => {
     const chan = await mia.get(`/site-api/conversations/${channel}/members`);
     expect(chan.json).toEqual({scope: 'workspace', items: []});
     expect((await bob.get(`/site-api/conversations/${channel}/members`)).status).toBe(404);
+    // A DM: its two people only; a workspace member outside it gets 404, like an outsider.
+    const dm = (await mia.post(`/site-api/workspaces/${wsA}/conversations`, {kind: 'dm', userIds: [ids.ann]})).json.conversation.id;
+    expect(((await mia.get(`/site-api/conversations/${dm}/members`)).json.items as J[]).map(p => p.name)).toEqual(['ann', 'mia']);
+    await db.workspaceMember.create({data: {workspaceId: wsA, userId: ids.vic!, role: 'viewer'}});
+    expect((await vic.get(`/site-api/conversations/${dm}/members`)).status).toBe(404);
+  });
+
+  it('chat-people: names and roles of the workspace in one answer, never emails, members only', async () => {
+    const res = await mia.get(`/site-api/workspaces/${wsA}/chat-people`);
+    expect(res.status).toBe(200);
+    expect(res.json.truncated).toBe(false);
+    expect(res.json.items).toEqual([
+      {userId: ids.ann, name: 'ann', role: 'owner', isMe: false},
+      {userId: ids.mia, name: 'mia', role: 'member', isMe: true},
+      {userId: ids.vic, name: 'vic', role: 'viewer', isMe: false},
+    ]);
+    expect(JSON.stringify(res.json)).not.toContain('@example.test');
+    expect((await bob.get(`/site-api/workspaces/${wsA}/chat-people`)).status).toBe(404);
+  });
+
+  it('a message carries the names of the people it mentions', async () => {
+    const sent = await send(mia, channel, 'hi @ann and @vic', undefined, {mentions: [ids.ann, ids.vic]});
+    expect(sent.json.message.mentionNames).toEqual(['ann', 'vic']);
+    const listed = (await vic.get(`/site-api/conversations/${channel}/messages`)).json.items as J[];
+    expect(listed.at(-1)).toMatchObject({mentions: [ids.ann, ids.vic], mentionNames: ['ann', 'vic']});
+  });
+
+  it('board chat: GET only reads, POST creates and seats once, a repeat writes nothing', async () => {
+    const first = await mia.get(`/site-api/boards/${boardA}/conversation`);
+    expect(first.status).toBe(200);
+    expect(first.json.conversation).toBeNull();
+    expect(await db.conversation.count({where: {boardId: boardA}})).toBe(0);
+    const made = await mia.post(`/site-api/boards/${boardA}/conversation`);
+    expect(made.status).toBe(201);
+    expect(made.json.conversation).toMatchObject({kind: 'board', joined: true, canWrite: true});
+    const conv = made.json.conversation.id as number;
+    // vic sees it without a seat (GET writes nothing), then takes one with POST.
+    const seen = await vic.get(`/site-api/boards/${boardA}/conversation`);
+    expect(seen.json.conversation).toMatchObject({id: conv, joined: false, canWrite: false});
+    expect(await db.conversationMember.count({where: {conversationId: conv, userId: ids.vic}})).toBe(0);
+    expect((await vic.post(`/site-api/boards/${boardA}/conversation`)).status).toBe(200);
+    expect(await db.conversationMember.count({where: {conversationId: conv}})).toBe(2);
+    const marker = await db.conversationMember.findUniqueOrThrow({where: {conversationId_userId: {conversationId: conv, userId: ids.mia!}}, select: {createdAt: true}});
+    const again = await mia.post(`/site-api/boards/${boardA}/conversation`);
+    expect(again.status).toBe(200);
+    expect(again.json.conversation.id).toBe(conv);
+    expect((await mia.get(`/site-api/boards/${boardA}/conversation`)).json.conversation).toMatchObject({id: conv, joined: true});
+    expect(await db.conversation.count({where: {boardId: boardA}})).toBe(1);
+    expect(await db.conversationMember.findUniqueOrThrow({where: {conversationId_userId: {conversationId: conv, userId: ids.mia!}}, select: {createdAt: true}})).toEqual(marker);
+    expect((await bob.post(`/site-api/boards/${boardA}/conversation`)).status).toBe(404);
+  });
+
+  it('archiving a channel: owners and admins only, hidden from the list and the pulse, read-only, restorable', async () => {
+    const msg = (await send(mia, channel, 'before')).json.message.id;
+    expect((await mia.request('PUT', `/site-api/conversations/${channel}/archive`)).status).toBe(403);
+    expect((await vic.request('PUT', `/site-api/conversations/${channel}/archive`)).status).toBe(403);
+    expect((await bob.request('PUT', `/site-api/conversations/${channel}/archive`)).status).toBe(404);
+    expect((await ann.request('PUT', `/site-api/conversations/${channel}/archive`)).json).toEqual({archived: true});
+    expect((await ann.request('PUT', `/site-api/conversations/${channel}/archive`)).status).toBe(200); // a repeat changes nothing
+    expect(await db.auditEvent.count({where: {action: 'chat.channel_archived'}})).toBe(1);
+
+    const list = (await mia.get(`/site-api/workspaces/${wsA}/conversations`)).json.items as J[];
+    expect(list.map(c => c.id)).not.toContain(channel);
+    expect(((await mia.get('/site-api/chat/pulse')).json.items as J[]).map(p => p.conversationId)).not.toContain(channel);
+    // Still readable (history kept), never writable: not by its authors, not by its moderators.
+    const read = await mia.get(`/site-api/conversations/${channel}/messages`);
+    expect(read.status).toBe(200);
+    expect(read.json).toMatchObject({archived: true, canWrite: false, canModerate: false});
+    expect((await mia.get(`/site-api/conversations/${channel}`)).json.conversation).toMatchObject({archived: true, canWrite: false});
+    expect((await send(mia, channel, 'after')).status).toBe(403);
+    expect((await send(ann, channel, 'after')).status).toBe(403);
+    expect((await mia.request('PATCH', `/site-api/messages/${msg}`, {body: 'edit'})).status).toBe(403);
+    expect((await mia.delete(`/site-api/messages/${msg}`)).status).toBe(403);
+    expect((await ann.request('PUT', `/site-api/messages/${msg}/pin`)).status).toBe(403);
+    expect((await mia.request('PUT', `/site-api/messages/${msg}/reactions`, {emoji: '👍'})).status).toBe(403);
+
+    // A DM or a board chat is not a channel: nothing to archive.
+    const dm = (await ann.post(`/site-api/workspaces/${wsA}/conversations`, {kind: 'dm', userIds: [ids.mia]})).json.conversation.id;
+    expect((await ann.request('PUT', `/site-api/conversations/${dm}/archive`)).status).toBe(404);
+    const board = (await ann.post(`/site-api/boards/${boardA}/conversation`)).json.conversation.id;
+    expect((await ann.request('PUT', `/site-api/conversations/${board}/archive`)).status).toBe(404);
+
+    // Restore: owners and admins only; it is back in the list and writable.
+    expect((await mia.delete(`/site-api/conversations/${channel}/archive`)).status).toBe(403);
+    expect((await ann.delete(`/site-api/conversations/${channel}/archive`)).json).toEqual({archived: false});
+    expect(((await mia.get(`/site-api/workspaces/${wsA}/conversations`)).json.items as J[]).map(c => c.id)).toContain(channel);
+    expect((await send(mia, channel, 'back')).status).toBe(201);
+    expect(await db.auditEvent.count({where: {action: 'chat.channel_restored'}})).toBe(1);
+  });
+
+  it('an archived #general does not block a new one', async () => {
+    await ann.request('PUT', `/site-api/conversations/${channel}/archive`);
+    const again = await ann.post(`/site-api/workspaces/${wsA}/conversations`, {kind: 'channel', name: 'general'});
+    expect(again.status).toBe(201);
+    expect(again.json.conversation.id).not.toBe(channel);
   });
 
   it('threads, mentions and card refs stay inside the workspace', async () => {

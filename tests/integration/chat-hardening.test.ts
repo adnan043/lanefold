@@ -76,7 +76,7 @@ describe.skipIf(!DATABASE_URL)('chat hardening (integration, real Postgres)', ()
   });
 
   it('archived board chat: a board admin can neither pin nor delete others', async () => {
-    const conv = (await ann.get(`/site-api/boards/${boardA}/conversation`)).json.conversation.id;
+    const conv = (await ann.post(`/site-api/boards/${boardA}/conversation`)).json.conversation.id;
     const msg = (await send(mia, conv, 'on the board')).json.message.id;
     await db.board.update({where: {id: boardA}, data: {archivedAt: new Date()}});
     expect((await ann.request('PUT', `/site-api/messages/${msg}/pin`, {})).status).toBe(403);

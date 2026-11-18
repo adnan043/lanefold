@@ -48,7 +48,7 @@ describe.skipIf(!DATABASE_URL)('chat extras (integration, real Postgres)', () =>
 
   it('board chat metadata follows board access', async () => {
     const board = (await ann.post(`/site-api/workspaces/${wsA}/boards`, {name: 'Roadmap', lanes: ['To do']})).json.board.id;
-    const conv = (await ann.get(`/site-api/boards/${board}/conversation`)).json.conversation.id;
+    const conv = (await ann.post(`/site-api/boards/${board}/conversation`)).json.conversation.id;
     const res = await mia.get(`/site-api/conversations/${conv}`);
     expect(res.json.conversation).toMatchObject({kind: 'board', boardId: board, name: 'Roadmap'});
     expect((await bob.get(`/site-api/conversations/${conv}`)).status).toBe(404);
