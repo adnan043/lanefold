@@ -54,6 +54,19 @@
   display: none;
 }
 
+/* Drifting right to left while the bar is in the page (features.astro's script moves
+   `--marquee-x`); the edges fade so chips glide in and out instead of being cut off. */
+.features-jump.is-marquee .features-jump-list {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+}
+
+.features-jump.is-marquee .features-jump-list > li {
+  transform: translate3d(var(--marquee-x, 0px), 0, 0);
+  will-change: transform;
+}
+
 /* Centred while the chips fit, scrollable from the first chip when they don't (never clipped). */
 .features-jump-list > li:first-child {
   margin-inline-start: auto;

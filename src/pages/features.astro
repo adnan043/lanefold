@@ -176,6 +176,130 @@ const headline =
 </Base>
 
 <script>
+  const reducedMotion = () =>
+    document.documentElement.dataset.motion === 'reduce' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const SPEED = 26; // px per second
+  const RESUME_DELAY = 1500; // ms after a hover / touch / focus ends
+
+  /**
+   * While the bar sits in the page (not yet stuck under the header) and its chips don't
+   * fit, they drift slowly right to left in a seamless loop (a copy of the chips trails
+   * the originals). Once the bar sticks — or a pointer, finger or focus is on it — the
+   * drift stops and the row turns back into a normal sideways-scrolling list at the
+   * same spot. Off for reduced motion.
+   */
+  function startMarquee(nav: HTMLElement, header: HTMLElement | null, onPause: () => void) {
+    const list = nav.querySelector<HTMLElement>('.features-jump-list');
+    const idle = {running: () => false, stop: () => {}};
+    if (!list || reducedMotion()) return idle;
+
+    let loop = 0; // width of one full set of chips, 0 = chips fit, no drift
+    let pos = 0;
+    let on = false;
+    let frame = 0;
+    let last = 0;
+    let held = false;
+    let resumeTimer = 0;
+
+    const clear = () => list.querySelectorAll('[data-marquee-clone]').forEach(el => el.remove());
+    const measure = () => {
+      const wasOn = on;
+      pause();
+      clear();
+      loop = 0;
+      if (list.scrollWidth <= list.clientWidth + 1) return;
+      const originals = [...list.children] as HTMLElement[];
+      for (const li of originals) {
+        const copy = li.cloneNode(true) as HTMLElement;
+        copy.dataset.marqueeClone = '';
+        copy.setAttribute('aria-hidden', 'true');
+        copy.querySelectorAll('a').forEach(a => {
+          a.tabIndex = -1;
+          a.removeAttribute('aria-current');
+        });
+        list.append(copy);
+      }
+      loop = (list.children[originals.length] as HTMLElement).offsetLeft - originals[0].offsetLeft;
+      if (wasOn) update();
+    };
+
+    const stuck = () => nav.getBoundingClientRect().top <= (header?.offsetHeight ?? 0) + 1;
+
+    const tick = (time: number) => {
+      const dt = last ? Math.min(time - last, 64) : 16.7;
+      last = time;
+      pos = (pos + (SPEED * dt) / 1000) % loop;
+      list.style.setProperty('--marquee-x', `${-pos}px`);
+      frame = requestAnimationFrame(tick);
+    };
+
+    function play() {
+      if (on || !loop) return;
+      on = true;
+      pos = loop ? list!.scrollLeft % loop : 0;
+      list!.scrollLeft = 0;
+      list!.style.setProperty('--marquee-x', `${-pos}px`);
+      nav.classList.add('is-marquee');
+      last = 0;
+      frame = requestAnimationFrame(tick);
+    }
+
+    function pause() {
+      if (!on) return;
+      on = false;
+      cancelAnimationFrame(frame);
+      nav.classList.remove('is-marquee');
+      list!.style.removeProperty('--marquee-x');
+      list!.scrollLeft = Math.round(pos);
+    }
+
+    function update() {
+      if (!loop || held || stuck()) {
+        const was = on;
+        pause();
+        if (was && stuck()) onPause();
+      } else {
+        play();
+      }
+    }
+
+    const hold = () => {
+      clearTimeout(resumeTimer);
+      held = true;
+      update();
+    };
+    const release = () => {
+      clearTimeout(resumeTimer);
+      resumeTimer = window.setTimeout(() => {
+        held = list.matches(':hover, :focus-within');
+        update();
+      }, RESUME_DELAY);
+    };
+
+    const onScroll = () => update();
+    list.addEventListener('pointerenter', hold);
+    list.addEventListener('pointerleave', release);
+    list.addEventListener('focusin', hold);
+    list.addEventListener('focusout', release);
+    window.addEventListener('scroll', onScroll, {passive: true});
+    const sized = 'ResizeObserver' in window ? new ResizeObserver(() => measure()) : null;
+    sized?.observe(nav);
+    measure();
+    update();
+
+    return {
+      running: () => on,
+      stop: () => {
+        pause();
+        clearTimeout(resumeTimer);
+        sized?.disconnect();
+        window.removeEventListener('scroll', onScroll);
+        clear();
+      },
+    };
+  }
+
   // The sticky group bar: marks the group being read (aria-current) and keeps its chip in view.
   // Runs on every `astro:page-load` (ClientRouter); returns early on other pages.
   document.addEventListener('astro:page-load', () => {
@@ -195,7 +319,17 @@ const headline =
       resize?.disconnect();
       return;
     }
+    const centre = (link: HTMLElement) => {
+      const list = link.closest('ul');
+      if (list && list.scrollWidth > list.clientWidth) {
+        list.scrollTo({left: link.offsetLeft - (list.clientWidth - link.offsetWidth) / 2, behavior: reducedMotion() ? 'auto' : 'smooth'});
+      }
+    };
 
+    const marquee = startMarquee(nav, header, () => {
+      const link = links.find(l => l.getAttribute('aria-current') === 'true');
+      if (link) centre(link);
+    });
     const visible = new Set<string>();
     let current = '';
     const mark = () => {
@@ -206,10 +340,7 @@ const headline =
         const on = link.hash === `#${id}`;
         if (on) {
           link.setAttribute('aria-current', 'true');
-          const list = link.closest('ul');
-          if (list && list.scrollWidth > list.clientWidth) {
-            list.scrollTo({left: link.offsetLeft - (list.clientWidth - link.offsetWidth) / 2, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
-          }
+          if (!marquee.running()) centre(link);
         } else {
           link.removeAttribute('aria-current');
         }
@@ -231,6 +362,7 @@ const headline =
       () => {
         observer.disconnect();
         resize?.disconnect();
+        marquee.stop();
       },
       {once: true},
     );
