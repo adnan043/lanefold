@@ -1212,6 +1212,8 @@ model MessageReaction {
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@id([messageId, userId, emoji])
+  /// One reaction per person per message: reacting with another emoji replaces it.
+  @@unique([messageId, userId])
   @@index([userId])
   @@map("message_reactions")
 }

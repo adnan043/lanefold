@@ -30,7 +30,7 @@ import {afterResponse} from '../after-response';
  *   GET  /conversations/:id/members            the people of a DM or group (one query)
  *   GET  /workspaces/:id/chat-people           names and roles of the workspace (mentions, role badges; never emails)
  *   PATCH|DELETE /messages/:id                 edit / soft-delete (own; moderators may delete)
- *   PUT|DELETE /messages/:id/reactions         {emoji}
+ *   PUT|DELETE /messages/:id/reactions         {emoji} (one per person: PUT with another emoji replaces mine)
  *   PUT|DELETE /messages/:id/pin               pin (moderators, or any participant of a DM / group)
  *
  * Access (`conversationAccess`): the workspace membership is IN the query, so a conversation of another
@@ -1361,7 +1361,12 @@ export const chatRoutes = new Hono()
     if (kinds.length >= MAX_EMOJI_PER_MESSAGE && !kinds.some(k => k.emoji === emoji)) {
       return c.json(problem('limit_reached', 'That message has enough different reactions.'), 409);
     }
-    await db.messageReaction.createMany({data: [{messageId: row.id, userId: me, emoji}], skipDuplicates: true});
+    // One reaction per person per message: another emoji replaces mine. The unique (message_id, user_id) index holds the
+    // rule under concurrent requests (the losing insert is skipped), so a person never ends up with two.
+    await db.$transaction([
+      db.messageReaction.deleteMany({where: {messageId: row.id, userId: me, emoji: {not: emoji}}}),
+      db.messageReaction.createMany({data: [{messageId: row.id, userId: me, emoji}], skipDuplicates: true}),
+    ]);
     const groups = (await reactionsFor(db, [row.id], me)).get(String(row.id)) ?? [];
     return c.json({reactions: groups});
   })
