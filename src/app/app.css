@@ -87,6 +87,7 @@
   position: relative;
 }
 .lf-board-link {
+  position: relative; /* the Private chip's corner, the same box as the tile's */
   display: grid;
   grid-template-rows: 72px auto;
   gap: 0.5rem;
@@ -120,6 +121,38 @@
 .lf-board-link .badge {
   justify-self: start;
   margin: 0 0.25rem 0.25rem;
+}
+/* "Private" over the swatch's top-left corner (the star sits top-right). A fixed dark, frosted chip with white text
+   (not theme tokens): it sits on the board's own colour, gradient or photo, light or dark, and must read on all of them. */
+.lf-board-private-chip {
+  position: absolute;
+  top: 0.875rem;
+  inset-inline-start: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: calc(100% - 4.5rem); /* never runs under the star */
+  height: 22px;
+  padding: 0 0.5rem;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  border-radius: 999px;
+  background: rgb(15 23 42 / 0.62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 600;
+  pointer-events: none;
+}
+.lf-board-private-chip .icon {
+  flex: none;
+}
+.lf-board-private-chip > span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* A round chip over the swatch, so the star reads on any board colour or photo.
    `.button` in the selectors: they must outrank `.button.button-ghost` (global.css loads later). */
@@ -401,8 +434,8 @@
 }
 .lf-card:hover .lf-grip,
 .lf-card:hover .menu-trigger,
-.lf-card:focus-within .lf-grip,
-.lf-card:focus-within .menu-trigger {
+.lf-card:is(:focus-visible, :has(:focus-visible)) .lf-grip,
+.lf-card:is(:focus-visible, :has(:focus-visible)) .menu-trigger {
   opacity: 1;
 }
 @media (hover: none) {

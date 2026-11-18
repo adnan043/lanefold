@@ -360,8 +360,8 @@ button.app-nav-link {
   }
   .app-shell .lf-card:hover .menu-trigger,
   .app-shell .lf-card:hover .lf-grip,
-  .app-shell .lf-card:focus-within .menu-trigger,
-  .app-shell .lf-card:focus-within .lf-grip {
+  .app-shell .lf-card:is(:focus-visible, :has(:focus-visible)) .menu-trigger,
+  .app-shell .lf-card:is(:focus-visible, :has(:focus-visible)) .lf-grip {
     opacity: 1;
   }
 }

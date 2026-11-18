@@ -14,7 +14,7 @@
   opacity: 0;
 }
 .lf-card:hover .lf-card-check,
-.lf-card:focus-within .lf-card-check,
+.lf-card:is(:focus-visible, :has(:focus-visible)) .lf-card-check,
 .lf-card[data-select-mode] .lf-card-check,
 .lf-card-check:focus-visible {
   opacity: 1;

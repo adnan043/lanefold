@@ -4,7 +4,7 @@ import {useRef, useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
 import {rules} from '../../lib/rules';
-import {Badge, Button, Card, Checkbox, EmptyState, ErrorNote, Field, IconButton, LoadingBlock, Modal, PageHeader, RadioCards, SearchInput, useForm, useToast} from '../../portal/ui';
+import {Badge, Button, Card, Checkbox, EmptyState, ErrorNote, Field, Icon, IconButton, LoadingBlock, Modal, PageHeader, RadioCards, SearchInput, useForm, useToast} from '../../portal/ui';
 import {ApiError, type BoardData, type BoardSummary, call} from '../api';
 import {useDraft} from '../use-draft';
 import {boardsQuery, guestBoardsQuery} from '../queries';
@@ -157,7 +157,13 @@ export function BoardList() {
           <Link to="/b/$boardId" params={{boardId: String(board.id)}} className="lf-board-link" preload="intent">
             <span className="lf-board-swatch" data-bg={board.bgKind} ref={node => backgroundStyle(node, board)} aria-hidden="true" />
             <span className="lf-board-name" dir="auto">{board.name}</span>
-            {board.visibility === 'private' && <Badge icon="lock">{t('boards.visibility.private')}</Badge>}
+            {board.visibility === 'private' && (
+              // On the swatch's top-left corner: a dark frosted chip with white text reads on any board colour or photo.
+              <span className="lf-board-private-chip">
+                <Icon name="lock" size={12} />
+                <span>{t('boards.visibility.private')}</span>
+              </span>
+            )}
           </Link>
           <IconButton
             icon="star"

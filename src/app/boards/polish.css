@@ -70,9 +70,10 @@
   color: var(--muted);
   margin-block-end: 0;
 }
-/* The card composer, pinned under the list: tight label-to-field spacing. */
+/* The card composer, pinned under the list: tight label-to-field spacing, and 4px between the last card and the label. */
 .lf-lane-foot > .lf-composer {
   gap: 0.25rem;
+  padding-block-start: 0.25rem;
 }
 .lf-lane-foot > .lf-composer .lf-composer-actions {
   margin-block-start: 0.375rem;
@@ -149,6 +150,140 @@
   direction: ltr;
 }
 
+/* ---- the round done tick before the title. Its room is always kept: while hidden, as empty space at the END of the
+   title row (the title never wraps into it); on hover (or keyboard focus only, never a mouse click's) that space swaps to the START, the tick
+   slides in and the title eases right. The title's width never changes, so it never re-wraps and the card never
+   jumps. A done card always shows it, filled. A touch screen has no hover: always shown. ---- */
+.lf-card-top:has(> .lf-done-toggle) {
+  position: relative; /* the confetti's anchor */
+  --lf-done-room: calc(16px + 0.375rem); /* the tick + its margin + the row's gap */
+  padding-inline-end: var(--lf-done-room);
+}
+.lf-card:hover .lf-card-top:has(> .lf-done-toggle),
+.lf-card:is(:focus-visible, :has(:focus-visible)) .lf-card-top:has(> .lf-done-toggle),
+.lf-card-top:has(> .lf-done-toggle[data-done]) {
+  padding-inline-end: 0;
+}
+@media (hover: none) {
+  .lf-card-top:has(> .lf-done-toggle) {
+    padding-inline-end: 0;
+  }
+}
+.lf-done-toggle {
+  position: relative;
+  z-index: 1; /* above the title's whole-card click layer */
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 0;
+  block-size: 24px; /* the title's row: its first line's middle */
+  margin-inline-end: -0.25rem; /* cancels the row's gap while hidden, so the title does not move */
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tl-muted, var(--muted));
+  opacity: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+.lf-card:hover .lf-done-toggle,
+.lf-card:is(:focus-visible, :has(:focus-visible)) .lf-done-toggle,
+.lf-done-toggle[data-done] {
+  inline-size: 16px;
+  margin-inline-end: 0.125rem;
+  opacity: 1;
+}
+@media (hover: none) {
+  .lf-done-toggle {
+    inline-size: 16px;
+    margin-inline-end: 0.125rem;
+    opacity: 1;
+  }
+}
+.lf-done-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+.lf-done-ring {
+  display: block;
+  inline-size: 14px;
+  block-size: 14px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+}
+.lf-done-toggle:hover .lf-done-ring {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+.lf-done-toggle[data-done] {
+  color: var(--success);
+}
+.lf-done-toggle[data-done] .icon circle {
+  fill: var(--success);
+}
+.lf-done-toggle[data-done] .icon path {
+  stroke: var(--card, var(--bg));
+  stroke-width: 2.5;
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* The same curve and time for both sides, so the space handed over always adds up and the title never re-wraps mid-move.
+     A slow, soft ease (no snap at the end); the tick fades in a little after it starts to slide. */
+  .lf-done-toggle {
+    transition:
+      inline-size 0.34s cubic-bezier(0.33, 1, 0.68, 1),
+      margin 0.34s cubic-bezier(0.33, 1, 0.68, 1),
+      opacity 0.26s ease 0.06s;
+  }
+  .lf-card-top:has(> .lf-done-toggle) {
+    transition: padding-inline-end 0.34s cubic-bezier(0.33, 1, 0.68, 1);
+  }
+  .lf-done-ring {
+    transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+  }
+  .lf-done-toggle:hover .lf-done-ring {
+    transform: scale(1.08);
+  }
+
+  /* Marked done: the tick pops in, and light confetti scatters from it once. */
+  .lf-done-toggle[data-pop] .icon {
+    animation: lf-done-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .lf-done-burst {
+    position: absolute;
+    inset-block-start: 12px; /* the middle of the title's first line */
+    inset-inline-start: 8px; /* the middle of the 16px tick */
+    z-index: 2;
+    pointer-events: none;
+  }
+  .lf-done-burst > i {
+    --lf-c: var(--success);
+    position: absolute;
+    inset: -2px auto auto -2px;
+    inline-size: 4px;
+    block-size: 4px;
+    border-radius: 1px;
+    background: var(--lf-c);
+    opacity: 0;
+    animation: lf-confetti 0.7s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  }
+  .lf-done-burst > i:nth-child(odd) {
+    border-radius: 50%;
+    inline-size: 3px;
+    block-size: 3px;
+  }
+  .lf-done-burst > i:nth-child(1) { --lf-x: 0px; --lf-y: -15px; --lf-r: 120deg; --lf-c: var(--success); }
+  .lf-done-burst > i:nth-child(2) { --lf-x: 10px; --lf-y: -11px; --lf-r: -90deg; --lf-c: var(--accent); }
+  .lf-done-burst > i:nth-child(3) { --lf-x: 15px; --lf-y: -1px; --lf-r: 200deg; --lf-c: var(--warning); }
+  .lf-done-burst > i:nth-child(4) { --lf-x: 11px; --lf-y: 10px; --lf-r: -160deg; --lf-c: var(--danger); }
+  .lf-done-burst > i:nth-child(5) { --lf-x: 1px; --lf-y: 15px; --lf-r: 90deg; --lf-c: var(--success); }
+  .lf-done-burst > i:nth-child(6) { --lf-x: -10px; --lf-y: 11px; --lf-r: -120deg; --lf-c: var(--accent); }
+  .lf-done-burst > i:nth-child(7) { --lf-x: -14px; --lf-y: 1px; --lf-r: 160deg; --lf-c: var(--warning); }
+  .lf-done-burst > i:nth-child(8) { --lf-x: -10px; --lf-y: -10px; --lf-r: -200deg; --lf-c: var(--danger); }
+  .lf-done-burst > i:nth-child(9) { --lf-x: 6px; --lf-y: -16px; --lf-r: 60deg; --lf-c: var(--accent); }
+  .lf-done-burst > i:nth-child(10) { --lf-x: -5px; --lf-y: -15px; --lf-r: -60deg; --lf-c: var(--warning); }
+}
+
 /* ---- motion: a new card or list (still saving) grows in; the add form and rename field ease open.
    Leaving (archive) and coming back (undo) are animated from script: src/app/motion.ts. ---- */
 @media (prefers-reduced-motion: no-preference) {
@@ -165,6 +300,31 @@
   .lf-card,
   .lf-card-title {
     transition: opacity 0.2s ease, color 0.2s ease;
+  }
+}
+
+@keyframes lf-done-pop {
+  0% {
+    transform: scale(0.4);
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes lf-confetti {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0deg) scale(0.6);
+  }
+  15% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--lf-x), calc(var(--lf-y) + 4px)) rotate(var(--lf-r)) scale(1);
   }
 }
 

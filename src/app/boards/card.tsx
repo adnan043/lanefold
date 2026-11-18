@@ -1,6 +1,6 @@
 import {useSortable} from '@dnd-kit/sortable';
 import {CSS} from '@dnd-kit/utilities';
-import {memo, useCallback, useRef} from 'react';
+import {memo, useCallback, useEffect, useRef, useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
 import {Icon, Menu, useToast} from '../../portal/ui';
@@ -15,7 +15,14 @@ import {MAX_SELECTED, useIsSelected, useSelection, useSelectMode} from './select
 /** The priority badge's colour class; `none` (or anything unknown) shows no badge. */
 const PRIORITY_CLASS: Record<string, string | undefined> = {low: 'lf-pri-low', medium: 'lf-pri-medium', high: 'lf-pri-high', urgent: 'lf-pri-urgent'};
 
-type Handlers = {onEdit: (card: CardT) => void; onArchive: (card: CardT) => void; onMove?: (card: CardT) => void; onCopyLink?: (card: CardT) => void};
+type Handlers = {
+  onEdit: (card: CardT) => void;
+  onArchive: (card: CardT) => void;
+  onMove?: (card: CardT) => void;
+  onCopyLink?: (card: CardT) => void;
+  /** Marks the card done (or not done) from the round tick before its title. */
+  onToggleDone?: (card: CardT) => void;
+};
 
 /** The card's face: title first, a priority badge (text + colour, as Trello's custom-field badges), ONE meta row (hide zeros). */
 export const CardFace = memo(function CardFace({card, canWrite, handlers}: {card: CardT; canWrite: boolean; handlers?: Handlers}) {
@@ -36,6 +43,15 @@ export const CardFace = memo(function CardFace({card, canWrite, handlers}: {card
   const tick = (range: boolean) => {
     if (selection?.toggle(card.id, range)) toast.danger(t('bulk.limit', {max: MAX_SELECTED}));
   };
+  // The done tick needs a writer and a handler; select mode keeps the corner for the bulk tick.
+  const doneToggle = canWrite && handlers?.onToggleDone !== undefined && !selectMode;
+  // Marking done plays a short celebration (the tick pops, light confetti): a new key restarts it, a timer clears it.
+  const [burst, setBurst] = useState(0);
+  useEffect(() => {
+    if (!burst) return;
+    const timer = window.setTimeout(() => setBurst(0), 900);
+    return () => window.clearTimeout(timer);
+  }, [burst]);
   const overdue = card.dueDate !== null && !card.completed && card.dueDate < todayISO();
   const labels = card.labels ?? [];
   const members = card.members ?? [];
@@ -96,6 +112,34 @@ export const CardFace = memo(function CardFace({card, canWrite, handlers}: {card
             }}
           />
         )}
+        {doneToggle && (
+          // The round tick: slides in on hover (the title eases right to make room); a done card always shows it, filled.
+          <button
+            type="button"
+            className="lf-done-toggle"
+            data-done={card.completed ? '' : undefined}
+            data-pop={burst && card.completed ? '' : undefined}
+            aria-pressed={card.completed}
+            aria-label={card.completed ? t('card.markNotDone', {title: card.title}) : t('card.markDone', {title: card.title})}
+            title={card.completed ? t('card.markNotDoneShort') : t('card.markDoneShort')}
+            onClick={event => {
+              event.stopPropagation();
+              // A mouse or touch click lets go of focus, so the card does not stay ringed with the tick showing;
+              // a keyboard press (detail 0) keeps it, so Tab order is not lost.
+              if (event.detail > 0) event.currentTarget.blur();
+              setBurst(card.completed ? 0 : Date.now());
+              handlers?.onToggleDone?.(card);
+            }}>
+            {card.completed ? <Icon name="check-circle" size={16} /> : <span className="lf-done-ring" aria-hidden="true" />}
+          </button>
+        )}
+        {doneToggle && burst > 0 && card.completed && (
+          <span key={burst} className="lf-done-burst" aria-hidden="true">
+            {Array.from({length: 10}, (_, i) => (
+              <i key={i} />
+            ))}
+          </span>
+        )}
         {handlers ? (
           <button type="button" className="lf-card-title" dir="auto" data-done={card.completed ? '' : undefined} onClick={event => {
             // Select mode (or Shift / Ctrl / Cmd held): the click ticks the card instead of opening it.
@@ -104,7 +148,7 @@ export const CardFace = memo(function CardFace({card, canWrite, handlers}: {card
               tick(event.shiftKey);
             } else handlers.onEdit(card);
           }}>
-            {card.completed && <Icon name="check-circle" size={16} />}
+            {card.completed && !doneToggle && <Icon name="check-circle" size={16} />}
             {card.number != null && <span className="lf-card-num" title={t('card.numberTitle', {number: card.number})}>#{card.number}</span>}
             {card.title}
           </button>
@@ -231,5 +275,5 @@ function SortableCardView({card, canWrite, handlers}: {card: CardT; canWrite: bo
 /** Memoized: the lane passes a fresh `handlers` object each render, so compare its two functions, not the object. */
 export const SortableCard = memo(
   SortableCardView,
-  (a, b) => a.card === b.card && a.canWrite === b.canWrite && a.handlers.onEdit === b.handlers.onEdit && a.handlers.onArchive === b.handlers.onArchive && a.handlers.onMove === b.handlers.onMove
+  (a, b) => a.card === b.card && a.canWrite === b.canWrite && a.handlers.onEdit === b.handlers.onEdit && a.handlers.onArchive === b.handlers.onArchive && a.handlers.onMove === b.handlers.onMove && a.handlers.onToggleDone === b.handlers.onToggleDone
 );

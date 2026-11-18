@@ -160,6 +160,7 @@ export function BoardScreen() {
           if (ok) latest.current.toast.success(latest.current.t('card.linkCopied'));
           else latest.current.toast.danger(latest.current.t('card.linkCopyFailed'));
         }),
+      onToggleCardDone: card => void latest.current.actions.updateCard(card.id, {completed: !card.completed}),
       onEditLane: setEditLane,
       onRenameLane: (lane, name) =>
         void latest.current.actions.updateLane(lane.id, {name}).catch(error => latest.current.toast.danger(latest.current.errorMessage(error))),
@@ -365,6 +366,7 @@ export function BoardScreen() {
       <div className="lf-board-head">
         <IconButton
           icon="star"
+          size="sm"
           label={board.starred ? t('boards.starRemove') : t('boards.starAdd')}
           aria-pressed={board.starred}
           className={board.starred ? 'lf-star is-on' : 'lf-star'}

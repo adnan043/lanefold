@@ -18,6 +18,7 @@ export type LaneHandlers = {
   onArchiveCard: (card: CardT) => void;
   onMoveCard?: (card: CardT) => void;
   onCopyCardLink?: (card: CardT) => void;
+  onToggleCardDone?: (card: CardT) => void;
   onEditLane: (lane: LaneT) => void;
   /** Inline rename from the lane header (optimistic; a failure rolls back and toasts). */
   onRenameLane: (lane: LaneT, name: string) => void;
@@ -168,8 +169,8 @@ export const LaneColumn = memo(function LaneColumn({
   const over = lane.wipLimit !== null && lane.cardCount > lane.wipLimit;
   // One object per set of handler identities, so the memoized SortableCard compares equal between renders.
   const cardHandlers = useMemo(
-    () => ({onEdit: handlers.onEditCard, onArchive: handlers.onArchiveCard, onMove: handlers.onMoveCard, onCopyLink: handlers.onCopyCardLink}),
-    [handlers.onEditCard, handlers.onArchiveCard, handlers.onMoveCard, handlers.onCopyCardLink]
+    () => ({onEdit: handlers.onEditCard, onArchive: handlers.onArchiveCard, onMove: handlers.onMoveCard, onCopyLink: handlers.onCopyCardLink, onToggleDone: handlers.onToggleCardDone}),
+    [handlers.onEditCard, handlers.onArchiveCard, handlers.onMoveCard, handlers.onCopyCardLink, handlers.onToggleCardDone]
   );
 
   // A lane the board answer left empty (its card cap) loads its first cards when it scrolls near the view, not all at
