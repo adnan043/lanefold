@@ -9,9 +9,8 @@ import {Link} from '../nav';
 import {useWriteCooldown} from '../write-cooldown';
 import {CardChips} from './card-chip';
 import {CreateCardDialog} from './create-card-dialog';
-import type {ChatFileT} from '../../lib/chat-files';
-import {bytesLabel} from '../cards/parts';
-import {type ChatPersonT, chatFileUrl, displayName, type MessageT, type ReactionT} from './api';
+import {MessageFiles} from './message-files';
+import {type ChatPersonT, displayName, type MessageT, type ReactionT} from './api';
 import {MAX_BODY, mentionedIds, segments} from './mentions';
 import type {PendingMessage} from './use-message-feed';
 
@@ -377,48 +376,5 @@ function SaveEditButton({pending, onSave}: {pending: boolean; onSave: () => void
     <Button size="sm" pending={pending} pendingLabel={t('common.saving')} disabled={cooldown.blocked} onClick={onSave}>
       {t('common.save')}
     </Button>
-  );
-}
-
-/**
- * The files sent with a message: pictures as a small preview (opens full size), every other file as a row with its
- * size and a download link. Each link goes through the server, which checks access on every view.
- */
-function MessageFiles({files}: {files: readonly ChatFileT[]}) {
-  const t = useT();
-  const {formatNumber} = useI18n();
-  if (files.length === 0) return null;
-  const images = files.filter(f => f.isImage);
-  const others = files.filter(f => !f.isImage);
-  return (
-    <div className="chat-files-block">
-      {images.length > 0 && (
-        <ul className="chat-file-images" aria-label={t('chat.messageFiles')}>
-          {images.map(f => (
-            <li key={f.id}>
-              <a href={chatFileUrl(f.id)} target="_blank" rel="noopener noreferrer" className="chat-file-image" aria-label={t('chat.openFile', {name: f.name})}>
-                <img src={chatFileUrl(f.id)} alt={f.name} loading="lazy" decoding="async" />
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-      {others.length > 0 && (
-        <ul className="chat-files" aria-label={t('chat.messageFiles')}>
-          {others.map(f => (
-            <li key={f.id} className="chat-file">
-              <Icon name="file" size={16} />
-              <a className="chat-file-name" href={chatFileUrl(f.id)} target="_blank" rel="noopener noreferrer" title={f.name}>
-                {f.name}
-              </a>
-              <span className="chat-file-size muted">{bytesLabel(f.size, formatNumber)}</span>
-              <a className="button button-ghost button-sm icon-button" href={chatFileUrl(f.id, true)} aria-label={t('chat.downloadFile', {name: f.name})} title={t('chat.downloadFile', {name: f.name})}>
-                <Icon name="download" size={16} />
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }
