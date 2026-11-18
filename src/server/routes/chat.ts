@@ -898,10 +898,13 @@ export const chatRoutes = new Hono()
     const input = c.req.valid('json');
     // Viewers read and may message people directly, but do not start channels or groups.
     if (input.kind !== 'dm' && member.rank < 2) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
-    const ent = await getEntitlements(db, workspaceId);
-    if (ent?.readOnly) return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
+    // Read alongside the DM/group checks below (independent reads: one round trip, not three).
+    const entitlements = getEntitlements(db, workspaceId);
+    entitlements.catch(() => undefined); // awaited on every path that goes on; an early answer must not leave it unhandled
+    const readOnly = () => c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
 
     if (input.kind === 'channel') {
+      if ((await entitlements)?.readOnly) return readOnly();
       const isGeneral = input.name!.trim().toLowerCase() === 'general';
       // Only owners and admins archive channels, so the workspace's 50 slots are guarded: a member (not an admin) starts at
       // most CHANNELS_PER_HOUR an hour and MEMBER_CHANNELS in all; one bounded read on (workspace, kind, created_by).
@@ -946,12 +949,17 @@ export const chatRoutes = new Hono()
     // DM and group: everyone must belong to THIS workspace.
     const others = input.userIds.filter(id => id !== me);
     if (others.length === 0) return invalid(c, {userIds: {code: 'invalid', message: 'Choose someone else.'}});
-    const found = await db.workspaceMember.findMany({where: {workspaceId, userId: {in: others}}, select: {userId: true}, take: MAX_GROUP});
+    const dmKey = input.kind === 'dm' ? dmKeyOf(me, others[0]!) : null;
+    const [ent, found, existingDm] = await Promise.all([
+      entitlements,
+      db.workspaceMember.findMany({where: {workspaceId, userId: {in: others}}, select: {userId: true}, take: MAX_GROUP}),
+      dmKey ? db.conversation.findUnique({where: {workspaceId_dmKey: {workspaceId, dmKey}}, select: convCols}) : null,
+    ]);
+    if (ent?.readOnly) return readOnly();
     if (found.length !== others.length) return invalid(c, {userIds: {code: 'invalid', message: 'Choose people from this workspace.'}});
 
-    if (input.kind === 'dm') {
-      const dmKey = dmKeyOf(me, others[0]!);
-      const existing = await db.conversation.findUnique({where: {workspaceId_dmKey: {workspaceId, dmKey}}, select: convCols});
+    if (input.kind === 'dm' && dmKey) {
+      const existing = existingDm;
       let row = existing;
       if (!row) {
         if (await startedTooMany(db, workspaceId, me)) return c.json(problem('conversation_rate_limited', 'You started many chats in the last hour. Try again later.'), 429);
@@ -1457,10 +1465,10 @@ export const chatRoutes = new Hono()
     await db.$transaction([
       db.messageReaction.deleteMany({where: {messageId: row.id, userId: me, emoji: {not: emoji}}}),
       db.messageReaction.createMany({data: [{messageId: row.id, userId: me, emoji}], skipDuplicates: true}),
-      bumpEditRev(db, a),
     ]);
-    const groups = (await reactionsFor(db, [row.id], me)).get(String(row.id)) ?? [];
-    return c.json({reactions: groups});
+    // Telling the others and reading the answer are independent: one round trip.
+    const [, byMessage] = await Promise.all([bumpEditRev(db, a), reactionsFor(db, [row.id], me)]);
+    return c.json({reactions: byMessage.get(String(row.id)) ?? []});
   })
 
   .delete('/messages/:id/reactions', emojiBody, withViewer, requireAuth, withDb, noStore, async c => {
@@ -1473,9 +1481,8 @@ export const chatRoutes = new Hono()
     const blocked = readOnlyAnswer(c, ent);
     if (blocked) return blocked;
     const {count} = await db.messageReaction.deleteMany({where: {messageId: row.id, userId: me, emoji: c.req.valid('json').emoji}});
-    if (count) await bumpEditRev(db, a);
-    const groups = (await reactionsFor(db, [row.id], me)).get(String(row.id)) ?? [];
-    return c.json({reactions: groups});
+    const [, byMessage] = await Promise.all([count ? bumpEditRev(db, a) : null, reactionsFor(db, [row.id], me)]);
+    return c.json({reactions: byMessage.get(String(row.id)) ?? []});
   })
 
   .put('/messages/:id/pin', withViewer, requireAuth, withDb, noStore, pin(true))

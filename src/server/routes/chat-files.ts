@@ -30,7 +30,7 @@ const UNFINISHED_PER_HOUR = 10;
 /** Files one person may have waiting in composers (uploaded, not sent yet). */
 const UNSENT_MAX = 20;
 /** A platform refusal that can never succeed: the unfinished row goes at once. */
-const TERMINAL_UPLOAD_CODES = new Set(['E_FILE_TYPE', 'E_FILE_EMPTY', 'E_FILE_TOO_LARGE', 'E_FILE_SIZE_MISMATCH', 'E_FILE_NOT_FOUND', 'E_UPLOAD_TOKEN', 'E_UPLOAD_EXPIRED', 'E_STORAGE_LIMIT']);
+const TERMINAL_UPLOAD_CODES = new Set(['E_FILE_TYPE', 'E_FILE_EMPTY', 'E_FILE_TOO_LARGE', 'E_FILE_SIZE_MISMATCH', 'E_FILE_TYPE_MISMATCH', 'E_FILE_NOT_FOUND', 'E_UPLOAD_TOKEN', 'E_UPLOAD_EXPIRED', 'E_STORAGE_LIMIT']);
 
 class OutOfSpace extends Error {}
 
@@ -113,7 +113,15 @@ export const chatFileRoutes = new Hono()
       if (TERMINAL_UPLOAD_CODES.has(done.code)) await db.attachment.deleteMany({where: {id: row.id, uploadedBy: me, ready: false}});
       return c.json(problem(done.code, done.message), done.status === 402 ? 402 : 400);
     }
-    const ent = await getEntitlements(db, row.workspaceId);
+    // Still in the workspace (removed since asking for the link: the file never counts against its space).
+    const [ent, member] = await Promise.all([
+      getEntitlements(db, row.workspaceId),
+      db.workspaceMember.findFirst({where: {workspaceId: row.workspaceId, userId: me}, select: {userId: true}}),
+    ]);
+    if (!member) {
+      await db.attachment.deleteMany({where: {id: row.id, uploadedBy: me, ready: false}});
+      return notFound(c, 'file');
+    }
     const quota = ent?.limits.storageQuotaBytes ?? 0;
     try {
       const flipped = await db.$transaction(async tx => {
