@@ -388,6 +388,11 @@
 .chat-msg[data-grouped] {
   padding-block: 0.125rem;
 }
+/* A new sender (or a new block of time) starts with a little air above it, so one person's messages read as a group.
+   A margin, not padding: the hover highlight stays on the message itself. */
+.chat-msg + .chat-msg:not([data-grouped]) {
+  margin-block-start: 0.75rem;
+}
 .chat-msg:hover,
 .chat-msg:has(:focus-visible),
 .chat-msg:has([aria-expanded="true"]) {
