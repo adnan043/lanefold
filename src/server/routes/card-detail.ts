@@ -452,7 +452,7 @@ const linkBody = body(v => {
   } catch {
     url = null;
   }
-  if (!url || (url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password) {
+  if (!url || url.protocol !== 'https:' || url.username || url.password) {
     return errAt('url', {code: 'invalid', message: 'Enter a web address starting with https://.'});
   }
   let name = '';
