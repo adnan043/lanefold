@@ -48,6 +48,8 @@ type RS = {
   attach: string;
   conv: string;
   msg: string;
+  chatFile: string; // a file sent with `msg`
+  chatUnsent: string; // a chat file the workspace owner uploaded and has not sent yet
   invite: string;
   link: string;
   inboxCard: string;
@@ -274,6 +276,16 @@ const TABLE: Row[] = [
   row('GET /cards/refs', 'self', {path: (_r, f) => `/cards/refs?ids=${f.pub.card},${f.priv.card},${f.other.card}`}),
   row('GET /workspaces/:id/members/search', 'resource', {path: r => `/workspaces/${r.ws}/members/search?q=zq`}),
   row('GET /workspaces/:id/chat-people', 'resource', {path: r => `/workspaces/${r.ws}/chat-people`}),
+  // ---- chat-files.ts: upload where I may send; confirm / remove only my own unsent file; view what I may read ----
+  row('POST /conversations/:id/attachments', 'resource', {
+    path: r => `/conversations/${r.conv}/attachments`,
+    body: () => ({name: 'x.pdf', contentType: 'application/pdf', size: 100}),
+    min: 'member',
+    priv: true,
+  }),
+  row('POST /chat/attachments/:id/complete', 'resource', {path: r => `/chat/attachments/${r.chatUnsent}/complete`, body: () => ({}), priv: true, note: 'the uploader only: anyone else gets 404'}),
+  row('DELETE /chat/attachments/:id', 'resource', {path: r => `/chat/attachments/${r.chatUnsent}`, priv: true, note: 'the uploader only: anyone else gets 404'}),
+  row('GET /chat/attachments/:id/view', 'resource', {path: r => `/chat/attachments/${r.chatFile}/view`, priv: true, noPositive: true}),
 
   // ---- branding.ts -------------------------------------------------------------------------
   row('GET /brand.css', 'public', {path: () => '/brand.css', note: 'the brand colour as CSS; nothing personal'}),
@@ -328,6 +340,7 @@ const TABLE: Row[] = [
   row('GET /notifications', 'self'),
   row('GET /notifications/unread-count', 'self'),
   row('POST /notifications/read-all', 'self', {path: () => '/notifications/read-all', body: () => ({})}),
+  row('POST /notifications/seen', 'self', {path: () => '/notifications/seen', body: () => ({})}),
   row('POST /notifications/:id/read', 'self', {path: (_r, f) => `/notifications/${f.notifA}/read`, body: () => ({})}),
 
   // ---- search.ts ---------------------------------------------------------------------------
@@ -534,6 +547,16 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
         data: {conversationId: conv.id, workspaceId, seq: 1n, senderId: ownerId, bodyMd: `ZQX${tag} message`, clientId: `seed-${tag}-0001`},
         select: {id: true},
       });
+      // Chat files (chat-files.ts): one sent with the message, one still waiting in its uploader's composer.
+      const fileIdOf = (suffix: string) => `file_${`${tag.toLowerCase()}${suffix}`.padEnd(26, '0')}`;
+      const chatFile = await db.attachment.create({
+        data: {workspaceId, messageId: msg.id, fileId: fileIdOf('s'), name: `ZQX${tag} file.pdf`, contentType: 'application/pdf', size: 10, ready: true, uploadedBy: ownerId},
+        select: {id: true},
+      });
+      const chatUnsent = await db.attachment.create({
+        data: {workspaceId, fileId: fileIdOf('u'), name: `ZQX${tag} unsent.pdf`, contentType: 'application/pdf', size: 10, ready: false, uploadedBy: ownerId},
+        select: {id: true},
+      });
       const invite = await db.workspaceInvite.create({
         data: {workspaceId, tokenHash: `${tag.toLowerCase()}${'0'.repeat(64)}`.slice(0, 64), role: 'member', expiresAt: new Date(Date.now() + 86_400_000), createdBy: ownerId},
         select: {id: true},
@@ -578,6 +601,8 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
         attach: String(attach.id),
         conv: String(conv.id),
         msg: String(msg.id),
+        chatFile: String(chatFile.id),
+        chatUnsent: String(chatUnsent.id),
         invite: String(invite.id),
         link: String(link.id),
         inboxCard: String(inbox.id),

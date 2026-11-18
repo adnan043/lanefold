@@ -57,7 +57,9 @@
   color: var(--ink);
   font: inherit;
   font-size: 0.875rem;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 .chat-jump-to input::placeholder {
   color: var(--subtle);
@@ -104,7 +106,7 @@
   margin: 0;
   font-family: var(--font-mono);
   font-size: 0.6875rem;
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--subtle);
@@ -137,7 +139,9 @@
   color: var(--muted);
   font-size: 0.875rem;
   text-decoration: none;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 .chat-conv:hover {
   background: var(--hover);
@@ -147,7 +151,7 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-.chat-conv[aria-current='page'] {
+.chat-conv[aria-current="page"] {
   background: var(--accent-soft);
   color: var(--accent-text);
   font-weight: 600;
@@ -241,12 +245,12 @@
   background: var(--surface);
   color: var(--ink);
 }
-.chat-mark[data-kind='board'],
-.chat-mark[data-size='lg'] {
+.chat-mark[data-kind="board"],
+.chat-mark[data-size="lg"] {
   background: var(--accent-soft);
   color: var(--accent-text);
 }
-.chat-mark[data-size='lg'] {
+.chat-mark[data-size="lg"] {
   width: 40px;
   height: 40px;
   border-radius: 10px;
@@ -361,7 +365,7 @@
 }
 .chat-day::before,
 .chat-day::after {
-  content: '';
+  content: "";
   flex: 1;
   border-block-start: 1px solid var(--line);
 }
@@ -384,9 +388,14 @@
 .chat-msg[data-grouped] {
   padding-block: 0.125rem;
 }
+/* A new sender (or a new block of time) starts with a little air above it, so one person's messages read as a group.
+   A margin, not padding: the hover highlight stays on the message itself. */
+.chat-msg + .chat-msg:not([data-grouped]) {
+  margin-block-start: 0.75rem;
+}
 .chat-msg:hover,
 .chat-msg:has(:focus-visible),
-.chat-msg:has([aria-expanded='true']) {
+.chat-msg:has([aria-expanded="true"]) {
   background: color-mix(in oklab, var(--hover) 60%, transparent);
 }
 .chat-msg-gutter {
@@ -503,7 +512,9 @@
   font: inherit;
   font-size: 0.8125rem;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
 }
 .chat-reaction:hover {
   border-color: var(--line-strong);
@@ -516,21 +527,10 @@
   font-size: 0.75rem;
   font-weight: 500;
 }
-.chat-reaction[aria-pressed='true'] {
+.chat-reaction[aria-pressed="true"] {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent-text);
-}
-.chat-reaction-add {
-  border-style: dashed;
-  border-color: var(--line-strong);
-  background: transparent;
-  color: var(--subtle);
-}
-.chat-reaction-add:hover,
-.chat-reaction-add[aria-expanded='true'] {
-  border-color: var(--muted);
-  color: var(--ink);
 }
 .chat-reaction:disabled {
   cursor: not-allowed;
@@ -559,7 +559,9 @@
   font: inherit;
   font-size: 0.8125rem;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
 }
 .chat-thread-link:hover {
   border-color: var(--line);
@@ -585,10 +587,28 @@
 }
 /* Hidden by opacity, never display:none: its buttons stay in the tab order, so a keyboard user reaches them and
    :focus-visible (below) reveals the whole toolbar. pointer-events: none keeps the invisible toolbar unclickable. */
+/* The message's content and its hover toolbar sit side by side, so the toolbar shows right next to the text
+   (not at the far edge of the list). The toolbar keeps its slot while hidden, so hovering never re-wraps the text. */
+.chat-msg-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.chat-msg-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+.chat-msg-content > * {
+  max-width: 100%;
+}
 .chat-msg-actions {
-  position: absolute;
-  inset-block-start: 0.15rem;
-  inset-inline-end: 1.5rem;
+  flex: none;
+  /* a little taller than one line of text: pull it up so it never grows a one-line message */
+  margin-block: -0.25rem;
   display: flex;
   gap: 2px;
   padding: 3px;
@@ -602,7 +622,7 @@
 .chat-msg:hover .chat-msg-actions,
 .chat-msg:focus-visible .chat-msg-actions,
 .chat-msg:has(:focus-visible) .chat-msg-actions,
-.chat-msg:has([aria-expanded='true']) .chat-msg-actions {
+.chat-msg:has([aria-expanded="true"]) .chat-msg-actions {
   opacity: 1;
   pointer-events: auto;
 }
@@ -613,21 +633,26 @@
     min-block-size: 2rem; /* toolbar 28px (24 + 1px padding + 1px border, twice) + 2px offset */
   }
   .chat-msg-actions {
-    inset-block-start: 0.125rem;
     padding: 1px;
   }
+  /* 30 x 24px buttons: `.button.button-sm` adds 12px of side padding that an icon-only button does not need
+     (it made each one ~40px wide). Only the width grows: the height must stay 24px to fit a one-line message. */
   .chat-msg-actions .button.button-sm.icon-button {
-    min-width: 24px;
+    min-width: 30px;
+    width: 30px;
     min-height: 24px;
     height: 24px;
+    padding: 0;
   }
 }
 @media (hover: none) {
+  .chat-msg-line {
+    flex-direction: column;
+  }
   .chat-msg-actions {
     opacity: 1;
     pointer-events: auto;
-    position: static;
-    grid-column: 2;
+    margin-block: 0;
     border: 0;
     box-shadow: none;
     padding: 0;
@@ -649,7 +674,7 @@
   cursor: pointer;
 }
 .chat-emoji:hover,
-.chat-emoji[aria-pressed='true'] {
+.chat-emoji[aria-pressed="true"] {
   background: var(--accent-soft);
 }
 .chat-edit {
@@ -672,7 +697,9 @@
   font: inherit;
   line-height: 1.5;
   resize: vertical;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 .chat-edit-text:hover {
   border-color: var(--muted);
@@ -682,10 +709,10 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.chat-edit-text[aria-invalid='true'] {
+.chat-edit-text[aria-invalid="true"] {
   border-color: var(--danger);
 }
-.chat-edit-text[aria-invalid='true']:focus-visible {
+.chat-edit-text[aria-invalid="true"]:focus-visible {
   box-shadow: 0 0 0 3px var(--danger-soft);
 }
 .chat-edit-text:disabled {
@@ -710,7 +737,9 @@
   border-radius: 12px;
   background: var(--card);
   box-shadow: var(--shadow-sm);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 .chat-composer-box:focus-within {
   outline: 2px solid transparent; /* shows in forced-colors; the accent border is the ring */
@@ -836,9 +865,6 @@
 .chat-thread .chat-msg {
   padding-inline: 1.25rem;
 }
-.chat-thread .chat-msg-actions {
-  inset-inline-end: 1.25rem;
-}
 .chat-thread-count {
   display: flex;
   align-items: center;
@@ -849,7 +875,7 @@
   color: var(--subtle);
 }
 .chat-thread-count::after {
-  content: '';
+  content: "";
   flex: 1;
   border-block-start: 1px solid var(--line);
 }
@@ -1076,7 +1102,7 @@ a.chat-card-ref:focus-visible {
    content-visibility clips paint to the message box; the hover toolbar sits inside the box, so hover never
    toggles it (toggling on hover re-laid the list out and made it shake). Only an open menu / emoji
    picker (an in-tree popover that hangs outside the box) lifts it. */
-.chat-msg:not(:has([aria-expanded='true'])) {
+.chat-msg:not(:has([aria-expanded="true"])) {
   content-visibility: auto;
   contain-intrinsic-size: auto 3rem;
 }
@@ -1090,8 +1116,13 @@ a.chat-card-ref:focus-visible {
 }
 
 /* The header's members list. */
-.chat-members-wrap { display: grid; gap: 0.75rem; }
-.chat-members-wrap .search-input { width: 100%; }
+.chat-members-wrap {
+  display: grid;
+  gap: 0.75rem;
+}
+.chat-members-wrap .search-input {
+  width: 100%;
+}
 .chat-members {
   list-style: none;
   margin: 0;
@@ -1110,11 +1141,32 @@ a.chat-card-ref:focus-visible {
   color: var(--ink);
   transition: background-color 120ms ease;
 }
-.chat-members-row + .chat-members-row { border-top: 1px solid var(--line); }
-.chat-members-row:hover { background: var(--hover); }
-.chat-members-text { flex: 1; min-width: 0; display: grid; gap: 0.125rem; }
-.chat-members-name { min-width: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9375rem; font-weight: 600; line-height: 1.3; }
-.chat-members-name bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-members-row + .chat-members-row {
+  border-top: 1px solid var(--line);
+}
+.chat-members-row:hover {
+  background: var(--hover);
+}
+.chat-members-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.125rem;
+}
+.chat-members-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.chat-members-name bdi {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chat-members-you {
   flex: none;
   padding: 0.0625rem 0.4375rem;
@@ -1125,19 +1177,292 @@ a.chat-card-ref:focus-visible {
   font-weight: 600;
   line-height: 1.4;
 }
-.chat-members-role { display: inline-flex; align-items: center; gap: 0.3125rem; font-size: 0.8125rem; color: var(--subtle); line-height: 1.3; }
-.chat-members-role.is-elevated { color: var(--warning); font-weight: 500; }
-.chat-members-action { opacity: 0; transition: opacity 120ms ease; }
+.chat-members-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  font-size: 0.8125rem;
+  color: var(--subtle);
+  line-height: 1.3;
+}
+.chat-members-role.is-elevated {
+  color: var(--warning);
+  font-weight: 500;
+}
+.chat-members-action {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
 .chat-members-row:hover .chat-members-action,
 .chat-members-action:focus-visible,
-.chat-members-action[aria-busy='true'] { opacity: 1; }
-@media (hover: none) { .chat-members-action { opacity: 1; } }
-.chat-members-scope .empty-state h3 { font-size: 0.9375rem; font-weight: 400; color: var(--muted); }
-.chat-members-none { margin: 0; padding: 1.5rem 0; text-align: center; }
-.chat-members-error { margin: 0; color: var(--danger); font-size: 0.875rem; }
-@media (prefers-reduced-motion: reduce) { .chat-members-row, .chat-members-action { transition: none; } }
+.chat-members-action[aria-busy="true"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .chat-members-action {
+    opacity: 1;
+  }
+}
+.chat-members-scope .empty-state h3 {
+  font-size: 0.9375rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.chat-members-none {
+  margin: 0;
+  padding: 1.5rem 0;
+  text-align: center;
+}
+.chat-members-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-members-row,
+  .chat-members-action {
+    transition: none;
+  }
+}
 
 /* The thread's first day line repeats what "Replies: n" above already says. */
 .chat-thread .chat-rows > li:first-child > .chat-day {
   display: none;
+}
+
+/* Files waiting in the composer (uploading, ready, failed) and files sent with a message. */
+.chat-file-chip .chat-card-chip-title {
+  max-inline-size: 16rem;
+}
+.chat-file-chip-meta {
+  flex: none;
+  font-size: 0.75rem;
+}
+.chat-file-chip[data-failed] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.chat-file-chip[data-failed] .chat-file-chip-meta {
+  color: var(--danger);
+}
+
+.chat-files-block {
+  display: grid;
+  gap: 0.4rem;
+  margin-block-start: 0.35rem;
+}
+.chat-files,
+.chat-file-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chat-file {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: min(100%, 22rem);
+  padding: 0.35rem 0.35rem 0.35rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+}
+.chat-file > .icon {
+  flex: none;
+  color: var(--muted);
+}
+.chat-file-name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+a.chat-file-name:hover {
+  text-decoration: underline;
+}
+a.chat-file-name:focus-visible,
+.chat-file-image:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.chat-file-size {
+  flex: none;
+  font-size: 0.75rem;
+}
+.chat-file-image {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: zoom-in;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.chat-file-image:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-md);
+}
+
+/* The picture viewer: a wider, rounder dialog than a form's, the picture on a soft panel with its own rounding. */
+.modal:has(.chat-viewer) {
+  width: min(100% - 2rem, 960px);
+}
+.modal:has(.chat-viewer) .modal-box {
+  border-radius: 24px;
+  overflow: hidden;
+}
+.modal:has(.chat-viewer) .modal-head h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A FIXED height: the picture is remounted on every move and has no size until it loads, so a panel sized by its
+   picture collapsed for a moment and the whole dialog jumped. Now every picture fits inside the same box. */
+.chat-viewer {
+  position: relative;
+  display: grid;
+  place-items: center;
+  block-size: min(70vh, 70dvh, 640px);
+  padding: 0.5rem;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--surface);
+}
+.chat-viewer img {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 100%;
+  border-radius: 14px;
+  object-fit: contain;
+}
+.chat-viewer-count {
+  margin-inline-end: auto;
+  align-self: center;
+  min-inline-size: 3.5ch;
+  font-size: 0.875rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.chat-file-image img {
+  display: block;
+  max-inline-size: min(18rem, 70vw);
+  max-block-size: 14rem;
+  inline-size: auto;
+  block-size: auto;
+  object-fit: contain;
+}
+
+/* A message's pictures: one keeps its own shape; two to four sit in a grid of at most two columns (three: the
+   third spans both); past four, the fourth tile is covered with "+N". */
+.chat-file-images {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 11rem));
+  gap: 0.35rem;
+}
+.chat-file-images[data-count='1'] {
+  grid-template-columns: minmax(0, max-content);
+}
+.chat-file-images[data-count='3'] > li:last-child {
+  grid-column: span 2;
+}
+.chat-file-image {
+  position: relative;
+}
+.chat-file-images:not([data-count='1']) .chat-file-image {
+  inline-size: 100%;
+  aspect-ratio: 1;
+}
+.chat-file-images[data-count='3'] > li:last-child .chat-file-image {
+  aspect-ratio: 2 / 1;
+}
+.chat-file-images:not([data-count='1']) .chat-file-image img {
+  inline-size: 100%;
+  block-size: 100%;
+  max-inline-size: none;
+  max-block-size: none;
+  object-fit: cover;
+}
+.chat-file-more {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, black 55%, transparent);
+  color: white;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: background-color 120ms ease;
+}
+.chat-file-image:hover .chat-file-more {
+  background: color-mix(in srgb, black 65%, transparent);
+}
+
+/* The viewer's round arrows on either side of the picture (mirrored in RTL with the chevrons). */
+.chat-viewer-arrow {
+  position: absolute;
+  inset-block-start: 50%;
+  display: grid;
+  place-items: center;
+  inline-size: 44px;
+  block-size: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--ink);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+.chat-viewer-arrow[data-side='prev'] {
+  inset-inline-start: 0.875rem;
+}
+.chat-viewer-arrow[data-side='next'] {
+  inset-inline-end: 0.875rem;
+}
+.chat-viewer-arrow:hover {
+  background: var(--card);
+  transform: translateY(-50%) scale(1.06);
+}
+.chat-viewer-arrow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Moving to another picture slides it in from the side it came from. */
+@keyframes chat-slide-from-end {
+  from { opacity: 0; transform: translateX(3rem); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes chat-slide-from-start {
+  from { opacity: 0; transform: translateX(-3rem); }
+  to { opacity: 1; transform: none; }
+}
+.chat-viewer img[data-slide='next'] {
+  animation: chat-slide-from-end 220ms ease-out;
+}
+.chat-viewer img[data-slide='prev'] {
+  animation: chat-slide-from-start 220ms ease-out;
+}
+.chat-viewer:dir(rtl) img[data-slide='next'] {
+  animation-name: chat-slide-from-start;
+}
+.chat-viewer:dir(rtl) img[data-slide='prev'] {
+  animation-name: chat-slide-from-end;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-viewer img[data-slide] {
+    animation: none;
+  }
 }

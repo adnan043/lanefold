@@ -1948,5 +1948,18 @@
   "chat.viewThread": "Lihat utas",
   "chat.mentionSomeone": "Sebut seseorang",
   "chat.insertEmoji": "Emoji",
-  "chat.sendHint": "Enter untuk kirim · Shift + Enter untuk baris baru"
+  "chat.sendHint": "Enter untuk kirim · Shift + Enter untuk baris baru",
+  "chat.attachFile": "Lampirkan file",
+  "chat.filesToSend": "File untuk dikirim",
+  "chat.uploadingFile": "Mengunggah…",
+  "chat.uploadFailed": "Gagal mengunggah",
+  "chat.removeFile": "Hapus {name}",
+  "chat.fileTooBig": "{name} lebih besar dari {max}.",
+  "chat.fileTypeRefused": "{name} tidak dapat dikirim di sini. Kirim file PDF, Word, Excel, PowerPoint, teks, CSV, ZIP, atau gambar.",
+  "chat.tooManyFiles": "Kirim hingga {n} file sekaligus.",
+  "chat.waitForUploads": "Tunggu hingga file selesai diunggah.",
+  "chat.messageFiles": "File",
+  "chat.downloadFile": "Unduh {name}",
+  "chat.openFile": "Buka {name}",
+  "chat.morePictures": "{n} gambar lagi"
 }

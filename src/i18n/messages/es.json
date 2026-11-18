@@ -1974,5 +1974,18 @@
   "chat.viewThread": "Ver hilo",
   "chat.mentionSomeone": "Mencionar a alguien",
   "chat.insertEmoji": "Emoji",
-  "chat.sendHint": "Enter para enviar · Mayús + Enter para una línea nueva"
+  "chat.sendHint": "Enter para enviar · Mayús + Enter para una línea nueva",
+  "chat.attachFile": "Adjuntar un archivo",
+  "chat.filesToSend": "Archivos para enviar",
+  "chat.uploadingFile": "Subiendo…",
+  "chat.uploadFailed": "Error al subir",
+  "chat.removeFile": "Quitar {name}",
+  "chat.fileTooBig": "{name} supera {max}.",
+  "chat.fileTypeRefused": "{name} no se puede enviar aquí. Envía un archivo PDF, Word, Excel, PowerPoint, de texto, CSV, ZIP o una imagen.",
+  "chat.tooManyFiles": "Envía hasta {n} archivos a la vez.",
+  "chat.waitForUploads": "Espera a que terminen de subirse los archivos.",
+  "chat.messageFiles": "Archivos",
+  "chat.downloadFile": "Descargar {name}",
+  "chat.openFile": "Abrir {name}",
+  "chat.morePictures": "{n} imágenes más"
 }

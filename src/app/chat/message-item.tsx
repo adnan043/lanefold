@@ -9,6 +9,7 @@ import {Link} from '../nav';
 import {useWriteCooldown} from '../write-cooldown';
 import {CardChips} from './card-chip';
 import {CreateCardDialog} from './create-card-dialog';
+import {MessageFiles} from './message-files';
 import {type ChatPersonT, displayName, type MessageT, type ReactionT} from './api';
 import {MAX_BODY, mentionedIds, segments} from './mentions';
 import type {PendingMessage} from './use-message-feed';
@@ -74,15 +75,14 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [editError, setEditError] = useState('');
-  /** The emoji picker: closed, or open under the button that opened it (the toolbar's, or the add chip after the reactions). */
-  const [picker, setPicker] = useState<null | 'toolbar' | 'chip'>(null);
+  /** The emoji picker: closed, or open under the toolbar's react button. */
+  const [picker, setPicker] = useState<null | 'toolbar'>(null);
   const [cardOpen, setCardOpen] = useState(false);
   // The create-card dialog mounts on first use, never for every message: each copy subscribes to the board cache, so
   // up to MAX_KEPT closed dialogs re-rendered on every card move. Kept mounted after that, so closing it returns focus.
   const [cardUsed, setCardUsed] = useState(false);
   if (cardOpen && !cardUsed) setCardUsed(true);
   const pickerButton = useRef<HTMLButtonElement>(null);
-  const chipButton = useRef<HTMLButtonElement>(null);
   const reactionsRow = useRef<HTMLDivElement>(null);
   const itemRef = useRef<HTMLLIElement>(null);
   const own = message.sender.id === me;
@@ -159,7 +159,7 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
   };
 
   const menu: MenuItem[] = [];
-  if (own && canWrite && !message.deleted) menu.push({label: t('chat.edit'), icon: 'pencil', onSelect: startEdit});
+  if (own && canWrite && !message.deleted && message.body !== '') menu.push({label: t('chat.edit'), icon: 'pencil', onSelect: startEdit});
   if (cardTarget && canWrite && !message.deleted && message.kind !== 'system' && (message.cardIds?.length ?? 0) < 10) menu.push({label: t('chat.createCard'), icon: 'layout-kanban', onSelect: () => setCardOpen(true)});
   if (canPin && !message.deleted && !pin.isPending) menu.push({label: message.pinned ? t('chat.unpin') : t('chat.pin'), icon: 'pin', onSelect: () => pin.mutate(!message.pinned)});
   if ((own || canModerate) && !message.deleted) menu.push({label: t('chat.delete'), icon: 'trash', danger: true, onSelect: remove});
@@ -235,7 +235,8 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
           </div>
         ) : (
           <>
-            <Body message={message} people={people} />
+            {message.body !== '' && <Body message={message} people={people} />}
+            <MessageFiles files={message.files ?? []} />
             <CardChips cardIds={message.cardIds ?? []} />
             {message.edited && <span className="chat-edited muted">{t('chat.edited')}</span>}
           </>
@@ -255,20 +256,6 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
                 <span className="chat-reaction-count">{r.count}</span>
               </button>
             ))}
-            {canWrite && (
-              <button
-                ref={chipButton}
-                type="button"
-                className="chat-reaction chat-reaction-add"
-                aria-label={t('chat.react')}
-                title={t('chat.react')}
-                aria-haspopup="dialog"
-                aria-expanded={picker === 'chip'}
-                disabled={react.isPending}
-                onClick={() => setPicker(open => (open === 'chip' ? null : 'chip'))}>
-                <Icon name="smile" size={14} />
-              </button>
-            )}
           </div>
         )}
         {onReply && message.replyCount > 0 && (
@@ -296,7 +283,7 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
                 onClick={() => setPicker(open => (open === 'toolbar' ? null : 'toolbar'))}>
                 {react.isPending ? <span className="spinner" aria-hidden="true" /> : <Icon name="smile" size={16} />}
               </button>
-              <Popover open={picker !== null} onClose={() => setPicker(null)} anchor={picker === 'chip' ? chipButton : pickerButton} label={t('chat.react')} align={picker === 'chip' ? 'start' : 'end'}>
+              <Popover open={picker !== null} onClose={() => setPicker(null)} anchor={pickerButton} label={t('chat.react')} align="end">
                 <div className="chat-emoji-grid">
                   {QUICK_EMOJI.map(emoji => {
                     const mine = message.reactions.find(r => r.emoji === emoji)?.mine ?? false;
@@ -347,7 +334,17 @@ export function PendingItem({pending, onRetry, onDiscard}: {pending: PendingMess
     <li className="chat-msg chat-msg-pending" data-failed={failed ? '' : undefined} aria-busy={!failed || undefined}>
       <span className="chat-msg-gutter" />
       <div className="chat-msg-main">
-        <p className="chat-body" dir="auto">{pending.body}</p>
+        {pending.body !== '' && <p className="chat-body" dir="auto">{pending.body}</p>}
+        {(pending.files?.length ?? 0) > 0 && (
+          <ul className="chat-files" aria-label={t('chat.messageFiles')}>
+            {pending.files!.map(f => (
+              <li key={f.id} className="chat-file">
+                <Icon name={f.isImage ? 'image' : 'file'} size={16} />
+                <span className="chat-file-name">{f.name}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         {failed ? (
           <p className="chat-pending-note" role="alert">
             <Icon name="alert" size={14} /> {pending.error || t('errors.unknown')}

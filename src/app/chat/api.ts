@@ -2,6 +2,8 @@ import {queryOptions, useQuery, useQueryClient} from '@tanstack/react-query';
 import {useCallback, useEffect, useRef, useState} from 'react';
 
 import {CARD_REFS_MAX} from '../../lib/card-refs';
+import {type ChatFileT, chatFileType} from '../../lib/chat-files';
+import {putFile} from '../../platform/files-browser';
 import {ApiError, call} from '../api';
 import {createBatcher} from './card-ref-batch';
 import {pulseDelayMs} from './poll-timing';
@@ -43,6 +45,8 @@ export type MessageT = {
   /** `#42` in a board chat that resolved to a card the viewer may open (absent = plain text). */
   numberRefs?: Record<number, NumberRefT>;
   reactions: ReactionT[];
+  /** Files sent with it (absent from an older server answer). */
+  files?: ChatFileT[];
   createdAt: string;
 };
 export type MessagePage = {items: MessageT[]; nextBefore: number | null; more: boolean; lastSeq: number; editRev?: number; lastReadSeq: number; canWrite: boolean; canModerate?: boolean; archived?: boolean};
@@ -211,3 +215,34 @@ export const cardRefQuery = (id: number) =>
     staleTime: 5 * 60_000,
     retry: false,
   });
+
+/**
+ * One chat file, the three steps of files.md: the server's go-ahead (my access, the rules, the room), the bytes straight
+ * to the storage, then the server's confirm. Resolves with the file ready to send; throws an ApiError otherwise (an
+ * unfinished row is dropped, best effort; the server sweeps what is left).
+ */
+export async function uploadChatFile(conversationId: number, file: File, signal?: AbortSignal): Promise<ChatFileT> {
+  const contentType = chatFileType(file.name, file.type);
+  const grant = await call<{attachmentId: number; upload: Parameters<typeof putFile>[0]}>('POST', `/conversations/${conversationId}/attachments`, {
+    name: file.name,
+    contentType,
+    size: file.size,
+  });
+  const put = await putFile(grant.upload, file, {signal});
+  if (!put.ok) {
+    void call('DELETE', `/chat/attachments/${grant.attachmentId}`).catch(() => undefined);
+    throw new ApiError(put.message, put.status, put.code);
+  }
+  if (signal?.aborted) {
+    void call('DELETE', `/chat/attachments/${grant.attachmentId}`).catch(() => undefined);
+    throw new ApiError('Cancelled.', 0, 'cancelled');
+  }
+  const done = await call<{attachment: ChatFileT}>('POST', `/chat/attachments/${grant.attachmentId}/complete`);
+  return done.attachment;
+}
+
+/** Takes an uploaded, unsent file out (best effort: the server sweeps what is left after a day). */
+export const removeUnsentFile = (id: number) => call('DELETE', `/chat/attachments/${id}`).catch(() => undefined);
+
+/** Where a sent file is shown (a picture or PDF in the browser) or downloaded: every view checks access again. */
+export const chatFileUrl = (id: number, download = false) => `/site-api/chat/attachments/${id}/view${download ? '?download=1' : ''}`;

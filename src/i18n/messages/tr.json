@@ -1961,5 +1961,18 @@
   "chat.viewThread": "Konuyu görüntüle",
   "chat.mentionSomeone": "Birinden bahset",
   "chat.insertEmoji": "Emoji",
-  "chat.sendHint": "Göndermek için Enter · Yeni satır için Shift + Enter"
+  "chat.sendHint": "Göndermek için Enter · Yeni satır için Shift + Enter",
+  "chat.attachFile": "Dosya ekle",
+  "chat.filesToSend": "Gönderilecek dosyalar",
+  "chat.uploadingFile": "Yükleniyor…",
+  "chat.uploadFailed": "Yükleme başarısız",
+  "chat.removeFile": "{name} kaldır",
+  "chat.fileTooBig": "{name}, {max} sınırından büyük.",
+  "chat.fileTypeRefused": "{name} burada gönderilemez. PDF, Word, Excel, PowerPoint, metin, CSV, ZIP veya resim dosyası gönderin.",
+  "chat.tooManyFiles": "Tek seferde en fazla {n} dosya gönderin.",
+  "chat.waitForUploads": "Dosyaların yüklenmesi bitene kadar bekleyin.",
+  "chat.messageFiles": "Dosyalar",
+  "chat.downloadFile": "{name} indir",
+  "chat.openFile": "{name} aç",
+  "chat.morePictures": "{n} resim daha"
 }

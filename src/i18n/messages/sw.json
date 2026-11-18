@@ -1961,5 +1961,18 @@
   "chat.viewThread": "Tazama uzi",
   "chat.mentionSomeone": "Mtaje mtu",
   "chat.insertEmoji": "Emoji",
-  "chat.sendHint": "Enter kutuma · Shift + Enter kwa mstari mpya"
+  "chat.sendHint": "Enter kutuma · Shift + Enter kwa mstari mpya",
+  "chat.attachFile": "Ambatisha faili",
+  "chat.filesToSend": "Faili za kutuma",
+  "chat.uploadingFile": "Inapakia…",
+  "chat.uploadFailed": "Upakiaji umeshindwa",
+  "chat.removeFile": "Ondoa {name}",
+  "chat.fileTooBig": "{name} ni kubwa kuliko {max}.",
+  "chat.fileTypeRefused": "{name} haiwezi kutumwa hapa. Tuma faili ya PDF, Word, Excel, PowerPoint, maandishi, CSV, ZIP au picha.",
+  "chat.tooManyFiles": "Tuma hadi faili {n} kwa wakati mmoja.",
+  "chat.waitForUploads": "Subiri faili zimalize kupakiwa.",
+  "chat.messageFiles": "Faili",
+  "chat.downloadFile": "Pakua {name}",
+  "chat.openFile": "Fungua {name}",
+  "chat.morePictures": "Picha {n} zaidi"
 }

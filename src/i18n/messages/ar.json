@@ -2013,5 +2013,18 @@
   "chat.viewThread": "عرض السلسلة",
   "chat.mentionSomeone": "الإشارة إلى شخص",
   "chat.insertEmoji": "رموز تعبيرية",
-  "chat.sendHint": "Enter للإرسال · Shift + Enter لسطر جديد"
+  "chat.sendHint": "Enter للإرسال · Shift + Enter لسطر جديد",
+  "chat.attachFile": "إرفاق ملف",
+  "chat.filesToSend": "ملفات للإرسال",
+  "chat.uploadingFile": "جارٍ الرفع…",
+  "chat.uploadFailed": "فشل الرفع",
+  "chat.removeFile": "إزالة {name}",
+  "chat.fileTooBig": "{name} أكبر من {max}.",
+  "chat.fileTypeRefused": "لا يمكن إرسال {name} هنا. أرسل ملف PDF أو Word أو Excel أو PowerPoint أو نصًا أو CSV أو ZIP أو صورة.",
+  "chat.tooManyFiles": "أرسل حتى {n} ملفات في المرة الواحدة.",
+  "chat.waitForUploads": "انتظر حتى ينتهي رفع الملفات.",
+  "chat.messageFiles": "الملفات",
+  "chat.downloadFile": "تنزيل {name}",
+  "chat.openFile": "فتح {name}",
+  "chat.morePictures": "{n} صور أخرى"
 }

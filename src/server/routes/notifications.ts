@@ -16,7 +16,8 @@ import { idOf, invalid, objectOf } from "../validation";
  * Rows of a workspace the visitor left, or of a board or chat they lost access to, are left out. Another person's notification id answers 404.
  *
  *   GET  /notifications?before=&unread=1&workspaceId=   newest first, keyset on id (20 a page)
- *   GET  /notifications/unread-count                    exact up to 99, then 99 with `more: true`
+ *   GET  /notifications/unread-count                    unread AND not seen yet: exact up to 99, then 99 with `more: true`
+ *   POST /notifications/seen                            the list was opened: everything up to now is seen (count 0)
  *   POST /notifications/:id/read                        mark one read
  *   POST /notifications/read-all                        {workspaceId?} mark mine read
  * Ids are BigInt: serialized as strings. Actors are shown by name, never by email.
@@ -217,6 +218,8 @@ export const notificationRoutes = new Hono()
         SELECT 1 FROM (
           SELECT n.id, n.workspace_id, n.board_id, n.conversation_id FROM notifications n
           WHERE n.user_id = ${viewer.id!} AND n.read_at IS NULL
+            -- Only what came after the list was last opened (still unread there, but no longer "new").
+            AND n.id > COALESCE((SELECT p.notifications_seen_id FROM user_profiles p WHERE p.user_id = ${viewer.id!}), 0)
           ORDER BY n.id DESC LIMIT ${SCAN_CAP}
         ) n
         JOIN workspace_members wm ON wm.workspace_id = n.workspace_id AND wm.user_id = ${viewer.id!}
@@ -228,6 +231,23 @@ export const notificationRoutes = new Hono()
       return c.json({ count: Math.min(n, COUNT_CAP), more: n > COUNT_CAP });
     },
   )
+
+  // The list was opened: the newest notification so far is seen. Nothing is marked read (each keeps its unread look).
+  // Two cheap statements: the newest id (index user_id, id DESC), then my profile row (created on first use).
+  .post("/notifications/seen", withViewer, requireAuth, withDb, async (c) => {
+    const { db, viewer } = c.var;
+    const me = viewer.id!;
+    const [top] = await db.$queryRaw<{ id: bigint }[]>`
+      SELECT COALESCE(max(id), 0)::bigint AS id FROM notifications WHERE user_id = ${me}`;
+    const seen = top?.id ?? 0n;
+    await db.userProfile.upsert({
+      where: { userId: me },
+      create: { userId: me, notificationsSeenId: seen },
+      update: { notificationsSeenId: seen },
+      select: { id: true },
+    });
+    return c.json({ ok: true });
+  })
 
   .post(
     "/notifications/read-all",

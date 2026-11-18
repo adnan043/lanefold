@@ -1948,5 +1948,18 @@
   "chat.viewThread": "スレッドを表示",
   "chat.mentionSomeone": "メンションする",
   "chat.insertEmoji": "絵文字",
-  "chat.sendHint": "Enter で送信 · Shift + Enter で改行"
+  "chat.sendHint": "Enter で送信 · Shift + Enter で改行",
+  "chat.attachFile": "ファイルを添付",
+  "chat.filesToSend": "送信するファイル",
+  "chat.uploadingFile": "アップロード中…",
+  "chat.uploadFailed": "アップロードに失敗しました",
+  "chat.removeFile": "{name} を外す",
+  "chat.fileTooBig": "{name} は {max} を超えています。",
+  "chat.fileTypeRefused": "{name} はここでは送信できません。PDF、Word、Excel、PowerPoint、テキスト、CSV、ZIP、または画像ファイルを送信してください。",
+  "chat.tooManyFiles": "一度に送信できるファイルは {n} 個までです。",
+  "chat.waitForUploads": "ファイルのアップロードが終わるまでお待ちください。",
+  "chat.messageFiles": "ファイル",
+  "chat.downloadFile": "{name} をダウンロード",
+  "chat.openFile": "{name} を開く",
+  "chat.morePictures": "ほか {n} 枚の画像"
 }

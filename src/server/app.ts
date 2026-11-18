@@ -26,6 +26,7 @@ import {boardWorkloadRoutes} from './routes/board-workload';
 import {cardBulkRoutes} from './routes/card-bulk';
 import {chatRoutes} from './routes/chat';
 import {chatExtraRoutes} from './routes/chat-extras';
+import {chatFileRoutes} from './routes/chat-files';
 import {memberRoutes} from './routes/members';
 import {workspaceSettingsRoutes} from './routes/workspace-settings';
 import {workspaceAuditRoutes} from './routes/workspace-audit';
@@ -119,6 +120,7 @@ export const app = new Hono()
   .route('/', boardWorkloadRoutes)
   .route('/', chatRoutes)
   .route('/', chatExtraRoutes)
+  .route('/', chatFileRoutes)
   .route('/', billingRoutes)
   .route('/', brandingRoutes)
   .route('/', memberRoutes)

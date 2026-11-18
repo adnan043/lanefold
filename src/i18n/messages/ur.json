@@ -1961,5 +1961,18 @@
   "chat.viewThread": "تھریڈ دیکھیں",
   "chat.mentionSomeone": "کسی کا ذکر کریں",
   "chat.insertEmoji": "ایموجی",
-  "chat.sendHint": "بھیجنے کے لیے Enter · نئی لائن کے لیے Shift + Enter"
+  "chat.sendHint": "بھیجنے کے لیے Enter · نئی لائن کے لیے Shift + Enter",
+  "chat.attachFile": "فائل منسلک کریں",
+  "chat.filesToSend": "بھیجنے کے لیے فائلیں",
+  "chat.uploadingFile": "اپ لوڈ ہو رہی ہے…",
+  "chat.uploadFailed": "اپ لوڈ ناکام ہو گیا",
+  "chat.removeFile": "{name} ہٹائیں",
+  "chat.fileTooBig": "{name} {max} سے بڑی ہے۔",
+  "chat.fileTypeRefused": "{name} یہاں نہیں بھیجی جا سکتی۔ PDF، Word، Excel، PowerPoint، ٹیکسٹ، CSV، ZIP یا تصویر کی فائل بھیجیں۔",
+  "chat.tooManyFiles": "ایک وقت میں زیادہ سے زیادہ {n} فائلیں بھیجیں۔",
+  "chat.waitForUploads": "فائلوں کے اپ لوڈ مکمل ہونے کا انتظار کریں۔",
+  "chat.messageFiles": "فائلیں",
+  "chat.downloadFile": "{name} ڈاؤن لوڈ کریں",
+  "chat.openFile": "{name} کھولیں",
+  "chat.morePictures": "مزید {n} تصاویر"
 }

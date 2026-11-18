@@ -1961,5 +1961,18 @@
   "chat.viewThread": "थ्रेड देखें",
   "chat.mentionSomeone": "किसी का उल्लेख करें",
   "chat.insertEmoji": "इमोजी",
-  "chat.sendHint": "भेजने के लिए Enter · नई पंक्ति के लिए Shift + Enter"
+  "chat.sendHint": "भेजने के लिए Enter · नई पंक्ति के लिए Shift + Enter",
+  "chat.attachFile": "फ़ाइल जोड़ें",
+  "chat.filesToSend": "भेजने के लिए फ़ाइलें",
+  "chat.uploadingFile": "अपलोड हो रहा है…",
+  "chat.uploadFailed": "अपलोड विफल रहा",
+  "chat.removeFile": "{name} हटाएँ",
+  "chat.fileTooBig": "{name} {max} से बड़ी है।",
+  "chat.fileTypeRefused": "{name} यहाँ नहीं भेजी जा सकती। PDF, Word, Excel, PowerPoint, टेक्स्ट, CSV, ZIP या चित्र फ़ाइल भेजें।",
+  "chat.tooManyFiles": "एक बार में अधिकतम {n} फ़ाइलें भेजें।",
+  "chat.waitForUploads": "फ़ाइलों का अपलोड पूरा होने तक प्रतीक्षा करें।",
+  "chat.messageFiles": "फ़ाइलें",
+  "chat.downloadFile": "{name} डाउनलोड करें",
+  "chat.openFile": "{name} खोलें",
+  "chat.morePictures": "{n} और चित्र"
 }

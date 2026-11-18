@@ -1961,5 +1961,18 @@
   "chat.viewThread": "دیدن رشته",
   "chat.mentionSomeone": "اشاره به کسی",
   "chat.insertEmoji": "ایموجی",
-  "chat.sendHint": "Enter برای ارسال · Shift + Enter برای خط جدید"
+  "chat.sendHint": "Enter برای ارسال · Shift + Enter برای خط جدید",
+  "chat.attachFile": "پیوست فایل",
+  "chat.filesToSend": "فایل‌های ارسالی",
+  "chat.uploadingFile": "در حال بارگذاری…",
+  "chat.uploadFailed": "بارگذاری ناموفق بود",
+  "chat.removeFile": "حذف {name}",
+  "chat.fileTooBig": "{name} بزرگ‌تر از {max} است.",
+  "chat.fileTypeRefused": "{name} را نمی‌توان اینجا فرستاد. فایل PDF، Word، Excel، PowerPoint، متنی، CSV، ZIP یا تصویر بفرستید.",
+  "chat.tooManyFiles": "در هر بار حداکثر {n} فایل بفرستید.",
+  "chat.waitForUploads": "صبر کنید تا بارگذاری فایل‌ها تمام شود.",
+  "chat.messageFiles": "فایل‌ها",
+  "chat.downloadFile": "دانلود {name}",
+  "chat.openFile": "باز کردن {name}",
+  "chat.morePictures": "{n} تصویر دیگر"
 }

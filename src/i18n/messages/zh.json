@@ -1948,5 +1948,18 @@
   "chat.viewThread": "查看话题",
   "chat.mentionSomeone": "提及某人",
   "chat.insertEmoji": "表情",
-  "chat.sendHint": "Enter 发送 · Shift + Enter 换行"
+  "chat.sendHint": "Enter 发送 · Shift + Enter 换行",
+  "chat.attachFile": "附加文件",
+  "chat.filesToSend": "待发送的文件",
+  "chat.uploadingFile": "正在上传…",
+  "chat.uploadFailed": "上传失败",
+  "chat.removeFile": "移除 {name}",
+  "chat.fileTooBig": "{name} 超过 {max}。",
+  "chat.fileTypeRefused": "此处无法发送 {name}。请发送 PDF、Word、Excel、PowerPoint、文本、CSV、ZIP 或图片文件。",
+  "chat.tooManyFiles": "一次最多发送 {n} 个文件。",
+  "chat.waitForUploads": "请等待文件上传完成。",
+  "chat.messageFiles": "文件",
+  "chat.downloadFile": "下载 {name}",
+  "chat.openFile": "打开 {name}",
+  "chat.morePictures": "还有 {n} 张图片"
 }

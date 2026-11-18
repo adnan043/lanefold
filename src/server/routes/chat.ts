@@ -15,6 +15,7 @@ const BOARD_ROLES = new Set<string>(['admin', 'member', 'viewer']);
 import {idOf, invalid, objectOf, textField, type FieldError} from '../validation';
 import {afterResponse, type WithExecutionCtx} from '../after-response';
 import {softCheck} from '../soft-limit';
+import {CHAT_FILES_PER_MESSAGE, chatFileShape, type ChatFileRow} from '../../lib/chat-files';
 
 /**
  * Phase 4b: chat. Mounted ONCE at `/` in `app.ts`. Real time is polling (SPEC §8): `pulse` says which
@@ -60,7 +61,7 @@ export const CHAT_PEOPLE_CAP = 500;
 const SEND_PER_MINUTE = 20;
 const SEND_PER_HOUR = 300;
 
-const noStore = createMiddleware(async (c, next) => {
+export const noStore = createMiddleware(async (c, next) => {
   c.header('Cache-Control', 'private, no-store');
   await next();
 });
@@ -90,7 +91,7 @@ export const unreadOf = (lastSeq: bigint | number, lastReadSeq: bigint | number)
 /** The DM key for a pair of users: `<smaller>:<larger>`. */
 export const dmKeyOf = (a: number, b: number) => `${Math.min(a, b)}:${Math.max(a, b)}`;
 
-const messageIdOf = (value: unknown): bigint | undefined => {
+export const messageIdOf = (value: unknown): bigint | undefined => {
   if (typeof value !== 'string' || !/^\d{1,18}$/.test(value)) return undefined;
   const n = BigInt(value);
   return n > 0n ? n : undefined;
@@ -249,7 +250,7 @@ export const bumpEditRev = (db: Pick<PrismaClient, '$executeRaw'>, a: {conversat
  * `send` is `write` WITHOUT the read-only plan check: the route MUST call `readOnlyBlock` (or read the entitlements)
  * itself before it writes anything, so that read can share a round trip with its other reads.
  */
-const requireConversation = (need: 'read' | 'write' | 'send' | 'moderate' = 'read', limit?: ChatLimit) =>
+export const requireConversation = (need: 'read' | 'write' | 'send' | 'moderate' = 'read', limit?: ChatLimit) =>
   createMiddleware<{Variables: ChatVars}>(async (c, next) => {
     const id = idOf(c.req.param('id'));
     if (!id) return notFound(c, 'conversation');
@@ -303,6 +304,8 @@ const messageCols = {
   createdAt: true,
   mentions: {select: {userId: true}, take: MAX_MENTIONS},
   cardRefs: {select: {cardId: true}, take: MAX_CARD_REFS},
+  // Files sent with it (relation join: no extra round trip). Only confirmed ones; never the platform file id.
+  attachments: {where: {ready: true}, select: {id: true, name: true, contentType: true, size: true}, orderBy: {id: 'asc'}, take: CHAT_FILES_PER_MESSAGE},
 } as const;
 
 type MessageRow = {
@@ -319,6 +322,7 @@ type MessageRow = {
   createdAt: Date;
   mentions: {userId: number}[];
   cardRefs: {cardId: number}[];
+  attachments: ChatFileRow[];
 };
 
 type ReactionGroup = {emoji: string; count: number; mine: boolean};
@@ -355,6 +359,7 @@ function messageShape(r: MessageRow, names: Map<number, string>, reactions: Reac
     // person is outside the directory the client holds.
     mentionNames: deleted ? [] : r.mentions.map(m => names.get(m.userId) ?? ''),
     cardIds: deleted ? [] : r.cardRefs.map(x => x.cardId),
+    files: deleted ? [] : r.attachments.map(chatFileShape),
     numberRefs,
     reactions: deleted ? [] : reactions,
     createdAt: r.createdAt.toISOString(),
@@ -435,7 +440,7 @@ const listQuery = validator('query', value => ({
   limit: typeof value.limit === 'string' ? value.limit : '',
 }));
 
-type NewMessage = {body: string; clientId: string; parentId: bigint | null; mentions: number[]; cardIds: number[]; lastSeenSeq: number | null};
+type NewMessage = {body: string; clientId: string; parentId: bigint | null; mentions: number[]; cardIds: number[]; attachmentIds: number[]; lastSeenSeq: number | null};
 
 const idList = (value: unknown, max: number): number[] | null => {
   if (value === undefined) return [];
@@ -466,7 +471,12 @@ const bodyField = (value: unknown): {ok: true; value: string} | {ok: false; erro
 const sendBody = validator('json', (value, c) => {
   const v = objectOf(value);
   const errors: Record<string, FieldError> = {};
-  const body = bodyField(v?.body);
+  const attachmentIds = idList(v?.attachmentIds, CHAT_FILES_PER_MESSAGE);
+  if (!attachmentIds) errors.attachmentIds = {code: 'out_of_range', message: `Send up to ${CHAT_FILES_PER_MESSAGE} files at once.`};
+  // A message with files may have no text ("" or absent); without files it needs some.
+  const withFiles = !!attachmentIds && attachmentIds.length > 0;
+  const blank = v?.body === undefined || (typeof v.body === 'string' && cleanBody(v.body).trim() === '');
+  const body = withFiles && blank ? ({ok: true, value: ''} as const) : bodyField(v?.body);
   if (!body.ok) errors.body = body.error;
   if (typeof v?.clientId !== 'string' || !CLIENT_ID_RE.test(v.clientId)) errors.clientId = {code: 'invalid', message: 'Missing message key.'};
   let parentId: bigint | null = null;
@@ -484,7 +494,7 @@ const sendBody = validator('json', (value, c) => {
     else lastSeenSeq = v.lastSeenSeq;
   }
   if (Object.keys(errors).length) return invalid(c, errors);
-  return {body: (body as {value: string}).value, clientId: v!.clientId as string, parentId, mentions: mentions!, cardIds: cardIds!, lastSeenSeq} satisfies NewMessage;
+  return {body: (body as {value: string}).value, clientId: v!.clientId as string, parentId, mentions: mentions!, cardIds: cardIds!, attachmentIds: attachmentIds!, lastSeenSeq} satisfies NewMessage;
 });
 
 const editBody = validator('json', (value, c) => {
@@ -1095,7 +1105,7 @@ export const chatRoutes = new Hono()
     // messages(sender_id, created_at)), the reply target, who may be named (and their names), the card refs and the
     // `#number` card refs of the text (they depend only on the body).
     const now = Date.now();
-    const [ent, found, lastMinute, lastHour, parent, allowed, cardIds, names, numberRefs] = await Promise.all([
+    const [ent, found, lastMinute, lastHour, parent, allowed, cardIds, names, numberRefs, files] = await Promise.all([
       getEntitlements(db, a.workspaceId),
       find(),
       db.message.findMany({where: {senderId: me, createdAt: {gt: new Date(now - 60_000)}}, select: {id: true}, take: SEND_PER_MINUTE}),
@@ -1112,6 +1122,15 @@ export const chatRoutes = new Hono()
       // The sender's own name rides along: the new message needs no second names/reactions read.
       namesOf(db, [me, ...input.mentions]),
       cardNumberRefs(db, a, me, [{bodyMd: input.body, deletedAt: null as Date | null} as MessageRow]),
+      // The files: mine, confirmed, not sent yet, of THIS workspace. Never trust the ids alone.
+      input.attachmentIds.length
+        ? db.attachment.findMany({
+            where: {id: {in: input.attachmentIds}, uploadedBy: me, workspaceId: a.workspaceId, ready: true, cardId: null, messageId: null, fileId: {not: null}},
+            select: {id: true, name: true, contentType: true, size: true},
+            orderBy: {id: 'asc'},
+            take: CHAT_FILES_PER_MESSAGE,
+          })
+        : Promise.resolve([] as ChatFileRow[]),
     ]);
     // A read-only workspace (plan limits) refuses the send, a retried one included, before anything is written.
     const blocked = readOnlyAnswer(c, ent);
@@ -1125,6 +1144,9 @@ export const chatRoutes = new Hono()
       return c.json(problem('rate_limited', 'You are sending too fast. Wait a moment and try again.'), 429);
     }
     if (input.parentId !== null && !parent) return notFound(c, 'message');
+    if (files.length !== input.attachmentIds.length) {
+      return invalid(c, {attachmentIds: {code: 'invalid', message: 'A file is still uploading or was removed. Wait for it, or remove it and try again.'}});
+    }
     // Never trust the ids alone: only people really named as `@Name` in the text.
     const mentions = mentionIdsIn(input.body, names, allowed);
 
@@ -1142,6 +1164,14 @@ export const chatRoutes = new Hono()
       const refRows = cardIds.length
         ? Prisma.sql`, cr AS (INSERT INTO message_card_refs (message_id, card_id) SELECT m.id, x FROM m, unnest(${cardIds}::int[]) AS x)`
         : Prisma.empty;
+      // The files join the message in the same statement, still only while they are mine and unsent (a second send
+      // with the same files, racing this one, links them once).
+      const fileIds = files.map(f => f.id);
+      const fileRows = fileIds.length
+        ? Prisma.sql`, fl AS (UPDATE attachments SET message_id = m.id FROM m
+            WHERE attachments.id = ANY(${fileIds}::int[]) AND attachments.uploaded_by = ${me} AND attachments.workspace_id = ${a.workspaceId}
+              AND attachments.ready AND attachments.card_id IS NULL AND attachments.message_id IS NULL)`
+        : Prisma.empty;
       const replyRow =
         input.parentId !== null
           ? Prisma.sql`, rp AS (UPDATE messages SET reply_count = reply_count + 1
@@ -1158,7 +1188,7 @@ export const chatRoutes = new Hono()
           SELECT ${a.conversationId}, ${a.workspaceId}, s.last_seq, ${me}, ${input.body}, ${input.parentId}::bigint, ${input.clientId}, 'user'
           FROM s
           RETURNING id, seq, created_at
-        )${mentionRows}${refRows}${replyRow}, rd AS (
+        )${mentionRows}${refRows}${fileRows}${replyRow}, rd AS (
           INSERT INTO conversation_members (conversation_id, user_id, workspace_id, last_read_seq)
           SELECT ${a.conversationId}, ${me}, ${a.workspaceId},
                  CASE WHEN LEAST(${lastSeen}::bigint, m.seq - 1) >= m.seq - 1 THEN m.seq ELSE GREATEST(LEAST(${lastSeen}::bigint, m.seq - 1), 0) END
@@ -1182,6 +1212,7 @@ export const chatRoutes = new Hono()
         createdAt: made.created_at,
         mentions: mentions.map(userId => ({userId})),
         cardRefs: cardIds.map(cardId => ({cardId})),
+        attachments: files,
       };
       // Mentions go through notify() AFTER the commit, so its per-sender cap (20 an hour from one person) stops
       // mention spam. Muted members still get the mention; they asked to silence the chat, not people who name them.
@@ -1382,6 +1413,8 @@ export const chatRoutes = new Hono()
       await tx.messageMention.deleteMany({where: {messageId: row.id}});
       await tx.messageCardRef.deleteMany({where: {messageId: row.id}});
       await tx.messageReaction.deleteMany({where: {messageId: row.id}});
+      // Its files go too: the triggers give the bytes back and queue the stored files for deletion.
+      await tx.attachment.deleteMany({where: {messageId: row.id, workspaceId: a.workspaceId}});
       await bumpEditRev(tx, a);
       // A deleted reply leaves the count of its thread honest.
       if (row.parentId !== null) {

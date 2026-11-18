@@ -2,7 +2,8 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
 import {useI18n} from '../../i18n';
 import {call} from '../api';
-import {idleMs, type MessagePage, type MessageT, newClientId, useVisibleInterval} from './api';
+import type {ChatFileT} from '../../lib/chat-files';
+import {idleMs, type MessagePage, type MessageT, newClientId, removeUnsentFile, useVisibleInterval} from './api';
 import {windowDelayMs} from './poll-timing';
 
 export type PendingMessage = {
@@ -10,6 +11,8 @@ export type PendingMessage = {
   body: string;
   mentions: number[];
   cardIds?: number[];
+  /** Files already uploaded, sent with it (kept for a retry; taken out again when the message is discarded). */
+  files?: ChatFileT[];
   parentId: string | null;
   status: 'sending' | 'failed';
   error?: string;
@@ -71,6 +74,7 @@ export function sameMessage(a: MessageT, b: MessageT): boolean {
     return false;
   }
   if (!sameList(a.mentions, b.mentions) || !sameList(a.cardIds, b.cardIds)) return false;
+  if (!sameList(a.files ?? [], b.files ?? [], (x, y) => x.id === y.id && x.name === y.name)) return false;
   if (!sameList(a.mentionNames ?? [], b.mentionNames ?? [])) return false;
   if (!sameList(a.reactions, b.reactions, (x, y) => x.emoji === y.emoji && x.count === y.count && x.mine === y.mine)) return false;
   const ra = a.numberRefs;
@@ -441,6 +445,7 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulse
           ...(p.parentId ? {parentId: p.parentId} : {}),
           ...(p.mentions.length ? {mentions: p.mentions} : {}),
           ...(p.cardIds?.length ? {cardIds: p.cardIds} : {}),
+          ...(p.files?.length ? {attachmentIds: p.files.map(f => f.id)} : {}),
           // What this view has seen of the conversation (a thread's seqs are not the conversation's, so it sends none).
           ...(!p.parentId && knownRef.current > 0 ? {lastSeenSeq: knownRef.current} : {}),
         });
@@ -467,8 +472,8 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulse
   );
 
   const send = useCallback(
-    (body: string, mentions: number[], cardIds: number[] = []) => {
-      const p: PendingMessage = {clientId: newClientId(), body, mentions, cardIds, parentId, status: 'sending', createdAt: new Date().toISOString()};
+    (body: string, mentions: number[], cardIds: number[] = [], files: ChatFileT[] = []) => {
+      const p: PendingMessage = {clientId: newClientId(), body, mentions, cardIds, files, parentId, status: 'sending', createdAt: new Date().toISOString()};
       setPending(list => [...list, p]);
       return transmit(p);
     },
@@ -482,7 +487,14 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulse
     },
     [pending, transmit]
   );
-  const discard = useCallback((clientId: string) => setPending(list => list.filter(x => x.clientId !== clientId)), []);
+  const discard = useCallback(
+    (clientId: string) => {
+      // Its files were never sent: take them out (they would otherwise wait a day for the sweep).
+      for (const f of pending.find(x => x.clientId === clientId)?.files ?? []) void removeUnsentFile(f.id);
+      setPending(list => list.filter(x => x.clientId !== clientId));
+    },
+    [pending]
+  );
 
   const hasNewer = newerCursor !== null;
   return useMemo(

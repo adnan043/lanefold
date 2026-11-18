@@ -1987,5 +1987,18 @@
   "chat.viewThread": "Открыть ветку",
   "chat.mentionSomeone": "Упомянуть кого-нибудь",
   "chat.insertEmoji": "Эмодзи",
-  "chat.sendHint": "Enter — отправить · Shift + Enter — новая строка"
+  "chat.sendHint": "Enter — отправить · Shift + Enter — новая строка",
+  "chat.attachFile": "Прикрепить файл",
+  "chat.filesToSend": "Файлы для отправки",
+  "chat.uploadingFile": "Загрузка…",
+  "chat.uploadFailed": "Не удалось загрузить",
+  "chat.removeFile": "Убрать {name}",
+  "chat.fileTooBig": "{name} больше {max}.",
+  "chat.fileTypeRefused": "{name} нельзя отправить здесь. Отправьте файл PDF, Word, Excel, PowerPoint, текстовый, CSV, ZIP или изображение.",
+  "chat.tooManyFiles": "Можно отправить не более {n} файлов за раз.",
+  "chat.waitForUploads": "Дождитесь окончания загрузки файлов.",
+  "chat.messageFiles": "Файлы",
+  "chat.downloadFile": "Скачать {name}",
+  "chat.openFile": "Открыть {name}",
+  "chat.morePictures": "Ещё изображений: {n}"
 }

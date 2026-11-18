@@ -124,7 +124,7 @@ export default function NotificationPanel({
         <Button
           size="sm"
           variant="ghost"
-          disabled={unread === 0 || cooldown.blocked}
+          disabled={(unread === 0 && !items?.some((n) => !n.read)) || cooldown.blocked}
           pending={readAll.isPending}
           pendingLabel={t("notif.markingAll")}
           onClick={() => readAll.mutate()}
@@ -183,7 +183,6 @@ export default function NotificationPanel({
                 aria-busy={busy === n.id || undefined}
                 onClick={() => go(n)}
               >
-                <span className="notif-dot" aria-hidden="true" />
                 {/* Who did it: their photo when one exists, else their initials; a system notice (digest) shows a bell. */}
                 <span className="notif-avatar" aria-hidden="true">
                   {n.actor ? (
