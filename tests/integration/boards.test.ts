@@ -177,6 +177,40 @@ describe.skipIf(!DATABASE_URL)('boards (integration, real Postgres)', () => {
     expect(again.json.lanes).toEqual([]);
   });
 
+  it('the poll: an unchanged board answers an empty delta with the board fields, and a stale one the changes', async () => {
+    const rev = (await ann.get(`/site-api/boards/${boardA}/rev`)).json.rev as string;
+    const quiet = await viewer.get(`/site-api/boards/${boardA}/changes?since=${rev}`);
+    expect(quiet.status).toBe(200);
+    expect(quiet.json).toMatchObject({rev, archived: false, truncated: false, lanes: [], cards: [], removed: []});
+    expect(quiet.json.board).toMatchObject({name: 'Roadmap', role: 'viewer', canWrite: false});
+    // A `since` ahead of the board (a reload racing the poll) is the same empty answer at the board's rev.
+    const ahead = await viewer.get(`/site-api/boards/${boardA}/changes?since=${BigInt(rev) + 5n}`);
+    expect(ahead.json).toMatchObject({rev, lanes: [], cards: []});
+    const card = (await ann.post(`/site-api/lanes/${lane1}/cards`, {title: 'New'})).json.items[0].id as number;
+    const moved = await viewer.get(`/site-api/boards/${boardA}/changes?since=${rev}`);
+    expect(BigInt(moved.json.rev)).toBeGreaterThan(BigInt(rev));
+    expect(moved.json.cards.map((c: J) => c.id)).toEqual([card]);
+    expect(moved.json.removed).toEqual([]);
+  });
+
+  it('PATCH /cards/:id refuses a due day before the start day (422, nothing changes) and allows the start day itself', async () => {
+    const card = (await ann.post(`/site-api/lanes/${lane1}/cards`, {title: 'Dated'})).json.items[0].id as number;
+    await db.card.update({where: {id: card}, data: {startDate: new Date('2026-12-10T00:00:00Z'), dueDate: new Date('2026-12-15T00:00:00Z')}});
+    const rev = (await ann.get(`/site-api/boards/${boardA}/rev`)).json.rev as string;
+    const early = await ann.request('PATCH', `/site-api/cards/${card}`, {dueDate: '2026-12-09'});
+    expect(early.status).toBe(422);
+    expect(early.json.error).toBe('invalid_input');
+    expect(early.json.fieldCodes).toEqual({dueDate: 'invalid'});
+    expect((await db.card.findUniqueOrThrow({where: {id: card}})).dueDate?.toISOString().slice(0, 10)).toBe('2026-12-15');
+    // The refusal rolled the rev bump back.
+    expect((await ann.get(`/site-api/boards/${boardA}/rev`)).json.rev).toBe(rev);
+    const same = await ann.request('PATCH', `/site-api/cards/${card}`, {dueDate: '2026-12-10'});
+    expect(same.status).toBe(200);
+    expect(same.json.card.dueDate).toBe('2026-12-10');
+    // Clearing the due day is always fine.
+    expect((await ann.request('PATCH', `/site-api/cards/${card}`, {dueDate: null})).status).toBe(200);
+  });
+
   it('restoring a card respects the lane cap and an archived lane', async () => {
     const made = await ann.post(`/site-api/lanes/${lane1}/cards`, {titles: ['r']});
     const card = made.json.items[0].id as number;

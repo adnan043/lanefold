@@ -1,18 +1,20 @@
 import {useMemo, useState} from 'react';
 
 import {useI18n, useT} from '../../../i18n';
-import {Button, IconButton, Notice} from '../../../portal/ui';
+import {Button, IconButton, Notice, useToast} from '../../../portal/ui';
 import {addDays, todayISO} from '../../../portal/ui/date';
 import type {BoardData, CardT} from '../../api';
 import type {BoardActions} from '../actions';
 import {isTemp} from '../actions';
 import {LoadMoreBar, useFirstPages} from './use-lanes-loaded';
+import {dueBeforeStart} from './view-logic';
 import {monthSegments, placeSpan, shiftAnchor, shiftedDue, timelineRows, todayColumn, windowFor, type Zoom, ZOOMS} from './timeline-logic';
 
 /**
  * The board as a Gantt-style timeline: one row per scheduled card, a bar from its start (or creation) day to its due
  * day. Read, plus one light edit: with a bar focused, Alt+Arrow moves its due date a day (Alt+Shift a week) through
- * `actions.updateCard` (optimistic, rolled back with a message on failure). Enter opens the card. Arrow keys follow
+ * `actions.updateCard` (optimistic, rolled back with a message on failure). A due day before the start day is refused
+ * with a message (the server's rule), never sent. Enter opens the card. Arrow keys follow
  * the reading direction, so they are mirrored in right-to-left languages.
  */
 /** Layout values are set through the CSSOM (the CSP blocks style="" attributes). */
@@ -21,6 +23,7 @@ const cssVar = (name: string, value: string) => (el: HTMLElement | null) => { if
 
 export function TimelineView({data, actions, onOpenCard}: {data: BoardData; actions: BoardActions; onOpenCard: (card: CardT) => void}) {
   const t = useT();
+  const toast = useToast();
   const {firstDayOfWeek, formatDate} = useI18n();
   const canWrite = data.board.canWrite && !data.board.archived;
   const today = todayISO();
@@ -49,7 +52,10 @@ export function TimelineView({data, actions, onOpenCard}: {data: BoardData; acti
     const rtl = getComputedStyle(event.currentTarget as Element).direction === 'rtl';
     const forward = (event.key === 'ArrowRight') !== rtl;
     const next = shiftedDue(card, (forward ? 1 : -1) * (event.shiftKey ? 7 : 1));
-    if (next) void actions.updateCard(card.id, {dueDate: next});
+    if (!next) return;
+    // The bar would end before it starts: the server refuses that (422), so say why here and send nothing.
+    if (dueBeforeStart(card, next)) toast.danger(t('cd.dateOrder'));
+    else void actions.updateCard(card.id, {dueDate: next});
   };
 
   return (

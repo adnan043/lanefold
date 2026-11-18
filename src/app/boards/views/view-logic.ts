@@ -119,3 +119,9 @@ export const weekdayOrder = (firstDay = 1): number[] => Array.from({length: 7}, 
 
 /** A drop on `date` changes the due date only when it differs. */
 export const dropChangesDue = (card: Pick<CardT, 'dueDate'>, date: string) => card.dueDate !== date;
+
+/**
+ * The server's rule (PATCH /cards/:id, the card panel): a due day never before the start day. The calendar and the
+ * timeline refuse such an edit with a message instead of sending it (YYYY-MM-DD strings compare as dates).
+ */
+export const dueBeforeStart = (card: Pick<CardT, 'startDate'>, due: string | null) => !!(due && card.startDate && due < card.startDate);

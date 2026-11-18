@@ -180,12 +180,17 @@ export const laneActionRoutes = new Hono()
     const {workspaceId} = ctx.access;
     const {toLaneId} = c.req.valid('json');
     if (toLaneId === ctx.lane.id) return invalid(c, {toLaneId: {code: 'invalid', message: 'Choose a different lane.'}});
-    const out = await c.var.db
+    const db = c.var.db;
+    // The target must be an open lane of THIS board and workspace (never an id from another board): checked BEFORE the
+    // board lock. The counter update below is conditional on it again (open, this board), so an archive in between
+    // is still a 404 and never a move into an archived lane.
+    const target = await db.lane.findFirst({where: {id: toLaneId, boardId: ctx.boardId, workspaceId, archivedAt: null}, select: {id: true}});
+    if (!target) return notFound(c, 'lane');
+    const out = await db
       .$transaction(async tx => {
         const rev = await bumpRev(tx, ctx.boardId, workspaceId);
-        // The target must be an open lane of THIS board and workspace (never an id from another board).
-        const [target, ids, last] = await Promise.all([
-          tx.lane.findFirst({where: {id: toLaneId, boardId: ctx.boardId, workspaceId, archivedAt: null}, select: {id: true}}),
+        // Under the lock only what depends on the cards' state: the source lane's open cards and the target's last key.
+        const [ids, last] = await Promise.all([
           tx.card.findMany({
             where: {workspaceId, laneId: ctx.lane.id, archivedAt: null},
             orderBy: [...order('asc')],
@@ -194,26 +199,37 @@ export const laneActionRoutes = new Hono()
           }),
           tx.card.findFirst({where: {workspaceId, laneId: toLaneId, archivedAt: null}, orderBy: [...order('desc')], select: {position: true}}),
         ]);
-        if (!target) throw new Refuse('not_found');
         const moving = ids.slice(0, MAX_CARDS_PER_LANE).map(r => r.id);
         if (!moving.length) return {moved: 0, rev};
-        // The target's cap is ONE conditional update, so two parallel moves cannot both pass it.
-        const room = await tx.$queryRaw<{id: number}[]>`
-          UPDATE lanes SET card_count = card_count + ${moving.length}::int, updated_rev = ${rev}::bigint
-          WHERE id = ${toLaneId} AND board_id = ${ctx.boardId} AND workspace_id = ${workspaceId}
-            AND card_count + ${moving.length}::int <= ${MAX_CARDS_PER_LANE}::int
-          RETURNING id`;
-        if (!room[0]) throw new Refuse('lane_full');
         const keys = keysAtEnd(last?.position ?? null, moving.length);
-        await tx.$executeRaw`
-          UPDATE cards SET lane_id = ${toLaneId}::int, position = u.k, updated_rev = ${rev}::bigint
-          FROM unnest(${moving}::int[], ${keys}::text[]) AS u(id, k)
-          WHERE cards.id = u.id AND cards.workspace_id = ${workspaceId}::int AND cards.board_id = ${ctx.boardId}::int
-            AND cards.lane_id = ${ctx.lane.id}::int AND cards.archived_at IS NULL`;
-        await tx.$executeRaw`
-          UPDATE lanes SET card_count = GREATEST(card_count - ${moving.length}::int, 0), updated_rev = ${rev}::bigint
-          WHERE id = ${ctx.lane.id} AND board_id = ${ctx.boardId} AND workspace_id = ${workspaceId}`;
-        await tx.activity.create({data: {workspaceId, boardId: ctx.boardId, actorId: userId, kind: 'lane.moved', meta: {laneId: ctx.lane.id, toLaneId, cards: moving.length}}});
+        const meta = JSON.stringify({laneId: ctx.lane.id, toLaneId, cards: moving.length});
+        // ONE statement: the target's cap (so two parallel moves cannot both pass it), the cards, the source counter and
+        // the activity row; the cards and the source move only when the target took them.
+        const [row] = await tx.$queryRaw<{room: boolean; open: boolean}[]>`
+          WITH t AS (
+            UPDATE lanes SET card_count = card_count + ${moving.length}::int, updated_rev = ${rev}::bigint
+            WHERE id = ${toLaneId}::int AND board_id = ${ctx.boardId}::int AND workspace_id = ${workspaceId}::int
+              AND archived_at IS NULL AND card_count + ${moving.length}::int <= ${MAX_CARDS_PER_LANE}::int
+            RETURNING id
+          ), k AS (
+            UPDATE cards SET lane_id = ${toLaneId}::int, position = u.k, updated_rev = ${rev}::bigint
+            FROM unnest(${moving}::int[], ${keys}::text[]) AS u(id, k)
+            WHERE EXISTS (SELECT 1 FROM t)
+              AND cards.id = u.id AND cards.workspace_id = ${workspaceId}::int AND cards.board_id = ${ctx.boardId}::int
+              AND cards.lane_id = ${ctx.lane.id}::int AND cards.archived_at IS NULL
+            RETURNING cards.id
+          ), f AS (
+            UPDATE lanes SET card_count = GREATEST(card_count - ${moving.length}::int, 0), updated_rev = ${rev}::bigint
+            WHERE EXISTS (SELECT 1 FROM t) AND id = ${ctx.lane.id}::int AND board_id = ${ctx.boardId}::int AND workspace_id = ${workspaceId}::int
+            RETURNING id
+          ), a AS (
+            INSERT INTO activity (workspace_id, board_id, actor_id, kind, meta)
+            SELECT ${workspaceId}::int, ${ctx.boardId}::int, ${userId}::int, 'lane.moved', ${meta}::jsonb
+            WHERE EXISTS (SELECT 1 FROM t)
+          )
+          SELECT EXISTS (SELECT 1 FROM t) AS room,
+                 EXISTS (SELECT 1 FROM lanes WHERE id = ${toLaneId}::int AND board_id = ${ctx.boardId}::int AND archived_at IS NULL) AS open`;
+        if (!row?.room) throw new Refuse(row?.open ? 'lane_full' : 'not_found');
         return {moved: moving.length, rev};
       })
       .catch(refusal);
@@ -230,17 +246,25 @@ export const laneActionRoutes = new Hono()
     const {workspaceId} = ctx.access;
     const out = await c.var.db.$transaction(async tx => {
       const rev = await bumpRev(tx, ctx.boardId, workspaceId);
-      const {count} = await tx.card.updateMany({
-        where: {workspaceId, boardId: ctx.boardId, laneId: ctx.lane.id, archivedAt: null},
-        data: {archivedAt: new Date(), updatedRev: rev},
-      });
-      if (count) {
-        await tx.$executeRaw`
-          UPDATE lanes SET card_count = GREATEST(card_count - ${count}::int, 0), updated_rev = ${rev}::bigint
-          WHERE id = ${ctx.lane.id} AND board_id = ${ctx.boardId} AND workspace_id = ${workspaceId}`;
-        await tx.activity.create({data: {workspaceId, boardId: ctx.boardId, actorId: userId, kind: 'lane.updated', meta: {laneId: ctx.lane.id, archivedCards: count}}});
-      }
-      return {archived: count, rev};
+      // ONE statement under the lock: archive the lane's open cards, lower its counter by that many, and write the
+      // activity row, the last two only when a card was archived.
+      const [row] = await tx.$queryRaw<{archived: number}[]>`
+        WITH k AS (
+          UPDATE cards SET archived_at = now(), updated_rev = ${rev}::bigint, updated_at = now()
+          WHERE workspace_id = ${workspaceId}::int AND board_id = ${ctx.boardId}::int AND lane_id = ${ctx.lane.id}::int AND archived_at IS NULL
+          RETURNING id
+        ), n AS (SELECT count(*)::int AS c FROM k), f AS (
+          UPDATE lanes SET card_count = GREATEST(card_count - n.c, 0), updated_rev = ${rev}::bigint
+          FROM n
+          WHERE n.c > 0 AND lanes.id = ${ctx.lane.id}::int AND lanes.board_id = ${ctx.boardId}::int AND lanes.workspace_id = ${workspaceId}::int
+          RETURNING lanes.id
+        ), a AS (
+          INSERT INTO activity (workspace_id, board_id, actor_id, kind, meta)
+          SELECT ${workspaceId}::int, ${ctx.boardId}::int, ${userId}::int, 'lane.updated', jsonb_build_object('laneId', ${ctx.lane.id}::int, 'archivedCards', n.c)
+          FROM n WHERE n.c > 0
+        )
+        SELECT c AS archived FROM n`;
+      return {archived: row?.archived ?? 0, rev};
     });
     return c.json({archived: out.archived, rev: String(out.rev)});
   })

@@ -8,8 +8,8 @@ import {applyChanges} from './board-state';
  * Board sync by polling (SPEC §8). The ONLY place that knows the transport: a future push channel replaces this
  * hook and no screen changes.
  *
- * Every ~5 s (while the tab is visible) ask `GET /boards/:id/rev` (one primary-key read); only when it moved,
- * fetch `GET /boards/:id/changes?since=<our rev>` and merge it into the cached board. Never applies a poll
+ * Every ~5 s (while the tab is visible) ask `GET /boards/:id/changes?since=<our rev>`: when nothing moved the server
+ * answers an empty delta from its one access read; otherwise merge the delta into the cached board. Never applies a poll
  * while one of our own writes is in flight (the answer could predate it); errors back off (5, 10, 20 … 60 s);
  * a hidden tab polls nothing and checks at once when it comes back.
  */
@@ -120,15 +120,14 @@ export function useBoardSync(boardId: number) {
       if (!data) return;
       const gen = writeGen;
       try {
-        const head = await call<{rev: string}>('GET', `/boards/${boardId}/rev`);
+        // ONE request: the server answers an empty delta from its access read alone when nothing moved.
+        const delta = await call<Delta>('GET', `/boards/${boardId}/changes?since=${data.board.rev}`);
         failures = 0;
-        idle = head.rev === data.board.rev ? idle + 1 : 0;
-        if (head.rev !== data.board.rev && inflight === 0 && !paused && gen === writeGen) {
-          const delta = await call<Delta>('GET', `/boards/${boardId}/changes?since=${data.board.rev}`);
-          if (inflight === 0 && !paused && gen === writeGen) {
-            if (delta.truncated) await queryClient.invalidateQueries({queryKey: key});
-            else queryClient.setQueryData<BoardData>(key, current => (current ? applyChanges(current, delta) : current));
-          }
+        const moved = delta.rev !== data.board.rev;
+        idle = moved ? 0 : idle + 1;
+        if (moved && inflight === 0 && !paused && gen === writeGen) {
+          if (delta.truncated) await queryClient.invalidateQueries({queryKey: key});
+          else queryClient.setQueryData<BoardData>(key, current => (current ? applyChanges(current, delta) : current));
         }
       } catch (error) {
         failures = Math.min(failures + 1, 4);

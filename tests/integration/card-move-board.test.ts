@@ -68,6 +68,39 @@ describe.skipIf(!DATABASE_URL)('card move / copy to another board (integration, 
     expect(await db.activity.count({where: {cardId: card, kind: 'card.moved'}})).toBe(2);
   });
 
+  it("the source board's delta reports the moved card as removed (and not once it is back)", async () => {
+    const since = String(await rev(boardA));
+    expect((await moveTo(ann, card, boardB, laneB)).status).toBe(200);
+    const delta = (await ann.get(`/site-api/boards/${boardA}/changes?since=${since}`)).json;
+    expect(BigInt(delta.rev)).toBeGreaterThan(BigInt(since));
+    expect(delta.truncated).toBe(false);
+    expect(delta.removed).toEqual([card]);
+    expect(delta.cards.map((x: J) => x.id)).not.toContain(card);
+    // The source lane's counter comes with it, so the lane count is right without a reload.
+    expect(delta.lanes.find((l: J) => l.id === laneA).cardCount).toBe(1);
+    // The target board's delta carries it as a card, never as removed.
+    const onB = (await ann.get(`/site-api/boards/${boardB}/changes?since=0`)).json;
+    expect(onB.cards.map((x: J) => x.id)).toContain(card);
+    expect(onB.removed).toEqual([]);
+    // Back on board A within the same range: it is a card of A again, not removed.
+    expect((await moveTo(ann, card, boardA, laneA)).status).toBe(200);
+    const back = (await ann.get(`/site-api/boards/${boardA}/changes?since=${since}`)).json;
+    expect(back.removed).toEqual([]);
+    expect(back.cards.map((x: J) => x.id)).toContain(card);
+    // A viewer holding the newest rev sees nothing more.
+    const none = (await ann.get(`/site-api/boards/${boardA}/changes?since=${back.rev}`)).json;
+    expect(none).toMatchObject({rev: back.rev, truncated: false, lanes: [], cards: [], removed: []});
+    // The exit rows go with their board.
+    expect(await db.cardBoardExit.count({where: {boardId: boardA}})).toBe(1);
+    expect(await db.cardBoardExit.count({where: {boardId: boardB}})).toBe(1);
+  });
+
+  it('a refused move (stale position) records no exit', async () => {
+    const res = await moveTo(ann, card, boardB, laneB, {afterId: 999_999});
+    expect(res.status).toBe(409);
+    expect(await db.cardBoardExit.count()).toBe(0);
+  });
+
   it('places the card after a sibling when afterId is given, else last', async () => {
     const first = (await ann.post(`/site-api/lanes/${laneB}/cards`, {title: 'First'})).json.items[0].id;
     const second = (await ann.post(`/site-api/lanes/${laneB}/cards`, {title: 'Second'})).json.items[0].id;

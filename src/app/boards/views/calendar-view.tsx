@@ -3,13 +3,13 @@ import {CSS} from '@dnd-kit/utilities';
 import {useEffect, useMemo, useState} from 'react';
 
 import {useI18n, useT} from '../../../i18n';
-import {Button, IconButton, Notice} from '../../../portal/ui';
+import {Button, IconButton, Notice, useToast} from '../../../portal/ui';
 import {addDays, todayISO} from '../../../portal/ui/date';
 import type {BoardData, CardT} from '../../api';
 import {pauseBoardSync} from '../../use-board-sync';
 import {type BoardActions, isTemp} from '../actions';
 import {LoadMoreBar, useFirstPages} from './use-lanes-loaded';
-import {agendaDays, dropChangesDue, groupByDue, isInMonth, monthOf, monthWeeks, shiftMonth, weekdayOrder} from './view-logic';
+import {agendaDays, dropChangesDue, dueBeforeStart, groupByDue, isInMonth, monthOf, monthWeeks, shiftMonth, weekdayOrder} from './view-logic';
 
 const MAX_CHIPS = 3;
 // Module constants, as in canvas.tsx: inline option objects rebuilt both sensors on every render (every sync delta).
@@ -68,6 +68,7 @@ function DayCell({iso, ym, today, canDrop, cards, canDrag, expanded, onToggle, o
  */
 export function CalendarView({data, actions, onOpenCard}: {data: BoardData; actions: BoardActions; onOpenCard: (card: CardT) => void}) {
   const t = useT();
+  const toast = useToast();
   const {firstDayOfWeek, formatDate} = useI18n();
   const canWrite = data.board.canWrite && !data.board.archived;
   const today = todayISO();
@@ -98,7 +99,10 @@ export function CalendarView({data, actions, onOpenCard}: {data: BoardData; acti
     const date = over.slice(4);
     const id = Number(String(event.active.id).slice(4));
     const card = data.lanes.flatMap(l => l.cards).find(c => c.id === id);
-    if (card && canWrite && dropChangesDue(card, date)) void actions.updateCard(id, {dueDate: date});
+    if (!card || !canWrite || !dropChangesDue(card, date)) return;
+    // The server refuses a due day before the start day (422): say so here instead of a round trip and a rollback.
+    if (dueBeforeStart(card, date)) toast.danger(t('cd.dateOrder'));
+    else void actions.updateCard(id, {dueDate: date});
   };
   const onDragCancel = () => {
     pauseBoardSync(false);
