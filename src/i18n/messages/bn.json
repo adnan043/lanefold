@@ -576,7 +576,7 @@
   "chat.emptyConversationTitle": "এখনও কোনো বার্তা নেই",
   "chat.emptyTitle2": "এখনও কোনো কথোপকথন নেই",
   "chat.groupMembers": "গ্রুপের সদস্যরা",
-  "chat.groupPlaceholder": "লঞ্চ",
+  "chat.groupPlaceholder": "গ্রুপের নাম",
   "chat.kind": "কথোপকথনের ধরন",
   "chat.kind.channel": "চ্যানেল",
   "chat.kind.dm": "সরাসরি বার্তা",

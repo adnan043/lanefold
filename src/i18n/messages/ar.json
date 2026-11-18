@@ -592,7 +592,7 @@
   "chat.emptyConversationTitle": "لا توجد رسائل بعد",
   "chat.emptyTitle2": "لا توجد محادثات بعد",
   "chat.groupMembers": "أعضاء المجموعة",
-  "chat.groupPlaceholder": "إطلاق",
+  "chat.groupPlaceholder": "اسم المجموعة",
   "chat.kind": "نوع المحادثة",
   "chat.kind.channel": "قناة",
   "chat.kind.dm": "رسالة مباشرة",

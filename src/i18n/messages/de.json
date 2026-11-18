@@ -576,7 +576,7 @@
   "chat.emptyConversationTitle": "Noch keine Nachrichten",
   "chat.emptyTitle2": "Noch keine Unterhaltungen",
   "chat.groupMembers": "Personen in der Gruppe",
-  "chat.groupPlaceholder": "Launch",
+  "chat.groupPlaceholder": "Gruppenname",
   "chat.kind": "Art der Unterhaltung",
   "chat.kind.channel": "Kanal",
   "chat.kind.dm": "Direktnachricht",

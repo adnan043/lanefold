@@ -523,10 +523,10 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
       : [{label: t('chat.archiveChannel'), icon: 'archive', danger: true, onSelect: archiveChannel}];
 
   const parent = thread ? (feed.items.find(m => m.id === thread) ?? null) : null;
-  /** The conversation's mark: a DM's person, or a tile with its kind's icon (the board's in the accent). */
+  /** The conversation's mark: a DM's person in the header (a chat tile in the welcome line), or a tile with its kind's icon (the board's in the accent). */
   const mark = (size: 'md' | 'lg') =>
-    conversation.kind === 'dm' ? (
-      <Avatar name={title} size={size === 'lg' ? 'md' : 'sm'} />
+    conversation.kind === 'dm' && size === 'md' ? (
+      <Avatar name={title} size="sm" />
     ) : (
       <span className="chat-mark" data-size={size} data-kind={conversation.kind} aria-hidden="true">
         <Icon name={conversation.kind === 'channel' ? 'hash' : conversation.kind === 'board' ? 'layout-kanban' : conversation.kind === 'group' ? 'users' : 'message'} size={size === 'lg' ? 20 : 16} />

@@ -572,7 +572,7 @@
   "chat.emptyConversationTitle": "メッセージはまだありません",
   "chat.emptyTitle2": "会話はまだありません",
   "chat.groupMembers": "グループのメンバー",
-  "chat.groupPlaceholder": "ローンチ",
+  "chat.groupPlaceholder": "グループ名",
   "chat.kind": "会話の種類",
   "chat.kind.channel": "チャンネル",
   "chat.kind.dm": "ダイレクトメッセージ",

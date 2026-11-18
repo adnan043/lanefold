@@ -13,7 +13,7 @@ import {SIDEBAR_VIEWS, useBoardView, VIEW_ICONS} from './boards/views/view-switc
 import {PlanLimitWatcher} from './plan-limits';
 import {PreferencesSync} from './settings/sync';
 import {ThemeToggle} from './settings/theme-toggle';
-import {Kbd, Shortcuts} from './shortcuts';
+import {Shortcuts} from './shortcuts';
 import {totalUnread, usePulse} from './chat/api';
 import {NotificationBell} from './notifications/bell';
 import {TitleSetter, useWorkspace, WorkspaceProvider} from './workspace';
@@ -368,9 +368,6 @@ function Shell() {
             {viewer && <NotificationBell />}
             {paletteLoading && <span className="spinner" aria-hidden="true" />}
             <IconButton icon="search" label={`${t('shell.search')} (${t('shell.searchHint')})`} onPointerEnter={() => void loadPalette()} onFocus={() => void loadPalette()} onClick={() => setPaletteOpen(true)} />
-            <span className="lf-kbd-hint" aria-hidden="true">
-              <Kbd>/</Kbd>
-            </span>
             {viewer && (
               <Menu
                 label={t('account.menu', {name: viewer.name ?? t('account.you')})}

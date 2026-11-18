@@ -208,6 +208,7 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
           <IconButton icon="hash" size="sm" label={t('chat.attachCard')} disabled={cards.length >= MAX_CARDS || !workspaceId} onClick={startCardTag} />
           <span className="chat-composer-sep" aria-hidden="true" />
           <IconButton icon="at-sign" size="sm" label={t('chat.mentionSomeone')} onClick={startMention} />
+          <span className="chat-composer-sep" aria-hidden="true" />
           <IconButton ref={emojiButton} icon="smile" size="sm" label={t('chat.insertEmoji')} aria-haspopup="dialog" aria-expanded={emojiOpen} onClick={() => setEmojiOpen(open => !open)} />
           <Popover open={emojiOpen} onClose={() => setEmojiOpen(false)} anchor={emojiButton} label={t('chat.insertEmoji')}>
             <div className="chat-emoji-grid">
@@ -226,9 +227,6 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
               ))}
             </div>
           </Popover>
-          <span className="chat-composer-hint muted" aria-hidden="true">
-            {t('chat.sendHint')}
-          </span>
           <Button type="submit" size="sm" icon="send" disabled={!text.trim()} aria-label={submitLabel ?? t('chat.send')}>
             <span className="chat-send-label">{submitLabel ?? t('chat.send')}</span>
           </Button>

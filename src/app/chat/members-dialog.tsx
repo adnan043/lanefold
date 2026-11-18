@@ -55,7 +55,9 @@ export function MembersButton({conversationId, kind, title, workspaceId}: {conve
         ) : query.data.scope === 'members' ? (
           <MemberList people={query.data.items} workspaceId={workspaceId} direct={kind === 'dm'} onLeave={() => setOpen(false)} />
         ) : (
-          <EmptyState icon="users" title={query.data.scope === 'board' ? t('chat.membersBoard') : t('chat.membersEveryone')} />
+          <div className="chat-members-scope">
+            <EmptyState icon="users" title={query.data.scope === 'board' ? t('chat.membersBoard') : t('chat.membersEveryone')} />
+          </div>
         )}
       </Modal>
     </>
@@ -107,13 +109,19 @@ function MemberList({people, workspaceId, direct, onLeave}: {people: Person[]; w
         <ul className="chat-members">
           {shown.map(person => {
             const isMe = person.id === me;
+            const elevated = person.role === 'owner' || person.role === 'admin';
             return (
               <li key={person.id} className="chat-members-row">
                 <Avatar name={person.name} size="md" />
-                <span className="chat-members-name">
-                  <bdi>{person.name}</bdi>
-                  {isMe && <span className="chat-members-you">{t('members.you')}</span>}
-                  {(person.role === 'owner' || person.role === 'admin') && <span className="chat-role-badge">{t(`members.role.${person.role}` as never)}</span>}
+                <span className="chat-members-text">
+                  <span className="chat-members-name">
+                    <bdi>{person.name}</bdi>
+                    {isMe && <span className="chat-members-you">{t('members.you')}</span>}
+                  </span>
+                  <span className={`chat-members-role${elevated ? ' is-elevated' : ''}`}>
+                    {elevated && <Icon name={person.role === 'owner' ? 'star' : 'shield'} size={12} />}
+                    {t(`members.role.${person.role}` as never)}
+                  </span>
                 </span>
                 {!isMe && !direct && (
                   <IconButton

@@ -584,7 +584,7 @@
   "chat.emptyConversationTitle": "Сообщений пока нет",
   "chat.emptyTitle2": "Бесед пока нет",
   "chat.groupMembers": "Участники группы",
-  "chat.groupPlaceholder": "Запуск",
+  "chat.groupPlaceholder": "Название группы",
   "chat.kind": "Тип беседы",
   "chat.kind.channel": "Канал",
   "chat.kind.dm": "Личное сообщение",

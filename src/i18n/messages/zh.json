@@ -572,7 +572,7 @@
   "chat.emptyConversationTitle": "还没有消息",
   "chat.emptyTitle2": "还没有会话",
   "chat.groupMembers": "群组成员",
-  "chat.groupPlaceholder": "发布",
+  "chat.groupPlaceholder": "群组名称",
   "chat.kind": "会话类型",
   "chat.kind.channel": "频道",
   "chat.kind.dm": "私信",

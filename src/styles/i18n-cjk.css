@@ -345,8 +345,8 @@
 
 /* Minimum 12px for small text (2026-11-03): CJK strokes blur below it. Only the classes that are set under 12px
    in Latin; the English output is unchanged (loaded only for zh, ja, ko). */
-html:lang(zh) :is(.lf-dock-link, .lf-shortcuts-title, .app-nav-label, .app-nav-badge, .lf-kbd-hint kbd, .lf-card-labels > *, .lf-label, .notif-count, .avatar-fallback, .avatar-sm, .avatar-more, .bar-chart-labels, .palette-kbd, .palette-group, .chip-sm),
-html:lang(ja) :is(.lf-dock-link, .lf-shortcuts-title, .app-nav-label, .app-nav-badge, .lf-kbd-hint kbd, .lf-card-labels > *, .lf-label, .notif-count, .avatar-fallback, .avatar-sm, .avatar-more, .bar-chart-labels, .palette-kbd, .palette-group, .chip-sm),
-html:lang(ko) :is(.lf-dock-link, .lf-shortcuts-title, .app-nav-label, .app-nav-badge, .lf-kbd-hint kbd, .lf-card-labels > *, .lf-label, .notif-count, .avatar-fallback, .avatar-sm, .avatar-more, .bar-chart-labels, .palette-kbd, .palette-group, .chip-sm) {
+html:lang(zh) :is(.lf-dock-link, .lf-shortcuts-title, .app-nav-label, .app-nav-badge, .lf-card-labels > *, .lf-label, .notif-count, .avatar-fallback, .avatar-sm, .avatar-more, .bar-chart-labels, .palette-kbd, .palette-group, .chip-sm),
+html:lang(ja) :is(.lf-dock-link, .lf-shortcuts-title, .app-nav-label, .app-nav-badge, .lf-card-labels > *, .lf-label, .notif-count, .avatar-fallback, .avatar-sm, .avatar-more, .bar-chart-labels, .palette-kbd, .palette-group, .chip-sm),
+html:lang(ko) :is(.lf-dock-link, .lf-shortcuts-title, .app-nav-label, .app-nav-badge, .lf-card-labels > *, .lf-label, .notif-count, .avatar-fallback, .avatar-sm, .avatar-more, .bar-chart-labels, .palette-kbd, .palette-group, .chip-sm) {
   font-size: max(12px, 0.75rem) !important;
 }

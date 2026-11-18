@@ -576,7 +576,7 @@
   "chat.emptyConversationTitle": "अभी कोई संदेश नहीं",
   "chat.emptyTitle2": "अभी कोई बातचीत नहीं",
   "chat.groupMembers": "ग्रुप के लोग",
-  "chat.groupPlaceholder": "लॉन्च",
+  "chat.groupPlaceholder": "ग्रुप का नाम",
   "chat.kind": "बातचीत का प्रकार",
   "chat.kind.channel": "चैनल",
   "chat.kind.dm": "सीधा संदेश",

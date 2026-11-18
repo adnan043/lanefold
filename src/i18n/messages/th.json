@@ -572,7 +572,7 @@
   "chat.emptyConversationTitle": "ยังไม่มีข้อความ",
   "chat.emptyTitle2": "ยังไม่มีการสนทนา",
   "chat.groupMembers": "สมาชิกในกลุ่ม",
-  "chat.groupPlaceholder": "เปิดตัว",
+  "chat.groupPlaceholder": "ชื่อกลุ่ม",
   "chat.kind": "ประเภทการสนทนา",
   "chat.kind.channel": "แชนเนล",
   "chat.kind.dm": "ข้อความส่วนตัว",

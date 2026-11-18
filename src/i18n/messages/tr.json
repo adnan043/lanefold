@@ -576,7 +576,7 @@
   "chat.emptyConversationTitle": "Henüz mesaj yok",
   "chat.emptyTitle2": "Henüz sohbet yok",
   "chat.groupMembers": "Gruptaki kişiler",
-  "chat.groupPlaceholder": "Lansman",
+  "chat.groupPlaceholder": "Grup adı",
   "chat.kind": "Sohbet türü",
   "chat.kind.channel": "Kanal",
   "chat.kind.dm": "Doğrudan mesaj",

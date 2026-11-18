@@ -572,7 +572,7 @@
   "chat.emptyConversationTitle": "아직 메시지가 없습니다",
   "chat.emptyTitle2": "아직 대화가 없습니다",
   "chat.groupMembers": "그룹 멤버",
-  "chat.groupPlaceholder": "런칭",
+  "chat.groupPlaceholder": "그룹 이름",
   "chat.kind": "대화 유형",
   "chat.kind.channel": "채널",
   "chat.kind.dm": "다이렉트 메시지",

@@ -580,7 +580,7 @@
   "chat.emptyConversationTitle": "Nenhuma mensagem ainda",
   "chat.emptyTitle2": "Nenhuma conversa ainda",
   "chat.groupMembers": "Pessoas no grupo",
-  "chat.groupPlaceholder": "Lançamento",
+  "chat.groupPlaceholder": "Nome do grupo",
   "chat.kind": "Tipo de conversa",
   "chat.kind.channel": "Canal",
   "chat.kind.dm": "Mensagem direta",

@@ -753,19 +753,9 @@
   margin: 0 0.25rem;
   background: var(--line);
 }
-.chat-composer-hint {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding-inline-end: 0.75rem;
-  text-align: end;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.75rem;
-}
 .chat-composer-tools > .button:last-child {
   flex: none;
-  margin-inline-start: auto; /* 0 while the hint fills the row; the end of the row when the hint is hidden */
+  margin-inline-start: auto;
 }
 .chat-mention-list {
   position: absolute;
@@ -965,9 +955,6 @@
   }
 }
 @media (max-width: 720px) {
-  .chat-composer-hint {
-    display: none;
-  }
   /* A channel's "Members": the icon alone, so the conversation's name keeps the room. */
   .chat-members-button > svg + span {
     display: none;
@@ -1109,39 +1096,48 @@ a.chat-card-ref:focus-visible {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 2px;
   max-height: min(60vh, 26rem);
   overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
 }
 .chat-members-row {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  min-height: 3.25rem;
-  padding: 0.625rem 0.75rem;
-  border-radius: 10px;
+  min-height: 3.5rem;
+  padding: 0.625rem 0.875rem;
   color: var(--ink);
   transition: background-color 120ms ease;
 }
+.chat-members-row + .chat-members-row { border-top: 1px solid var(--line); }
 .chat-members-row:hover { background: var(--hover); }
-.chat-members-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.5rem; font-weight: 500; }
+.chat-members-text { flex: 1; min-width: 0; display: grid; gap: 0.125rem; }
+.chat-members-name { min-width: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9375rem; font-weight: 600; line-height: 1.3; }
 .chat-members-name bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-members-you { flex: none; font-size: 0.75rem; font-weight: 500; color: var(--subtle); }
+.chat-members-you {
+  flex: none;
+  padding: 0.0625rem 0.4375rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.chat-members-role { display: inline-flex; align-items: center; gap: 0.3125rem; font-size: 0.8125rem; color: var(--subtle); line-height: 1.3; }
+.chat-members-role.is-elevated { color: var(--warning); font-weight: 500; }
 .chat-members-action { opacity: 0; transition: opacity 120ms ease; }
 .chat-members-row:hover .chat-members-action,
 .chat-members-action:focus-visible,
 .chat-members-action[aria-busy='true'] { opacity: 1; }
 @media (hover: none) { .chat-members-action { opacity: 1; } }
+.chat-members-scope .empty-state h3 { font-size: 0.9375rem; font-weight: 400; color: var(--muted); }
 .chat-members-none { margin: 0; padding: 1.5rem 0; text-align: center; }
 .chat-members-error { margin: 0; color: var(--danger); font-size: 0.875rem; }
 @media (prefers-reduced-motion: reduce) { .chat-members-row, .chat-members-action { transition: none; } }
 
-/* The thread is narrow: no Enter hint, and its first day line repeats what "Replies: n" above already says. */
-.chat-thread .chat-composer-hint,
-.chat-view-body[data-thread] .chat-main .chat-composer-hint {
-  display: none;
-}
+/* The thread's first day line repeats what "Replies: n" above already says. */
 .chat-thread .chat-rows > li:first-child > .chat-day {
   display: none;
 }
