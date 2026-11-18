@@ -315,4 +315,19 @@ describe.skipIf(!DATABASE_URL)('chat (integration, real Postgres)', () => {
     const removed = await ann.request('DELETE', `/site-api/messages/${msg}/reactions`, {emoji: '👍'});
     expect(removed.json.reactions).toEqual([{emoji: '👍', count: 1, mine: false}]);
   });
+
+  it('one reaction per person: another emoji replaces mine, even under concurrent requests', async () => {
+    const msg = (await send(ann, channel, 'pick one')).json.message.id;
+    await mia.request('PUT', `/site-api/messages/${msg}/reactions`, {emoji: '👍'});
+    await ann.request('PUT', `/site-api/messages/${msg}/reactions`, {emoji: '👍'});
+    const switched = await ann.request('PUT', `/site-api/messages/${msg}/reactions`, {emoji: '🎉'});
+    expect(switched.status).toBe(200);
+    expect(switched.json.reactions).toEqual(
+      expect.arrayContaining([{emoji: '👍', count: 1, mine: false}, {emoji: '🎉', count: 1, mine: true}]),
+    );
+    expect(switched.json.reactions).toHaveLength(2);
+    await Promise.all(['❤️', '🔥', '😄', '✅', '🤔'].map(emoji => ann.request('PUT', `/site-api/messages/${msg}/reactions`, {emoji})));
+    expect(await db.messageReaction.count({where: {messageId: BigInt(msg), userId: ids.ann!}})).toBe(1);
+    expect(await db.messageReaction.count({where: {messageId: BigInt(msg), userId: ids.mia!}})).toBe(1);
+  });
 });
