@@ -584,7 +584,7 @@
   "chat.emptyConversationTitle": "Сообщений пока нет",
   "chat.emptyTitle2": "Бесед пока нет",
   "chat.groupMembers": "Участники группы",
-  "chat.groupPlaceholder": "Запуск",
+  "chat.groupPlaceholder": "Название группы",
   "chat.kind": "Тип беседы",
   "chat.kind.channel": "Канал",
   "chat.kind.dm": "Личное сообщение",
@@ -1974,5 +1974,18 @@
   "audit.action.chat.message_deleted": "удалил(а) сообщение {subject} в {target}",
   "audit.action.flow.create": "создал(а) автоматизацию {target}",
   "audit.action.flow.update": "изменил(а) автоматизацию {target}",
-  "audit.action.flow.delete": "удалил(а) автоматизацию"
+  "audit.action.flow.delete": "удалил(а) автоматизацию",
+  "chat.jumpTo": "Перейти к…",
+  "chat.jumpToLabel": "Перейти к беседе",
+  "chat.noConversationMatch": "Нет беседы с таким названием.",
+  "chat.addChannel": "Добавить канал",
+  "chat.newDirect": "Новое личное сообщение",
+  "chat.welcomeChannel": "Добро пожаловать в #{name}",
+  "chat.welcomeDirect": "Начало вашей беседы с {name}",
+  "chat.welcomeGroup": "Начало беседы {name}",
+  "chat.welcomeBoard": "Обсуждение: {name}",
+  "chat.viewThread": "Открыть ветку",
+  "chat.mentionSomeone": "Упомянуть кого-нибудь",
+  "chat.insertEmoji": "Эмодзи",
+  "chat.sendHint": "Enter — отправить · Shift + Enter — новая строка"
 }

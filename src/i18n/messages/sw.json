@@ -576,7 +576,7 @@
   "chat.emptyConversationTitle": "Bado hakuna ujumbe",
   "chat.emptyTitle2": "Bado hakuna mazungumzo",
   "chat.groupMembers": "Watu katika kundi",
-  "chat.groupPlaceholder": "Uzinduzi",
+  "chat.groupPlaceholder": "Jina la kikundi",
   "chat.kind": "Aina ya mazungumzo",
   "chat.kind.channel": "Kituo",
   "chat.kind.dm": "Ujumbe wa moja kwa moja",
@@ -1948,5 +1948,18 @@
   "audit.action.chat.message_deleted": "alifuta ujumbe wa {subject} kwenye {target}",
   "audit.action.flow.create": "aliunda otomatiki {target}",
   "audit.action.flow.update": "alibadilisha otomatiki {target}",
-  "audit.action.flow.delete": "alifuta otomatiki"
+  "audit.action.flow.delete": "alifuta otomatiki",
+  "chat.jumpTo": "Nenda kwa…",
+  "chat.jumpToLabel": "Nenda kwenye mazungumzo",
+  "chat.noConversationMatch": "Hakuna mazungumzo yenye jina hilo.",
+  "chat.addChannel": "Ongeza chaneli",
+  "chat.newDirect": "Ujumbe mpya wa moja kwa moja",
+  "chat.welcomeChannel": "Karibu #{name}",
+  "chat.welcomeDirect": "Huu ni mwanzo wa mazungumzo yako na {name}",
+  "chat.welcomeGroup": "Huu ni mwanzo wa {name}",
+  "chat.welcomeBoard": "Majadiliano ya {name}",
+  "chat.viewThread": "Tazama uzi",
+  "chat.mentionSomeone": "Mtaje mtu",
+  "chat.insertEmoji": "Emoji",
+  "chat.sendHint": "Enter kutuma · Shift + Enter kwa mstari mpya"
 }

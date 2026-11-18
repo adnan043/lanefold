@@ -200,7 +200,7 @@ export const initials = (name: string) =>
     .join('');
 
 /** A person: their picture when there is one, their initials otherwise. */
-export function Avatar({name, src, size = 'md'}: {name: string; src?: string | null; size?: 'sm' | 'md' | 'lg'}) {
+export function Avatar({name, src, size = 'md'}: {name: string; src?: string | null; size?: 'xs' | 'sm' | 'md' | 'lg'}) {
   return src ? (
     <img className={`avatar avatar-${size}`} src={src} alt="" width={40} height={40} decoding="async" />
   ) : (

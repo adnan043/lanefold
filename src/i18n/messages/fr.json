@@ -580,7 +580,7 @@
   "chat.emptyConversationTitle": "Aucun message pour l’instant",
   "chat.emptyTitle2": "Aucune conversation pour l’instant",
   "chat.groupMembers": "Membres du groupe",
-  "chat.groupPlaceholder": "Lancement",
+  "chat.groupPlaceholder": "Nom du groupe",
   "chat.kind": "Type de conversation",
   "chat.kind.channel": "Canal",
   "chat.kind.dm": "Message direct",
@@ -1961,5 +1961,18 @@
   "audit.action.chat.message_deleted": "a supprimé un message de {subject} dans {target}",
   "audit.action.flow.create": "a créé l’automatisation {target}",
   "audit.action.flow.update": "a modifié l’automatisation {target}",
-  "audit.action.flow.delete": "a supprimé une automatisation"
+  "audit.action.flow.delete": "a supprimé une automatisation",
+  "chat.jumpTo": "Aller à…",
+  "chat.jumpToLabel": "Aller à une conversation",
+  "chat.noConversationMatch": "Aucune conversation ne correspond à ce nom.",
+  "chat.addChannel": "Ajouter un canal",
+  "chat.newDirect": "Nouveau message direct",
+  "chat.welcomeChannel": "Bienvenue dans #{name}",
+  "chat.welcomeDirect": "Début de votre conversation avec {name}",
+  "chat.welcomeGroup": "Début de {name}",
+  "chat.welcomeBoard": "Discussion {name}",
+  "chat.viewThread": "Voir le fil",
+  "chat.mentionSomeone": "Mentionner quelqu’un",
+  "chat.insertEmoji": "Emoji",
+  "chat.sendHint": "Entrée pour envoyer · Maj + Entrée pour une nouvelle ligne"
 }

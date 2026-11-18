@@ -576,7 +576,7 @@
   "chat.emptyConversationTitle": "ابھی کوئی پیغام نہیں",
   "chat.emptyTitle2": "ابھی کوئی گفتگو نہیں",
   "chat.groupMembers": "گروپ کے افراد",
-  "chat.groupPlaceholder": "لانچ",
+  "chat.groupPlaceholder": "گروپ کا نام",
   "chat.kind": "گفتگو کی قسم",
   "chat.kind.channel": "چینل",
   "chat.kind.dm": "براہِ راست پیغام",
@@ -1948,5 +1948,18 @@
   "audit.action.chat.message_deleted": "نے {target} میں {subject} کا ایک پیغام حذف کیا",
   "audit.action.flow.create": "نے آٹومیشن {target} بنائی",
   "audit.action.flow.update": "نے آٹومیشن {target} بدلی",
-  "audit.action.flow.delete": "نے ایک آٹومیشن حذف کی"
+  "audit.action.flow.delete": "نے ایک آٹومیشن حذف کی",
+  "chat.jumpTo": "یہاں جائیں…",
+  "chat.jumpToLabel": "کسی گفتگو پر جائیں",
+  "chat.noConversationMatch": "اس نام کی کوئی گفتگو نہیں۔",
+  "chat.addChannel": "چینل شامل کریں",
+  "chat.newDirect": "نیا براہ راست پیغام",
+  "chat.welcomeChannel": "#{name} میں خوش آمدید",
+  "chat.welcomeDirect": "{name} کے ساتھ آپ کی گفتگو کا آغاز",
+  "chat.welcomeGroup": "{name} کا آغاز",
+  "chat.welcomeBoard": "{name} پر گفتگو",
+  "chat.viewThread": "تھریڈ دیکھیں",
+  "chat.mentionSomeone": "کسی کا ذکر کریں",
+  "chat.insertEmoji": "ایموجی",
+  "chat.sendHint": "بھیجنے کے لیے Enter · نئی لائن کے لیے Shift + Enter"
 }

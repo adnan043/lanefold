@@ -572,7 +572,7 @@
   "chat.emptyConversationTitle": "Chưa có tin nhắn",
   "chat.emptyTitle2": "Chưa có cuộc trò chuyện",
   "chat.groupMembers": "Thành viên trong nhóm",
-  "chat.groupPlaceholder": "Ra mắt",
+  "chat.groupPlaceholder": "Tên nhóm",
   "chat.kind": "Loại cuộc trò chuyện",
   "chat.kind.channel": "Kênh",
   "chat.kind.dm": "Tin nhắn trực tiếp",
@@ -1935,5 +1935,18 @@
   "audit.action.chat.message_deleted": "đã xóa một tin nhắn của {subject} trong {target}",
   "audit.action.flow.create": "đã tạo tự động hóa {target}",
   "audit.action.flow.update": "đã thay đổi tự động hóa {target}",
-  "audit.action.flow.delete": "đã xóa một tự động hóa"
+  "audit.action.flow.delete": "đã xóa một tự động hóa",
+  "chat.jumpTo": "Chuyển đến…",
+  "chat.jumpToLabel": "Chuyển đến một cuộc trò chuyện",
+  "chat.noConversationMatch": "Không có cuộc trò chuyện nào khớp với tên đó.",
+  "chat.addChannel": "Thêm kênh",
+  "chat.newDirect": "Tin nhắn trực tiếp mới",
+  "chat.welcomeChannel": "Chào mừng đến với #{name}",
+  "chat.welcomeDirect": "Đây là khởi đầu cuộc trò chuyện của bạn với {name}",
+  "chat.welcomeGroup": "Đây là khởi đầu của {name}",
+  "chat.welcomeBoard": "Thảo luận {name}",
+  "chat.viewThread": "Xem chuỗi",
+  "chat.mentionSomeone": "Nhắc đến ai đó",
+  "chat.insertEmoji": "Biểu tượng cảm xúc",
+  "chat.sendHint": "Enter để gửi · Shift + Enter để xuống dòng"
 }

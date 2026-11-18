@@ -2,7 +2,8 @@ import {useQuery, useQueryClient} from '@tanstack/react-query';
 import {useMemo, useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
-import {Avatar, Button, EmptyState, ErrorNote, IconButton, LoadingBlock, Modal, SearchInput} from '../../portal/ui';
+import {Avatar, EmptyState, ErrorNote, Icon, IconButton, LoadingBlock, Modal, SearchInput} from '../../portal/ui';
+import {AvatarStack} from '../../portal/ui/chips';
 import {useMe} from '../../portal/shared';
 import {call} from '../api';
 import {useNavigate} from '../nav';
@@ -31,9 +32,21 @@ export function MembersButton({conversationId, kind, title, workspaceId}: {conve
   const label = count !== undefined ? t('workspace.members', {count}) : t('chat.members');
   return (
     <>
-      <Button variant="ghost" size="sm" icon="users" aria-haspopup="dialog" onClick={() => setOpen(true)}>
-        {label}
-      </Button>
+      <button type="button" className="button button-ghost button-sm chat-members-button" aria-haspopup="dialog" aria-label={label} title={label} onClick={() => setOpen(true)}>
+        {count !== undefined && query.data ? (
+          <>
+            <AvatarStack people={query.data.items.map(p => ({name: p.name}))} max={3} size="sm" label={label} />
+            <span className="chat-members-count" aria-hidden="true">
+              {count}
+            </span>
+          </>
+        ) : (
+          <>
+            <Icon name="users" size={16} />
+            <span aria-hidden="true">{label}</span>
+          </>
+        )}
+      </button>
       <Modal open={open} onClose={() => setOpen(false)} title={t('chat.members')} description={count !== undefined ? `${title} · ${label}` : title} size="sm">
         {query.isPending ? (
           <LoadingBlock rows={3} />
@@ -42,7 +55,9 @@ export function MembersButton({conversationId, kind, title, workspaceId}: {conve
         ) : query.data.scope === 'members' ? (
           <MemberList people={query.data.items} workspaceId={workspaceId} direct={kind === 'dm'} onLeave={() => setOpen(false)} />
         ) : (
-          <EmptyState icon="users" title={query.data.scope === 'board' ? t('chat.membersBoard') : t('chat.membersEveryone')} />
+          <div className="chat-members-scope">
+            <EmptyState icon="users" title={query.data.scope === 'board' ? t('chat.membersBoard') : t('chat.membersEveryone')} />
+          </div>
         )}
       </Modal>
     </>
@@ -94,13 +109,19 @@ function MemberList({people, workspaceId, direct, onLeave}: {people: Person[]; w
         <ul className="chat-members">
           {shown.map(person => {
             const isMe = person.id === me;
+            const elevated = person.role === 'owner' || person.role === 'admin';
             return (
               <li key={person.id} className="chat-members-row">
                 <Avatar name={person.name} size="md" />
-                <span className="chat-members-name">
-                  <bdi>{person.name}</bdi>
-                  {isMe && <span className="chat-members-you">{t('members.you')}</span>}
-                  {(person.role === 'owner' || person.role === 'admin') && <span className="chat-role-badge">{t(`members.role.${person.role}` as never)}</span>}
+                <span className="chat-members-text">
+                  <span className="chat-members-name">
+                    <bdi>{person.name}</bdi>
+                    {isMe && <span className="chat-members-you">{t('members.you')}</span>}
+                  </span>
+                  <span className={`chat-members-role${elevated ? ' is-elevated' : ''}`}>
+                    {elevated && <Icon name={person.role === 'owner' ? 'star' : 'shield'} size={12} />}
+                    {t(`members.role.${person.role}` as never)}
+                  </span>
                 </span>
                 {!isMe && !direct && (
                   <IconButton

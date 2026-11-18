@@ -572,7 +572,7 @@
   "chat.emptyConversationTitle": "ยังไม่มีข้อความ",
   "chat.emptyTitle2": "ยังไม่มีการสนทนา",
   "chat.groupMembers": "สมาชิกในกลุ่ม",
-  "chat.groupPlaceholder": "เปิดตัว",
+  "chat.groupPlaceholder": "ชื่อกลุ่ม",
   "chat.kind": "ประเภทการสนทนา",
   "chat.kind.channel": "แชนเนล",
   "chat.kind.dm": "ข้อความส่วนตัว",
@@ -1935,5 +1935,18 @@
   "audit.action.chat.message_deleted": "ลบข้อความของ {subject} ใน {target}",
   "audit.action.flow.create": "สร้างระบบอัตโนมัติ {target}",
   "audit.action.flow.update": "แก้ไขระบบอัตโนมัติ {target}",
-  "audit.action.flow.delete": "ลบระบบอัตโนมัติหนึ่งรายการ"
+  "audit.action.flow.delete": "ลบระบบอัตโนมัติหนึ่งรายการ",
+  "chat.jumpTo": "ไปที่…",
+  "chat.jumpToLabel": "ไปที่การสนทนา",
+  "chat.noConversationMatch": "ไม่มีการสนทนาที่ตรงกับชื่อนั้น",
+  "chat.addChannel": "เพิ่มช่อง",
+  "chat.newDirect": "ข้อความส่วนตัวใหม่",
+  "chat.welcomeChannel": "ยินดีต้อนรับสู่ #{name}",
+  "chat.welcomeDirect": "นี่คือจุดเริ่มต้นการสนทนาของคุณกับ {name}",
+  "chat.welcomeGroup": "นี่คือจุดเริ่มต้นของ {name}",
+  "chat.welcomeBoard": "การพูดคุยเรื่อง {name}",
+  "chat.viewThread": "ดูเธรด",
+  "chat.mentionSomeone": "กล่าวถึงใครสักคน",
+  "chat.insertEmoji": "อีโมจิ",
+  "chat.sendHint": "Enter เพื่อส่ง · Shift + Enter เพื่อขึ้นบรรทัดใหม่"
 }

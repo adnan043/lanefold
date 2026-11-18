@@ -18,8 +18,6 @@
   color: var(--ink);
   text-transform: none;
 }
-.lf-kbd-hint { display: none; }
-@media (min-width: 900px) { .lf-kbd-hint { display: inline-flex; } }
 
 .lf-shortcuts { display: grid; gap: 1.25rem; margin-top: 0.25rem; }
 .lf-shortcuts section { min-width: 0; }

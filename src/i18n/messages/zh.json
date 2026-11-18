@@ -572,7 +572,7 @@
   "chat.emptyConversationTitle": "还没有消息",
   "chat.emptyTitle2": "还没有会话",
   "chat.groupMembers": "群组成员",
-  "chat.groupPlaceholder": "发布",
+  "chat.groupPlaceholder": "群组名称",
   "chat.kind": "会话类型",
   "chat.kind.channel": "频道",
   "chat.kind.dm": "私信",
@@ -1935,5 +1935,18 @@
   "audit.action.chat.message_deleted": "删除了 {subject} 在 {target} 中的一条消息",
   "audit.action.flow.create": "创建了自动化 {target}",
   "audit.action.flow.update": "修改了自动化 {target}",
-  "audit.action.flow.delete": "删除了一个自动化"
+  "audit.action.flow.delete": "删除了一个自动化",
+  "chat.jumpTo": "跳转到…",
+  "chat.jumpToLabel": "跳转到会话",
+  "chat.noConversationMatch": "没有与该名称匹配的会话。",
+  "chat.addChannel": "添加频道",
+  "chat.newDirect": "新私信",
+  "chat.welcomeChannel": "欢迎来到 #{name}",
+  "chat.welcomeDirect": "这是你与 {name} 对话的开始",
+  "chat.welcomeGroup": "这是 {name} 的开始",
+  "chat.welcomeBoard": "{name} 讨论",
+  "chat.viewThread": "查看话题",
+  "chat.mentionSomeone": "提及某人",
+  "chat.insertEmoji": "表情",
+  "chat.sendHint": "Enter 发送 · Shift + Enter 换行"
 }

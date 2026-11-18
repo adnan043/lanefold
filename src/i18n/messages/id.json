@@ -572,7 +572,7 @@
   "chat.emptyConversationTitle": "Belum ada pesan",
   "chat.emptyTitle2": "Belum ada percakapan",
   "chat.groupMembers": "Anggota grup",
-  "chat.groupPlaceholder": "Peluncuran",
+  "chat.groupPlaceholder": "Nama grup",
   "chat.kind": "Jenis percakapan",
   "chat.kind.channel": "Kanal",
   "chat.kind.dm": "Pesan langsung",
@@ -1935,5 +1935,18 @@
   "audit.action.chat.message_deleted": "menghapus pesan dari {subject} di {target}",
   "audit.action.flow.create": "membuat otomatisasi {target}",
   "audit.action.flow.update": "mengubah otomatisasi {target}",
-  "audit.action.flow.delete": "menghapus sebuah otomatisasi"
+  "audit.action.flow.delete": "menghapus sebuah otomatisasi",
+  "chat.jumpTo": "Lompat ke…",
+  "chat.jumpToLabel": "Lompat ke percakapan",
+  "chat.noConversationMatch": "Tidak ada percakapan dengan nama itu.",
+  "chat.addChannel": "Tambah kanal",
+  "chat.newDirect": "Pesan langsung baru",
+  "chat.welcomeChannel": "Selamat datang di #{name}",
+  "chat.welcomeDirect": "Ini awal percakapan Anda dengan {name}",
+  "chat.welcomeGroup": "Ini awal {name}",
+  "chat.welcomeBoard": "Diskusi {name}",
+  "chat.viewThread": "Lihat utas",
+  "chat.mentionSomeone": "Sebut seseorang",
+  "chat.insertEmoji": "Emoji",
+  "chat.sendHint": "Enter untuk kirim · Shift + Enter untuk baris baru"
 }

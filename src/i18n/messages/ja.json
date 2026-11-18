@@ -572,7 +572,7 @@
   "chat.emptyConversationTitle": "メッセージはまだありません",
   "chat.emptyTitle2": "会話はまだありません",
   "chat.groupMembers": "グループのメンバー",
-  "chat.groupPlaceholder": "ローンチ",
+  "chat.groupPlaceholder": "グループ名",
   "chat.kind": "会話の種類",
   "chat.kind.channel": "チャンネル",
   "chat.kind.dm": "ダイレクトメッセージ",
@@ -1935,5 +1935,18 @@
   "audit.action.chat.message_deleted": "が {target} で {subject} のメッセージを削除しました",
   "audit.action.flow.create": "がオートメーション {target} を作成しました",
   "audit.action.flow.update": "がオートメーション {target} を変更しました",
-  "audit.action.flow.delete": "がオートメーションを削除しました"
+  "audit.action.flow.delete": "がオートメーションを削除しました",
+  "chat.jumpTo": "移動…",
+  "chat.jumpToLabel": "会話に移動",
+  "chat.noConversationMatch": "その名前に一致する会話はありません。",
+  "chat.addChannel": "チャンネルを追加",
+  "chat.newDirect": "新しいダイレクトメッセージ",
+  "chat.welcomeChannel": "#{name} へようこそ",
+  "chat.welcomeDirect": "{name} さんとの会話の始まりです",
+  "chat.welcomeGroup": "{name} の始まりです",
+  "chat.welcomeBoard": "{name} のディスカッション",
+  "chat.viewThread": "スレッドを表示",
+  "chat.mentionSomeone": "メンションする",
+  "chat.insertEmoji": "絵文字",
+  "chat.sendHint": "Enter で送信 · Shift + Enter で改行"
 }

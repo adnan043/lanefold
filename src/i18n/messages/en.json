@@ -576,7 +576,7 @@
   "chat.emptyConversationTitle": "No messages yet",
   "chat.emptyTitle2": "No conversations yet",
   "chat.groupMembers": "People in the group",
-  "chat.groupPlaceholder": "Launch",
+  "chat.groupPlaceholder": "Group name",
   "chat.kind": "Type of conversation",
   "chat.kind.channel": "Channel",
   "chat.kind.dm": "Direct message",
@@ -1948,5 +1948,18 @@
   "audit.action.chat.message_deleted": "deleted a message by {subject} in {target}",
   "audit.action.flow.create": "created the automation {target}",
   "audit.action.flow.update": "changed the automation {target}",
-  "audit.action.flow.delete": "deleted an automation"
+  "audit.action.flow.delete": "deleted an automation",
+  "chat.jumpTo": "Jump to…",
+  "chat.jumpToLabel": "Jump to a conversation",
+  "chat.noConversationMatch": "No conversation matches that name.",
+  "chat.addChannel": "Add channel",
+  "chat.newDirect": "New direct message",
+  "chat.welcomeChannel": "Welcome to #{name}",
+  "chat.welcomeDirect": "This is the start of your conversation with {name}",
+  "chat.welcomeGroup": "This is the start of {name}",
+  "chat.welcomeBoard": "{name} discussion",
+  "chat.viewThread": "View thread",
+  "chat.mentionSomeone": "Mention someone",
+  "chat.insertEmoji": "Emoji",
+  "chat.sendHint": "Enter to send · Shift + Enter for a new line"
 }

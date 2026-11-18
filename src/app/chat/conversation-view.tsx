@@ -1,8 +1,8 @@
 import {useQuery, useQueryClient} from '@tanstack/react-query';
-import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
-import {Button, EmptyState, ErrorNote, Icon, IconButton, LoadingBlock, Menu, type MenuItem, Notice, useConfirm, useToast} from '../../portal/ui';
+import {Avatar, Button, EmptyState, ErrorNote, Icon, IconButton, LoadingBlock, Menu, type MenuItem, Notice, useConfirm, useToast} from '../../portal/ui';
 import {useMe} from '../../portal/shared';
 import {call} from '../api';
 import {type ChatPersonT, chatPeopleQuery, type ConversationT, conversationsQuery, type MessageT, type PulseItem, pulseKey, useMarkRead, usePulse} from './api';
@@ -69,10 +69,12 @@ type ListProps = {
   cardTarget?: {workspaceId: number; boardId: number | null};
   /** Keep every loaded message (an open thread's parent must stay in the list). */
   holdTrim?: boolean;
+  /** Shown above the first message once the start of the history is loaded (the main list, not a thread). */
+  welcome?: {mark: ReactNode; title: string};
 };
 
 /** The scrolling list: oldest first, "Load older" on top, stays at the bottom for new messages unless the reader scrolled up. */
-function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply, onSeen, emptyTitle, emptyBody, announceIn, cardTarget, holdTrim}: ListProps) {
+function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply, onSeen, emptyTitle, emptyBody, announceIn, cardTarget, holdTrim, welcome}: ListProps) {
   const t = useT();
   const {errorMessage, formatDate} = useI18n();
   const box = useRef<HTMLDivElement>(null);
@@ -259,10 +261,22 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
             )}
           </div>
         )}
+        {welcome && feed.nextBefore === null && (
+          <div className="chat-welcome">
+            {welcome.mark}
+            <h3>
+              <bdi>{welcome.title}</bdi>
+            </h3>
+          </div>
+        )}
         {feed.items.length === 0 && feed.pending.length === 0 ? (
-          <EmptyState icon="message" title={emptyTitle}>
-            {emptyBody}
-          </EmptyState>
+          welcome ? (
+            <p className="muted chat-welcome-note">{emptyBody}</p>
+          ) : (
+            <EmptyState icon="message" title={emptyTitle}>
+              {emptyBody}
+            </EmptyState>
+          )
         ) : (
           <ul className="chat-rows">
             {rows}
@@ -327,10 +341,12 @@ function PinnedStrip({items}: {items: MessageT[]}) {
   );
 }
 
-function ThreadPanel({workspaceId, boardId, conversationId, parent, pulseSeq, people, peopleList, me, canModerate, canWriteMain, onParentChange, onClose, onSent}: {
+function ThreadPanel({workspaceId, boardId, conversationId, title, parent, pulseSeq, people, peopleList, me, canModerate, canWriteMain, onParentChange, onClose, onSent}: {
   workspaceId: number;
   boardId: number | null;
   conversationId: number;
+  /** The conversation's name, under the panel's heading. */
+  title: string;
   parent: MessageT;
   /** The conversation's `lastSeq` from the pulse: a reply moves it, so the thread fetches only when it moved. */
   pulseSeq: number | undefined;
@@ -351,12 +367,22 @@ function ThreadPanel({workspaceId, boardId, conversationId, parent, pulseSeq, pe
   return (
     <aside className="chat-thread" aria-label={t('chat.thread')}>
       <div className="chat-thread-head">
-        <h3>{t('chat.thread')}</h3>
-        <IconButton icon="x" size="sm" label={t('chat.closeThread')} onClick={onClose} />
+        <div className="chat-thread-heading">
+          <h3>{t('chat.thread')}</h3>
+          <p className="muted">
+            <bdi>{title}</bdi>
+          </p>
+        </div>
+        <IconButton icon="x" label={t('chat.closeThread')} onClick={onClose} />
       </div>
       <ul className="chat-msgs chat-thread-parent">
         <MessageItem message={parent} grouped={false} people={people} peopleList={peopleList} me={me} canWrite={canWriteMain} canModerate={canModerate} onChange={onParentChange} cardTarget={cardTarget} />
       </ul>
+      {parent.replyCount > 0 && (
+        <div className="chat-thread-count" role="presentation">
+          <span>{t('chat.replies', {n: parent.replyCount})}</span>
+        </div>
+      )}
       <MessageList
         feed={feed}
         people={people}
@@ -374,6 +400,7 @@ function ThreadPanel({workspaceId, boardId, conversationId, parent, pulseSeq, pe
           draft={{kind: 'reply', id: Number(parent.id)}}
           label={t('chat.replyLabel')}
           placeholder={t('chat.replyPlaceholder')}
+          submitLabel={t('chat.replyLabel')}
           autoFocus
           onSend={async (body, mentions, cardIds) => {
             const sent = await feed.send(body, mentions, cardIds);
@@ -496,6 +523,23 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
       : [{label: t('chat.archiveChannel'), icon: 'archive', danger: true, onSelect: archiveChannel}];
 
   const parent = thread ? (feed.items.find(m => m.id === thread) ?? null) : null;
+  /** The conversation's mark: a DM's person in the header (a chat tile in the welcome line), or a tile with its kind's icon (the board's in the accent). */
+  const mark = (size: 'md' | 'lg') =>
+    conversation.kind === 'dm' && size === 'md' ? (
+      <Avatar name={title} size="sm" />
+    ) : (
+      <span className="chat-mark" data-size={size} data-kind={conversation.kind} aria-hidden="true">
+        <Icon name={conversation.kind === 'channel' ? 'hash' : conversation.kind === 'board' ? 'layout-kanban' : conversation.kind === 'group' ? 'users' : 'message'} size={size === 'lg' ? 20 : 16} />
+      </span>
+    );
+  const welcomeTitle =
+    conversation.kind === 'channel'
+      ? t('chat.welcomeChannel', {name: title})
+      : conversation.kind === 'dm'
+        ? t('chat.welcomeDirect', {name: title})
+        : conversation.kind === 'board'
+          ? t('chat.welcomeBoard', {name: title})
+          : t('chat.welcomeGroup', {name: title});
   const bumpReply = () => thread && feed.patch(thread, m => ({...m, replyCount: m.replyCount + 1}));
 
   return (
@@ -503,15 +547,16 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
       <header className="chat-view-head">
         {onBack && <IconButton className="chat-back" icon="arrow-left" label={t('chat.backToList')} onClick={onBack} />}
         {!embedded && (
-          <h2 className="chat-view-title">
-            <Icon name={conversation.kind === 'channel' ? 'hash' : conversation.kind === 'board' ? 'layout-kanban' : 'message'} size={18} /> <bdi>{title}</bdi>
-          </h2>
+          <div className="chat-view-heading">
+            {mark('md')}
+            <h2 className="chat-view-title">
+              <bdi>{title}</bdi>
+            </h2>
+          </div>
         )}
         <span className="chat-view-spacer" />
         {conversation.kind !== 'board' && <MembersButton key={conversation.id} conversationId={conversation.id} kind={conversation.kind} title={title} workspaceId={workspaceId} />}
-        <Button variant="ghost" size="sm" icon="bell" aria-pressed={muted} pending={muting} pendingLabel={muted ? t('chat.unmuting') : t('chat.muting')} onClick={() => void toggleMute()}>
-          {muted ? t('chat.unmute') : t('chat.mute')}
-        </Button>
+        <IconButton icon={muted ? 'bell-off' : 'bell'} label={muting ? (muted ? t('chat.unmuting') : t('chat.muting')) : muted ? t('chat.unmute') : t('chat.mute')} aria-pressed={muted} pending={muting} onClick={() => void toggleMute()} />
         {channelMenu.length > 0 && <Menu label={t('chat.channelActions')} items={channelMenu} disabled={archiving} />}
       </header>
       <div className="chat-view-body" data-thread={thread ? '' : undefined}>
@@ -531,6 +576,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
             announceIn={title}
             cardTarget={cardTarget}
             holdTrim={thread !== null}
+            welcome={embedded ? undefined : {mark: mark('lg'), title: welcomeTitle}}
           />
           {feed.status === 'ready' &&
             (feed.canWrite ? (
@@ -545,6 +591,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
             workspaceId={workspaceId}
             boardId={conversation.boardId ?? null}
             conversationId={conversation.id}
+            title={title}
             parent={parent}
             pulseSeq={pulseSeq}
             people={byId}
