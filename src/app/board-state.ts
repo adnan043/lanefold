@@ -191,6 +191,14 @@ export function applyChanges(data: BoardData, delta: Delta): BoardData {
     }
     return next[i]!;
   };
+  // Cards that left for another board first (the server never lists one that is back here in `cards` too).
+  for (const id of delta.removed ?? []) {
+    for (const laneId of where.get(id) ?? []) {
+      const lane = own(laneIndex.get(laneId)!);
+      lane.cards = lane.cards.filter(c => c.id !== id);
+    }
+    where.delete(id);
+  }
   for (const incoming of delta.cards) {
     const old = known.get(incoming.id);
     const card = old && sameJson(old, incoming) ? old : incoming;

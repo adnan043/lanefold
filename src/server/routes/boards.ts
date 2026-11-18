@@ -29,8 +29,10 @@ import {boardAccessGated, cardWithAccess, laneWithAccess, workspaceReadOnly, typ
  *   GET  /boards/:id                           board + lanes + first 15 cards per lane (SPEC §13)
  *   PATCH /boards/:id                          name, visibility, background, archive (board admin)
  *   PUT|DELETE /boards/:id/star                star / unstar for me
- *   GET  /boards/:id/rev                       the poll: one tiny read (SPEC §8)
- *   GET  /boards/:id/changes?since=            lanes and cards changed after `rev`
+ *   GET  /boards/:id/rev                       one tiny read: the board's revision (SPEC §8)
+ *   GET  /boards/:id/changes?since=            the poll: lanes and cards changed after `since`, and cards that left for
+ *                                              another board (`removed`); an empty delta from the access read alone
+ *                                              when nothing changed
  *   POST /boards/:id/lanes                     add a lane (at the end)
  *   PATCH /lanes/:id   POST /lanes/:id/move   POST /lanes/:id/archive
  *   GET  /lanes/:id/cards?after=               one lane's next cards (keyset on position, id)
@@ -491,6 +493,10 @@ class StaleMove extends Error {}
 class LaneGone extends Error {}
 /** Thrown inside the move transaction when the workspace turned out read-only (checked beside the lock). */
 class ReadOnly extends Error {}
+/** Thrown inside a card write when the new due day would fall before the card's start day (rolls back the rev bump). */
+class DatesOrder extends Error {}
+/** The 422 field message for a due day before the start day (PATCH /cards/:id and the bulk `set_due`). */
+export const DUE_BEFORE_START = 'The due date must not be before the start date.';
 
 export type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
@@ -947,14 +953,7 @@ export const boardRoutes = new Hono()
     // inside this delta or has updatedRev > rev and comes with the next one; it can never be skipped.
     // Revision, name and background come from the access read (one query, already the first read).
     const board = ctx.access;
-    const upto = {gt: since, lte: board.rev};
-    const [lanes, cards] = await Promise.all([
-      db.lane.findMany({where: {workspaceId, boardId: ctx.boardId, updatedRev: upto}, orderBy: {updatedRev: 'asc'}, take: CHANGES_CAP + 1, select: laneCols}),
-      db.card.findMany({where: {workspaceId, boardId: ctx.boardId, updatedRev: upto}, orderBy: {updatedRev: 'asc'}, take: CHANGES_CAP + 1, select: cardCols}),
-    ]);
-    // Too many changes for a delta: the client reloads the board instead.
-    const truncated = lanes.length > CHANGES_CAP || cards.length > CHANGES_CAP;
-    return c.json({
+    const head = {
       rev: String(board.rev),
       archived: board.archived,
       board: {
@@ -970,9 +969,30 @@ export const boardRoutes = new Hono()
         canWrite: ctx.access.canWrite,
         canAdmin: ctx.access.canAdmin,
       },
+    };
+    // The poll asks here directly: nothing changed since the client's revision (the common case) is the access read
+    // alone, no lane, card or card-face query. A `since` AHEAD of the board (a stale reload racing a poll) is answered
+    // the same way; the client ignores an answer older than what it holds.
+    if (since >= board.rev) return c.json({...head, truncated: false, lanes: [], cards: [], removed: []});
+    const upto = {gt: since, lte: board.rev};
+    const [lanes, cards, exits] = await Promise.all([
+      db.lane.findMany({where: {workspaceId, boardId: ctx.boardId, updatedRev: upto}, orderBy: {updatedRev: 'asc'}, take: CHANGES_CAP + 1, select: laneCols}),
+      db.card.findMany({where: {workspaceId, boardId: ctx.boardId, updatedRev: upto}, orderBy: {updatedRev: 'asc'}, take: CHANGES_CAP + 1, select: cardCols}),
+      // Cards that left this board for another one (their rows now carry the other board's id, so the read above
+      // cannot see them): the client drops them. The (board_id, rev) index serves it.
+      db.cardBoardExit.findMany({where: {boardId: ctx.boardId, workspaceId, rev: upto}, orderBy: {rev: 'asc'}, take: CHANGES_CAP + 1, select: {cardId: true}}),
+    ]);
+    // Too many changes for a delta: the client reloads the board instead.
+    const truncated = lanes.length > CHANGES_CAP || cards.length > CHANGES_CAP || exits.length > CHANGES_CAP;
+    // A card that left and came back within the range is in `cards` (it is here now): never also removed.
+    const here = new Set(cards.map(card => card.id));
+    const removed = [...new Set(exits.map(e => e.cardId))].filter(id => !here.has(id));
+    return c.json({
+      ...head,
       truncated,
       lanes: truncated ? [] : lanes.map(laneShape),
       cards: truncated ? [] : await withFaces(db, workspaceId, cards.map(cardShape)),
+      removed: truncated ? [] : removed,
     });
   })
 
@@ -1167,7 +1187,10 @@ export const boardRoutes = new Hono()
     const out = await c.var.db.$transaction(async tx => {
       const rev = await bumpRev(tx, ctx.boardId, workspaceId);
       // What it was, read under the board lock, so followers hear only about a real change.
-      const before = await tx.card.findFirst({where: {id: ctx.card.id, boardId: ctx.boardId, workspaceId}, select: {dueDate: true, completedAt: true}});
+      const before = await tx.card.findFirst({where: {id: ctx.card.id, boardId: ctx.boardId, workspaceId}, select: {startDate: true, dueDate: true, completedAt: true}});
+      // The same rule as the card panel (PATCH /cards/:id/details): a due day never before the start day. Checked
+      // against the start as it is now, under the lock; throwing rolls the rev bump back.
+      if (fields.dueDate && before?.startDate && before.startDate > fields.dueDate) throw new DatesOrder();
       const {count} = await tx.card.updateMany({
         where: {id: ctx.card.id, boardId: ctx.boardId, workspaceId, archivedAt: null},
         data: {...fields, ...(completed === undefined ? {} : {completedAt: completed ? new Date() : null}), updatedRev: rev},
@@ -1183,7 +1206,11 @@ export const boardRoutes = new Hono()
         dueChanged: fields.dueDate !== undefined && (fields.dueDate?.getTime() ?? null) !== (before?.dueDate?.getTime() ?? null),
         justCompleted: completed === true && before?.completedAt === null,
       };
+    }).catch(err => {
+      if (err instanceof DatesOrder) return 'dates' as const;
+      throw err;
     });
+    if (out === 'dates') return invalid(c, {dueDate: {code: 'invalid', message: DUE_BEFORE_START}});
     if (!out?.card) return notFound(c, 'card');
     // After the answer, never failing the request: the people who follow the card hear about it.
     const watched = {workspaceId, boardId: ctx.boardId, cardId: ctx.card.id};

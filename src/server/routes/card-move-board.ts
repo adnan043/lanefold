@@ -32,6 +32,7 @@ import {afterResponse} from '../after-response';
  *    for people with no seat there are deleted and the rest point at the new board; custom field values and the repeat rule
  *    belong to the old board and are removed; checklists,
  *    comments and attachments stay. Both boards get a rev bump in ONE transaction, locked in id order (no deadlock).
+ *    The source board records the exit (`card_board_exits`, its rev of the move): its delta lists the card in `removed`.
  *  - A COPY: title, description, priority, estimate, dates, checklists (unticked), labels by name and assignees with a
  *    seat. No comments, attachments, field values, dependencies or repeat rule.
  *  - Flows do not run for a cross-board move or copy.
@@ -144,7 +145,15 @@ export const cardMoveBoardRoutes = new Hono()
           const open = await tx.lane.findFirst({where: {id: laneId, boardId, workspaceId, archivedAt: null}, select: {id: true}});
           throw open ? new LaneFull() : new LaneGone(); // rolls back both bumps and the card update
         }
-        await tx.lane.updateMany({where: {id: from, boardId: srcBoard, workspaceId}, data: {cardCount: {decrement: 1}, updatedRev: srcRev}});
+        // The source lane's counter and the exit record in ONE statement: the card row now belongs to the target board,
+        // so the source board's delta learns it left only from `card_board_exits` (GET /boards/:id/changes `removed`).
+        await tx.$executeRaw`
+          WITH x AS (
+            INSERT INTO card_board_exits (workspace_id, board_id, card_id, rev)
+            VALUES (${workspaceId}::int, ${srcBoard}::int, ${ctx.cardId}::int, ${srcRev}::bigint)
+          )
+          UPDATE lanes SET card_count = card_count - 1, updated_rev = ${srcRev}::bigint
+          WHERE id = ${from}::int AND board_id = ${srcBoard}::int AND workspace_id = ${workspaceId}::int`;
 
         await tx.cardFieldValue.deleteMany({where: {cardId: ctx.cardId, workspaceId}});
         await tx.cardRecurrence.deleteMany({where: {cardId: ctx.cardId, workspaceId}});

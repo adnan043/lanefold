@@ -130,7 +130,8 @@ export type BoardT = {
 export type BoardData = {board: BoardT; lanes: LaneT[]};
 /** The board fields a delta carries (name, visibility, background, and the caller's own role). */
 export type BoardDelta = Pick<BoardT, 'name' | 'visibility' | 'bgKind' | 'bgColor1' | 'bgColor2' | 'bgAngle' | 'bgPattern' | 'bgImage' | 'role' | 'canWrite' | 'canAdmin'>;
-export type Delta = {rev: string; archived: boolean; truncated: boolean; board?: BoardDelta; lanes: Omit<LaneT, 'cards' | 'loaded' | 'hasMore'>[]; cards: CardT[]};
+/** `removed`: ids of cards that left this board for another one in the range (they are not in `cards`). */
+export type Delta = {rev: string; archived: boolean; truncated: boolean; board?: BoardDelta; lanes: Omit<LaneT, 'cards' | 'loaded' | 'hasMore'>[]; cards: CardT[]; removed?: number[]};
 
 /** `GET /site-api/memberships` rows (`src/server/routes/checkout.ts`). `workspaceId` scopes a row to a workspace's plan. */
 export type MembershipT = {

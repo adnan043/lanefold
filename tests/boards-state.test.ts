@@ -81,6 +81,18 @@ describe('board state (pure)', () => {
     const out = applyChanges(base, {rev: '2', archived: false, truncated: false, lanes: [], cards: [card(9, 1, 'zz')]} as never);
     expect(out.lanes[0]!.cards.map(c => c.id)).toEqual([1]);
   });
+
+  it('drops a card that left for another board (`removed`), and keeps the other lanes as they were', () => {
+    const other = lane(2, 'a1', [card(3, 2, 'a0')]);
+    const base = data([lane(1, 'a0', [card(1, 1, 'a0'), card(2, 1, 'a1')]), other]);
+    const out = applyChanges(base, {rev: '2', archived: false, truncated: false, lanes: [wire(base.lanes[0]!, {cardCount: 1})], cards: [], removed: [2]});
+    expect(out.lanes[0]!.cards.map(c => c.id)).toEqual([1]);
+    expect(out.lanes[0]!.cardCount).toBe(1);
+    expect(out.lanes[1]).toBe(other);
+    // An id the client never loaded (a later page) changes nothing; an old server without `removed` is fine too.
+    expect(applyChanges(out, {rev: '3', archived: false, truncated: false, lanes: [], cards: [], removed: [99]}).lanes).toEqual(out.lanes);
+    expect(applyChanges(out, {rev: '4', archived: false, truncated: false, lanes: [], cards: []}).lanes).toEqual(out.lanes);
+  });
 });
 
 describe('revertLaneMove', () => {

@@ -144,6 +144,11 @@ describe.skipIf(!DATABASE_URL)('search, my day and inbox (integration, real Post
     const board = await ann.get(`/site-api/boards/${openBoard}`);
     expect(board.json.lanes[0].cards.map((c: J) => c.title)).toEqual(['Sort me']);
     expect(board.json.lanes[0].cardCount).toBe(1);
+    // The Inbox board's delta (another tab) reports the card as gone.
+    const inbox = await db.board.findFirstOrThrow({where: {workspaceId: wsA, inboxOf: await userId('ann@example.test')}, select: {id: true}});
+    const delta = (await ann.get(`/site-api/boards/${inbox.id}/changes?since=0`)).json;
+    expect(delta.removed).toEqual([card]);
+    expect(delta.cards).toEqual([]);
     // A card already on a board is not an Inbox card any more.
     expect((await ann.post(`/site-api/inbox/cards/${card}/triage`, {laneId: openLane})).status).toBe(404);
     expect((await ann.post(`/site-api/inbox/cards/${card}/triage`, {laneId: 'x'})).status).toBe(422);
