@@ -125,6 +125,15 @@ describe.skipIf(!DATABASE_URL)('chat files (integration, real Postgres)', () => 
     }
   });
 
+  it('a member removed between the link and the confirm: the file never counts and is dropped', async () => {
+    const grant = await mia.post(`/site-api/conversations/${channel}/attachments`, {name: 'plan.pdf', contentType: PDF, size: 1000});
+    expect(grant.status).toBe(201);
+    await db.workspaceMember.deleteMany({where: {workspaceId: wsA, userId: ids.mia!}});
+    expect((await mia.post(`/site-api/chat/attachments/${grant.json.attachmentId}/complete`, {})).status).toBe(404);
+    expect(await used()).toBe(0);
+    expect(await db.attachment.count({where: {id: grant.json.attachmentId}})).toBe(0);
+  });
+
   it('refuses what the rules do not allow', async () => {
     const post = (b: Browser, body: J, conv = channel) => b.post(`/site-api/conversations/${conv}/attachments`, body);
     expect((await post(mia, {name: 'x.html', contentType: 'text/html', size: 10})).status).toBe(422);

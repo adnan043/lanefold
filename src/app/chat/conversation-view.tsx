@@ -545,7 +545,13 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
         : conversation.kind === 'board'
           ? t('chat.welcomeBoard', {name: title})
           : t('chat.welcomeGroup', {name: title});
-  const bumpReply = () => thread && feed.patch(thread, m => ({...m, replyCount: m.replyCount + 1}));
+  // At once on screen, then the server's count: a window refresh that landed mid-send already holds the new reply, and
+  // adding one to it would show one too many until the next change.
+  const bumpReply = () => {
+    if (!thread) return;
+    feed.patch(thread, m => ({...m, replyCount: m.replyCount + 1}));
+    feed.refresh();
+  };
 
   return (
     <section className="chat-view" data-embedded={embedded ? '' : undefined} aria-label={title}>

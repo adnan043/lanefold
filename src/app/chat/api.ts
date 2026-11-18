@@ -237,8 +237,14 @@ export async function uploadChatFile(conversationId: number, file: File, signal?
     void call('DELETE', `/chat/attachments/${grant.attachmentId}`).catch(() => undefined);
     throw new ApiError('Cancelled.', 0, 'cancelled');
   }
-  const done = await call<{attachment: ChatFileT}>('POST', `/chat/attachments/${grant.attachmentId}/complete`);
-  return done.attachment;
+  try {
+    const done = await call<{attachment: ChatFileT}>('POST', `/chat/attachments/${grant.attachmentId}/complete`);
+    return done.attachment;
+  } catch (error) {
+    // Not confirmed (or the answer was lost): the row would hold a slot of the unsent-files cap until the daily sweep.
+    void call('DELETE', `/chat/attachments/${grant.attachmentId}`).catch(() => undefined);
+    throw error;
+  }
 }
 
 /** Takes an uploaded, unsent file out (best effort: the server sweeps what is left after a day). */

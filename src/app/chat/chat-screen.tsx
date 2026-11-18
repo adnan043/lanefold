@@ -69,11 +69,16 @@ export function Chat() {
   const unreadOf = useMemo(() => new Map((pulse.data ?? []).map(p => [p.conversationId, p.unread])), [pulse.data]);
   const unread = (c: ConversationT) => (c.id === selectedId ? 0 : (unreadOf.get(c.id) ?? c.unread));
 
-  // A conversation the pulse knows and the list does not (a new DM or group): reload the list.
+  // A conversation the pulse knows and the list does not (a new DM or group): reload the list, once per conversation.
+  // The list keeps the 100 most recent of each kind, so one past that would otherwise reload it on every pulse.
+  const reloadedFor = useRef(new Set<number>());
   useEffect(() => {
     if (!items || !pulse.data) return;
     const known = new Set(items.map(c => c.id));
-    if (pulse.data.some(p => p.workspaceId === workspaceId && !known.has(p.conversationId))) void queryClient.invalidateQueries({queryKey: ['chat', 'conversations', workspaceId]});
+    const missing = pulse.data.filter(p => p.workspaceId === workspaceId && !known.has(p.conversationId) && !reloadedFor.current.has(p.conversationId));
+    if (missing.length === 0) return;
+    for (const p of missing) reloadedFor.current.add(p.conversationId);
+    void queryClient.invalidateQueries({queryKey: ['chat', 'conversations', workspaceId]});
   }, [pulse.data, items, workspaceId, queryClient]);
 
   // No channels yet: the first admin to open Chat creates #general (once per workspace per page load).

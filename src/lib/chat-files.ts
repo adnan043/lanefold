@@ -34,12 +34,13 @@ export const CHAT_IMAGE_TYPES: readonly string[] = ['image/png', 'image/jpeg', '
 export const CHAT_INLINE_TYPES: readonly string[] = [...CHAT_IMAGE_TYPES, 'application/pdf'];
 
 /**
- * The type a file is sent with: the browser's, or (some systems leave it empty for Office files and CSV) the one its
- * extension names. Lowercased; '' when neither is known.
+ * The type a file is sent with: the browser's when it is one we take, else the one its extension names (some systems
+ * leave the type empty for Office files and CSV; Windows calls a CSV `application/vnd.ms-excel` when Excel is installed
+ * and a ZIP `application/x-zip-compressed`). Lowercased; the browser's (refused later) or '' when neither is known.
  */
 export function chatFileType(name: string, browserType: string): string {
   const given = browserType.toLowerCase();
-  if (given) return given;
+  if (CHAT_FILE_TYPES.includes(given)) return given;
   const ext = name.toLowerCase().split('.').pop() ?? '';
   const byExt: Record<string, string> = {
     pdf: 'application/pdf',
@@ -55,7 +56,7 @@ export function chatFileType(name: string, browserType: string): string {
     webp: 'image/webp',
     gif: 'image/gif',
   };
-  return byExt[ext] ?? '';
+  return byExt[ext] ?? given;
 }
 
 /** A chat file as the server stores it (the columns the client may see). */

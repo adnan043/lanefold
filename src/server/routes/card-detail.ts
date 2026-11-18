@@ -46,7 +46,7 @@ import {CARD_ESTIMATE} from '../../lib/rules';
  * card (checklist, comments, attachments) and writes an `activity` row. Output only through `select`.
  */
 
-const TERMINAL_UPLOAD_CODES = new Set(['E_FILE_TYPE', 'E_FILE_EMPTY', 'E_FILE_TOO_LARGE', 'E_FILE_SIZE_MISMATCH', 'E_FILE_NOT_FOUND', 'E_UPLOAD_TOKEN', 'E_UPLOAD_EXPIRED', 'E_STORAGE_LIMIT']);
+const TERMINAL_UPLOAD_CODES = new Set(['E_FILE_TYPE', 'E_FILE_EMPTY', 'E_FILE_TOO_LARGE', 'E_FILE_SIZE_MISMATCH', 'E_FILE_TYPE_MISMATCH', 'E_FILE_NOT_FOUND', 'E_UPLOAD_TOKEN', 'E_UPLOAD_EXPIRED', 'E_STORAGE_LIMIT']);
 const LIMITS = {assignees: 50, labelsPerBoard: 50, checklistsPerCard: 20, itemsPerChecklist: 100, itemsPerRequest: 20, attachmentsPerCard: 50, mentions: 10, comments: 20, commentsPerMinute: 20, unfinishedUploads: 10};
 const PRIORITIES = ['none', 'low', 'medium', 'high', 'urgent'] as const;
 /** Types the browser may show inline from a file link. Everything else (SVG, HTML, text, JSON...) is always a download. */

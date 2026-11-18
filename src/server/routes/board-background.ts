@@ -24,7 +24,7 @@ import {boardFor, bumpRev, noStore, refused} from './boards';
  */
 
 const UNFINISHED_UPLOADS = 10;
-const TERMINAL_UPLOAD_CODES = new Set(['E_FILE_TYPE', 'E_FILE_EMPTY', 'E_FILE_TOO_LARGE', 'E_FILE_SIZE_MISMATCH', 'E_FILE_NOT_FOUND', 'E_UPLOAD_TOKEN', 'E_UPLOAD_EXPIRED', 'E_STORAGE_LIMIT']);
+const TERMINAL_UPLOAD_CODES = new Set(['E_FILE_TYPE', 'E_FILE_EMPTY', 'E_FILE_TOO_LARGE', 'E_FILE_SIZE_MISMATCH', 'E_FILE_TYPE_MISMATCH', 'E_FILE_NOT_FOUND', 'E_UPLOAD_TOKEN', 'E_UPLOAD_EXPIRED', 'E_STORAGE_LIMIT']);
 const BAD_IMAGE = {code: 'bg_image_invalid', message: 'Pick a PNG, JPEG, WebP, GIF or AVIF image up to 10 MB.'};
 
 class OutOfSpace extends Error {}

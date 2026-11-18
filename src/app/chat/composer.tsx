@@ -86,18 +86,22 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
   const addFiles = (picked: File[]) => {
     if (!conversationId || picked.length === 0) return;
     setFileError('');
-    const room = CHAT_FILES_PER_MESSAGE - trayRef.current.filter(f => f.status !== 'failed').length;
-    if (picked.length > room) setFileError(t('chat.tooManyFiles', {n: CHAT_FILES_PER_MESSAGE}));
-    for (const file of picked.slice(0, Math.max(0, room))) {
-      // The same rules as the server, checked first for a quick answer (the server checks again).
+    // The same rules as the server, checked first for a quick answer (the server checks again). Refused files never
+    // take a slot, so a bad file in the pick doesn't push a good one out.
+    const fine = picked.filter(file => {
       if (!CHAT_FILE_TYPES.includes(chatFileType(file.name, file.type))) {
         setFileError(t('chat.fileTypeRefused', {name: file.name}));
-        continue;
+        return false;
       }
       if (file.size < 1 || file.size > CHAT_FILE_MAX_BYTES) {
         setFileError(t('chat.fileTooBig', {name: file.name, max: '100 MB'}));
-        continue;
+        return false;
       }
+      return true;
+    });
+    const room = CHAT_FILES_PER_MESSAGE - trayRef.current.filter(f => f.status !== 'failed').length;
+    if (fine.length > room) setFileError(t('chat.tooManyFiles', {n: CHAT_FILES_PER_MESSAGE}));
+    for (const file of fine.slice(0, Math.max(0, room))) {
       const key = ++trayKey;
       const abort = new AbortController();
       const image = chatFileType(file.name, file.type).startsWith('image/');
@@ -279,8 +283,9 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
           }}
           onSelect={event => setCaret(event.currentTarget.selectionStart)}
           onPaste={event => {
-            // A pasted screenshot or copied file is attached; pasted text stays text.
-            if (!conversationId || event.clipboardData.files.length === 0) return;
+            // A pasted screenshot or copied file is attached; pasted text stays text (Excel and Word put a picture of
+            // the copied cells next to the text: the text wins).
+            if (!conversationId || event.clipboardData.files.length === 0 || event.clipboardData.types.includes('text/plain')) return;
             event.preventDefault();
             addFiles([...event.clipboardData.files]);
           }}

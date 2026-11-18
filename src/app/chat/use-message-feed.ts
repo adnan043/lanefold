@@ -131,6 +131,8 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulse
   const {errorMessage} = useI18n();
   const [items, setItems] = useState<MessageT[]>([]);
   const [pending, setPending] = useState<PendingMessage[]>([]);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<unknown>(null);
   const [nextBefore, setNextBefore] = useState<number | null>(null);
@@ -158,6 +160,9 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulse
   const busy = useRef(false);
   const refreshing = useRef(false);
   const sending = useRef(0);
+  /** A poll asked for while another poll or a send was in flight: run once that ends (the pulse won't ask again). */
+  const missed = useRef(false);
+  const pollRef = useRef<() => Promise<void>>(async () => undefined);
 
   const base = `/conversations/${conversationId}/messages`;
   const url = useCallback(
@@ -224,6 +229,9 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulse
     void load();
     return () => {
       generation.current += 1;
+      // Leaving with a failed message: its files were never sent, and would hold slots of the unsent-files cap for a
+      // day (one still sending is left alone: the server links its files).
+      for (const p of pendingRef.current) if (p.status === 'failed') for (const f of p.files ?? []) void removeUnsentFile(f.id);
     };
   }, [load, setNewerCursor]);
 
@@ -253,7 +261,11 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulse
   /** New messages since what we know; loops while the server says there are more. Quiet on errors (the next tick retries). */
   const poll = useCallback(async () => {
     // A list that does not reach the newest (`hasNewer`) appends nothing: `loadNewer` fills it in order.
-    if (busy.current || sending.current > 0 || status !== 'ready' || newerRef.current !== null) return;
+    if (status !== 'ready' || newerRef.current !== null) return;
+    if (busy.current || sending.current > 0) {
+      missed.current = true;
+      return;
+    }
     busy.current = true;
     const mine = generation.current;
     try {
@@ -274,8 +286,13 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulse
       // The next tick tries again.
     } finally {
       busy.current = false;
+      if (missed.current && mine === generation.current) {
+        missed.current = false;
+        void pollRef.current();
+      }
     }
   }, [url, merge, setKnownSeq, status]);
+  pollRef.current = poll;
 
   /** The newest window again: shows edits, deletes and reactions that `after` cannot. */
   const refreshWindow = useCallback(async (changed = false) => {
@@ -465,7 +482,10 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulse
         return null;
       } finally {
         sending.current -= 1;
-        if (gap) void poll();
+        if (gap || missed.current) {
+          missed.current = false;
+          void poll();
+        }
       }
     },
     [base, merge, setKnownSeq, errorMessage, poll, reloadNewest]
@@ -496,10 +516,13 @@ export function useMessageFeed({conversationId, parentId = null, pulseSeq, pulse
     [pending]
   );
 
+  /** The newest window again, now (its rows win over local guesses such as a reply count bumped on send). */
+  const refresh = useCallback(() => void refreshWindow(), [refreshWindow]);
+
   const hasNewer = newerCursor !== null;
   return useMemo(
-    () => ({items, pending, status, error, nextBefore, loadingOlder, olderError, canWrite, canModerate, archived, known, hasNewer, loadingNewer, load, loadOlder, loadNewer, reloadNewest, send, retry, discard, patch, merge, trim, trimNewest, me}),
-    [items, pending, status, error, nextBefore, loadingOlder, olderError, canWrite, canModerate, archived, known, hasNewer, loadingNewer, load, loadOlder, loadNewer, reloadNewest, send, retry, discard, patch, merge, trim, trimNewest, me]
+    () => ({items, pending, status, error, nextBefore, loadingOlder, olderError, canWrite, canModerate, archived, known, hasNewer, loadingNewer, load, loadOlder, loadNewer, reloadNewest, refresh, send, retry, discard, patch, merge, trim, trimNewest, me}),
+    [items, pending, status, error, nextBefore, loadingOlder, olderError, canWrite, canModerate, archived, known, hasNewer, loadingNewer, load, loadOlder, loadNewer, reloadNewest, refresh, send, retry, discard, patch, merge, trim, trimNewest, me]
   );
 }
 
