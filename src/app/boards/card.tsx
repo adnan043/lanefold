@@ -124,6 +124,9 @@ export const CardFace = memo(function CardFace({card, canWrite, handlers}: {card
             title={card.completed ? t('card.markNotDoneShort') : t('card.markDoneShort')}
             onClick={event => {
               event.stopPropagation();
+              // A mouse or touch click lets go of focus, so the card does not stay ringed with the tick showing;
+              // a keyboard press (detail 0) keeps it, so Tab order is not lost.
+              if (event.detail > 0) event.currentTarget.blur();
               setBurst(card.completed ? 0 : Date.now());
               handlers?.onToggleDone?.(card);
             }}>
