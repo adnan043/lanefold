@@ -1935,5 +1935,18 @@
   "audit.action.chat.message_deleted": "님이 {target}에서 {subject}님의 메시지를 삭제했습니다",
   "audit.action.flow.create": "님이 {target} 자동화를 만들었습니다",
   "audit.action.flow.update": "님이 {target} 자동화를 변경했습니다",
-  "audit.action.flow.delete": "님이 자동화를 삭제했습니다"
+  "audit.action.flow.delete": "님이 자동화를 삭제했습니다",
+  "chat.jumpTo": "이동…",
+  "chat.jumpToLabel": "대화로 이동",
+  "chat.noConversationMatch": "그 이름과 일치하는 대화가 없습니다.",
+  "chat.addChannel": "채널 추가",
+  "chat.newDirect": "새 다이렉트 메시지",
+  "chat.welcomeChannel": "#{name}에 오신 것을 환영합니다",
+  "chat.welcomeDirect": "{name}님과의 대화가 시작되는 곳입니다",
+  "chat.welcomeGroup": "{name}의 시작입니다",
+  "chat.welcomeBoard": "{name} 토론",
+  "chat.viewThread": "스레드 보기",
+  "chat.mentionSomeone": "멘션하기",
+  "chat.insertEmoji": "이모지",
+  "chat.sendHint": "Enter로 보내기 · Shift + Enter로 줄 바꿈"
 }

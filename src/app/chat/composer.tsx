@@ -1,6 +1,9 @@
 import {keepPreviousData, useQuery} from '@tanstack/react-query';
 import {useEffect, useId, useLayoutEffect, useRef, useState} from 'react';
 
+import {QUICK_EMOJI} from '../emoji';
+import {Popover} from '../../portal/ui/popover';
+
 import {useT} from '../../i18n';
 import {type DraftKind} from '../draft-store';
 import {useDraft} from '../use-draft';
@@ -22,6 +25,8 @@ type Props = {
   label: string;
   placeholder: string;
   autoFocus?: boolean;
+  /** The send button's text (default "Send"; a thread says "Reply"). */
+  submitLabel?: string;
   /** Keeps the unsent text across a forced sign-in: `chat` + conversation id, or `reply` + parent message id. */
   draft?: {kind: Extract<DraftKind, 'chat' | 'reply'>; id: number};
 };
@@ -30,7 +35,7 @@ type Props = {
  * The message box: Enter sends, Shift+Enter is a new line, `@` opens the people list (arrows, Enter or Tab to
  * pick, Esc closes). Same 4000-character limit as the server; the over-limit message says how many to remove.
  */
-export function Composer({people, workspaceId, onSend, label, placeholder, autoFocus, draft}: Props) {
+export function Composer({people, workspaceId, onSend, label, placeholder, autoFocus, submitLabel, draft}: Props) {
   const t = useT();
   const id = useId();
   const area = useRef<HTMLTextAreaElement>(null);
@@ -93,13 +98,13 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
       area.current?.setSelectionRange(next.caret, next.caret);
     });
   };
-  /** The "attach a card" button: types the `#` for the person and opens the same list. */
-  const startCardTag = () => {
+  /** Types `token` at the caret (after a space when glued to a word) and puts the caret after it. */
+  const typeAtCaret = (token: string, spaced: boolean) => {
     const el = area.current;
     const at = el?.selectionStart ?? text.length;
-    const lead = at > 0 && !/\s/.test(text[at - 1]!) ? ' ' : '';
-    const next = text.slice(0, at) + lead + '#' + text.slice(at);
-    const pos = at + lead.length + 1;
+    const lead = spaced && at > 0 && !/\s/.test(text[at - 1]!) ? ' ' : '';
+    const next = text.slice(0, at) + lead + token + text.slice(at);
+    const pos = at + lead.length + token.length;
     setText(next);
     setCaret(pos);
     setDismissed(false);
@@ -108,6 +113,12 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
       el?.setSelectionRange(pos, pos);
     });
   };
+  /** The "attach a card" button: types the `#` for the person and opens the same list. */
+  const startCardTag = () => typeAtCaret('#', true);
+  /** The "mention" button: types the `@` and opens the people list. */
+  const startMention = () => typeAtCaret('@', true);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const emojiButton = useRef<HTMLButtonElement>(null);
 
   const submit = () => {
     setTried(true);
@@ -193,10 +204,35 @@ export function Composer({people, workspaceId, onSend, label, placeholder, autoF
             }
           }}
         />
-        <IconButton icon="hash" size="sm" label={t('chat.attachCard')} disabled={cards.length >= MAX_CARDS || !workspaceId} onClick={startCardTag} />
-        <Button type="submit" size="sm" icon="arrow-right" disabled={!text.trim()} aria-label={t('chat.send')}>
-          <span className="chat-send-label">{t('chat.send')}</span>
-        </Button>
+        <div className="chat-composer-tools">
+          <IconButton icon="hash" size="sm" label={t('chat.attachCard')} disabled={cards.length >= MAX_CARDS || !workspaceId} onClick={startCardTag} />
+          <span className="chat-composer-sep" aria-hidden="true" />
+          <IconButton icon="at-sign" size="sm" label={t('chat.mentionSomeone')} onClick={startMention} />
+          <IconButton ref={emojiButton} icon="smile" size="sm" label={t('chat.insertEmoji')} aria-haspopup="dialog" aria-expanded={emojiOpen} onClick={() => setEmojiOpen(open => !open)} />
+          <Popover open={emojiOpen} onClose={() => setEmojiOpen(false)} anchor={emojiButton} label={t('chat.insertEmoji')}>
+            <div className="chat-emoji-grid">
+              {QUICK_EMOJI.map(emoji => (
+                <button
+                  key={emoji}
+                  type="button"
+                  className="chat-emoji"
+                  aria-label={emoji}
+                  onClick={() => {
+                    setEmojiOpen(false);
+                    typeAtCaret(emoji, false);
+                  }}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </Popover>
+          <span className="chat-composer-hint muted" aria-hidden="true">
+            {t('chat.sendHint')}
+          </span>
+          <Button type="submit" size="sm" icon="send" disabled={!text.trim()} aria-label={submitLabel ?? t('chat.send')}>
+            <span className="chat-send-label">{submitLabel ?? t('chat.send')}</span>
+          </Button>
+        </div>
         {cardHits.length > 0 && (
           <ul className="chat-mention-list" role="listbox" id={`${id}-cardlist`} aria-label={t('chat.cardList')}>
             {cardHits.map((card, index) => (

@@ -1948,5 +1948,18 @@
   "audit.action.chat.message_deleted": "پیامی از {subject} را در {target} حذف کرد",
   "audit.action.flow.create": "خودکارسازی {target} را ساخت",
   "audit.action.flow.update": "خودکارسازی {target} را تغییر داد",
-  "audit.action.flow.delete": "یک خودکارسازی را حذف کرد"
+  "audit.action.flow.delete": "یک خودکارسازی را حذف کرد",
+  "chat.jumpTo": "رفتن به…",
+  "chat.jumpToLabel": "رفتن به یک گفتگو",
+  "chat.noConversationMatch": "هیچ گفتگویی با این نام نیست.",
+  "chat.addChannel": "افزودن کانال",
+  "chat.newDirect": "پیام مستقیم جدید",
+  "chat.welcomeChannel": "به #{name} خوش آمدید",
+  "chat.welcomeDirect": "این آغاز گفتگوی شما با {name} است",
+  "chat.welcomeGroup": "این آغاز {name} است",
+  "chat.welcomeBoard": "گفتگوی {name}",
+  "chat.viewThread": "دیدن رشته",
+  "chat.mentionSomeone": "اشاره به کسی",
+  "chat.insertEmoji": "ایموجی",
+  "chat.sendHint": "Enter برای ارسال · Shift + Enter برای خط جدید"
 }

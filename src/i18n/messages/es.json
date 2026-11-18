@@ -1961,5 +1961,18 @@
   "audit.action.chat.message_deleted": "eliminó un mensaje de {subject} en {target}",
   "audit.action.flow.create": "creó la automatización {target}",
   "audit.action.flow.update": "cambió la automatización {target}",
-  "audit.action.flow.delete": "eliminó una automatización"
+  "audit.action.flow.delete": "eliminó una automatización",
+  "chat.jumpTo": "Ir a…",
+  "chat.jumpToLabel": "Ir a una conversación",
+  "chat.noConversationMatch": "Ninguna conversación coincide con ese nombre.",
+  "chat.addChannel": "Añadir canal",
+  "chat.newDirect": "Nuevo mensaje directo",
+  "chat.welcomeChannel": "Te damos la bienvenida a #{name}",
+  "chat.welcomeDirect": "Aquí empieza tu conversación con {name}",
+  "chat.welcomeGroup": "Aquí empieza {name}",
+  "chat.welcomeBoard": "Conversación de {name}",
+  "chat.viewThread": "Ver hilo",
+  "chat.mentionSomeone": "Mencionar a alguien",
+  "chat.insertEmoji": "Emoji",
+  "chat.sendHint": "Enter para enviar · Mayús + Enter para una línea nueva"
 }

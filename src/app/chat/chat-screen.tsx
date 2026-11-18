@@ -4,7 +4,7 @@ import {Link, useNavigate} from '../nav';
 import {useEffect, useMemo, useRef, useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
-import {Button, EmptyState, ErrorNote, Icon, LoadingBlock, Notice, PageHeader, buttonClass} from '../../portal/ui';
+import {Avatar, Button, EmptyState, ErrorNote, Icon, IconButton, LoadingBlock, Notice, PageHeader, buttonClass} from '../../portal/ui';
 import {call} from '../api';
 import {useWorkspace} from '../workspace';
 import {conversationQuery, conversationsQuery, type ConversationT, usePulse} from './api';
@@ -13,15 +13,32 @@ import {ConversationView, conversationTitle} from './conversation-view';
 import {NewConversationModal} from './new-conversation';
 import './chat.css';
 
+/** The row's leading mark: a person's initials for a DM, a tile for a group, an icon for a channel or a board. */
+function ConversationMark({c, title}: {c: ConversationT; title: string}) {
+  if (c.kind === 'dm') return <Avatar name={title} size="xs" />;
+  if (c.kind === 'group') {
+    return (
+      <span className="chat-conv-tile" aria-hidden="true">
+        <Icon name="users" size={14} />
+      </span>
+    );
+  }
+  return (
+    <span className="chat-conv-icon" aria-hidden="true">
+      <Icon name={c.kind === 'channel' ? 'hash' : 'layout-kanban'} size={16} />
+    </span>
+  );
+}
+
 function ConversationLink({c, selected, unread}: {c: ConversationT; selected: boolean; unread: number}) {
   const t = useT();
   const title = conversationTitle(c, t);
   return (
     <li>
       <Link to="/chat" search={{c: c.id} as never} className="chat-conv" aria-current={selected ? 'page' : undefined} data-unread={unread > 0 && !c.muted ? '' : undefined}>
-        <Icon name={c.kind === 'channel' ? 'hash' : c.kind === 'board' ? 'layout-kanban' : c.kind === 'group' ? 'users' : 'user'} size={16} />
+        <ConversationMark c={c} title={title} />
         <span className="chat-conv-name"><bdi>{title}</bdi></span>
-        {c.muted && <Icon name="bell" size={14} />}
+        {c.muted && <Icon name="bell-off" size={14} />}
         {unread > 0 && (
           <span className="chat-unread" aria-label={t('chat.unreadCount', {n: unread})}>
             {unread > 99 ? '99+' : unread}
@@ -43,7 +60,9 @@ export function Chat() {
   const workspaceId = current?.id ?? 0;
   const list = useQuery({...conversationsQuery(workspaceId), enabled: workspaceId > 0});
   const pulse = usePulse(true);
-  const [creating, setCreating] = useState(false);
+  /** The New dialog: closed, or open on the kind to start with. */
+  const [creating, setCreating] = useState<false | 'channel' | 'dm'>(false);
+  const [jump, setJump] = useState('');
   const isAdmin = current?.role === 'owner' || current?.role === 'admin';
 
   const items = list.data;
@@ -113,13 +132,19 @@ export function Chat() {
     );
   }
 
-  const channels = items.filter(c => c.kind === 'channel');
-  const direct = items.filter(c => c.kind === 'dm' || c.kind === 'group');
-  const boards = items.filter(c => c.kind === 'board');
-  const section = (label: string, rows: ConversationT[]) =>
-    rows.length > 0 && (
+  const needle = jump.trim().toLocaleLowerCase();
+  const shown = needle ? items.filter(c => conversationTitle(c, t).toLocaleLowerCase().includes(needle)) : items;
+  const channels = shown.filter(c => c.kind === 'channel');
+  const direct = shown.filter(c => c.kind === 'dm' || c.kind === 'group');
+  const boards = shown.filter(c => c.kind === 'board');
+  const canAddChannel = current.role !== 'viewer' && current.role !== 'guest';
+  const section = (label: string, rows: ConversationT[], add?: {label: string; kind: 'channel' | 'dm'}) =>
+    (rows.length > 0 || (add && !needle)) && (
       <div className="chat-section">
-        <h3 className="chat-section-label">{label}</h3>
+        <div className="chat-section-head">
+          <h3 className="chat-section-label">{label}</h3>
+          {add && <IconButton className="chat-section-add" icon="plus" size="sm" label={add.label} onClick={() => setCreating(add.kind)} />}
+        </div>
         <ul>
           {rows.map(c => (
             <ConversationLink key={c.id} c={c} selected={c.id === selected?.id} unread={unread(c)} />
@@ -132,26 +157,53 @@ export function Chat() {
     <div className="chat-layout" data-open={selected ? '' : undefined}>
       <nav className="chat-list" aria-label={t('chat.conversations')}>
         <div className="chat-list-head">
-          <h2>{t('chat.title')}</h2>
-          <Button size="sm" variant="secondary" icon="plus" onClick={() => setCreating(true)}>
+          <h2>{t('chat.messages')}</h2>
+          <Button size="sm" variant="secondary" icon="square-pen" onClick={() => setCreating('channel')}>
             {t('chat.new')}
           </Button>
         </div>
-        {general.isPending && <p className="muted chat-list-note"><span className="spinner" aria-hidden="true" /> {t('chat.creatingGeneral')}</p>}
-        {general.error && (
-          <Notice tone="danger" action={<Button size="sm" variant="secondary" onClick={() => general.mutate()}>{t('common.retry')}</Button>}>
-            {errorMessage(general.error)}
-          </Notice>
+        {items.length > 0 && (
+          <div className="chat-jump-to">
+            <label className="visually-hidden" htmlFor="chat-jump-to">
+              {t('chat.jumpToLabel')}
+            </label>
+            <Icon name="search" size={14} />
+            <input
+              id="chat-jump-to"
+              type="search"
+              autoComplete="off"
+              placeholder={t('chat.jumpTo')}
+              value={jump}
+              onChange={event => setJump(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Escape' && jump) {
+                  event.preventDefault();
+                  setJump('');
+                }
+                // Enter opens the first match.
+                if (event.key === 'Enter' && shown[0]) void navigate({to: '/chat', search: {c: shown[0].id} as never});
+              }}
+            />
+          </div>
         )}
-        {noChannels && !isAdmin && <p className="muted chat-list-note">{t('chat.noChannelsMember')}</p>}
-        {section(t('chat.channels'), channels)}
-        {section(t('chat.direct'), direct)}
-        {section(t('chat.boardChats'), boards)}
-        {items.length === 0 && !general.isPending && (
-          <EmptyState icon="message" title={t('chat.emptyTitle2')} action={<Link to="/boards" className={buttonClass({variant: 'secondary'})}>{t('boards.backToBoards')}</Link>}>
-            {t('chat.emptyBody2')}
-          </EmptyState>
-        )}
+        <div className="chat-list-scroll">
+          {general.isPending && <p className="muted chat-list-note"><span className="spinner" aria-hidden="true" /> {t('chat.creatingGeneral')}</p>}
+          {general.error && (
+            <Notice tone="danger" action={<Button size="sm" variant="secondary" onClick={() => general.mutate()}>{t('common.retry')}</Button>}>
+              {errorMessage(general.error)}
+            </Notice>
+          )}
+          {noChannels && !isAdmin && <p className="muted chat-list-note">{t('chat.noChannelsMember')}</p>}
+          {section(t('chat.channels'), channels, canAddChannel ? {label: t('chat.addChannel'), kind: 'channel'} : undefined)}
+          {section(t('chat.direct'), direct, current.role !== 'guest' ? {label: t('chat.newDirect'), kind: 'dm'} : undefined)}
+          {section(t('chat.boardChats'), boards)}
+          {needle && shown.length === 0 && <p className="muted chat-list-note">{t('chat.noConversationMatch')}</p>}
+          {items.length === 0 && !general.isPending && (
+            <EmptyState icon="message" title={t('chat.emptyTitle2')} action={<Link to="/boards" className={buttonClass({variant: 'secondary'})}>{t('boards.backToBoards')}</Link>}>
+              {t('chat.emptyBody2')}
+            </EmptyState>
+          )}
+        </div>
       </nav>
       <div className="chat-pane">
         {selected ? (
@@ -173,7 +225,8 @@ export function Chat() {
       <NewConversationModal
         workspaceId={workspaceId}
         role={current.role}
-        open={creating}
+        open={creating !== false}
+        initialKind={creating || undefined}
         onClose={() => setCreating(false)}
         onCreated={c => void navigate({to: '/chat', search: {c: c.id} as never})}
       />

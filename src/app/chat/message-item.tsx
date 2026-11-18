@@ -74,13 +74,15 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [editError, setEditError] = useState('');
-  const [picker, setPicker] = useState(false);
+  /** The emoji picker: closed, or open under the button that opened it (the toolbar's, or the add chip after the reactions). */
+  const [picker, setPicker] = useState<null | 'toolbar' | 'chip'>(null);
   const [cardOpen, setCardOpen] = useState(false);
   // The create-card dialog mounts on first use, never for every message: each copy subscribes to the board cache, so
   // up to MAX_KEPT closed dialogs re-rendered on every card move. Kept mounted after that, so closing it returns focus.
   const [cardUsed, setCardUsed] = useState(false);
   if (cardOpen && !cardUsed) setCardUsed(true);
   const pickerButton = useRef<HTMLButtonElement>(null);
+  const chipButton = useRef<HTMLButtonElement>(null);
   const own = message.sender.id === me;
   const name = displayName(message.sender.name, t('chat.deletedUser'));
   // Workspace owners and admins get a small role badge next to their name (from the member directory already loaded).
@@ -169,7 +171,7 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
 
   return (
     <li id={`msg-${message.id}`} tabIndex={-1} className="chat-msg" data-grouped={grouped ? '' : undefined} data-pinned={message.pinned ? '' : undefined}>
-      <span className="chat-msg-gutter">{!grouped && <Avatar name={message.sender.name ?? ''} size="sm" />}</span>
+      <span className="chat-msg-gutter">{!grouped && <Avatar name={message.sender.name ?? ''} size="md" />}</span>
       <div className="chat-msg-main">
         {!grouped && (
           <p className="chat-msg-head">
@@ -238,15 +240,33 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
                 aria-label={t('chat.reactionLabel', {emoji: r.emoji, n: r.count})}
                 disabled={!canWrite || react.isPending}
                 onClick={() => react.mutate({emoji: r.emoji, on: !r.mine})}>
-                <span aria-hidden="true">{r.emoji}</span> {r.count}
+                <span className="chat-reaction-emoji" aria-hidden="true">{r.emoji}</span>
+                <span className="chat-reaction-count">{r.count}</span>
               </button>
             ))}
+            {canWrite && (
+              <button
+                ref={chipButton}
+                type="button"
+                className="chat-reaction chat-reaction-add"
+                aria-label={t('chat.react')}
+                title={t('chat.react')}
+                aria-haspopup="dialog"
+                aria-expanded={picker === 'chip'}
+                disabled={react.isPending}
+                onClick={() => setPicker(open => (open === 'chip' ? null : 'chip'))}>
+                <Icon name="smile" size={14} />
+              </button>
+            )}
           </div>
         )}
         {onReply && message.replyCount > 0 && (
-          <Button variant="link" size="sm" className="chat-thread-link" onClick={() => onReply(message)}>
-            <Icon name="reply" size={14} /> {t('chat.replies', {n: message.replyCount})}
-          </Button>
+          <button type="button" className="chat-thread-link" onClick={() => onReply(message)}>
+            <span className="chat-thread-link-count">{t('chat.replies', {n: message.replyCount})}</span>
+            <span className="chat-thread-link-view" aria-hidden="true">
+              {t('chat.viewThread')}
+            </span>
+          </button>
         )}
       </div>
       {!editing && (
@@ -260,12 +280,12 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
                 aria-label={t('chat.react')}
                 title={t('chat.react')}
                 aria-haspopup="dialog"
-                aria-expanded={picker}
+                aria-expanded={picker === 'toolbar'}
                 disabled={react.isPending}
-                onClick={() => setPicker(open => !open)}>
+                onClick={() => setPicker(open => (open === 'toolbar' ? null : 'toolbar'))}>
                 {react.isPending ? <span className="spinner" aria-hidden="true" /> : <Icon name="smile" size={16} />}
               </button>
-              <Popover open={picker} onClose={() => setPicker(false)} anchor={pickerButton} label={t('chat.react')} align="end">
+              <Popover open={picker !== null} onClose={() => setPicker(null)} anchor={picker === 'chip' ? chipButton : pickerButton} label={t('chat.react')} align={picker === 'chip' ? 'start' : 'end'}>
                 <div className="chat-emoji-grid">
                   {QUICK_EMOJI.map(emoji => {
                     const mine = message.reactions.find(r => r.emoji === emoji)?.mine ?? false;
@@ -277,7 +297,7 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
                         aria-pressed={mine}
                         aria-label={emoji}
                         onClick={() => {
-                          setPicker(false);
+                          setPicker(null);
                           react.mutate({emoji, on: !mine});
                         }}>
                         {emoji}

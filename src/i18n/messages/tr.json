@@ -1948,5 +1948,18 @@
   "audit.action.chat.message_deleted": "{target} içinde {subject} kişisinin bir mesajını sildi",
   "audit.action.flow.create": "{target} otomasyonunu oluşturdu",
   "audit.action.flow.update": "{target} otomasyonunu değiştirdi",
-  "audit.action.flow.delete": "bir otomasyonu sildi"
+  "audit.action.flow.delete": "bir otomasyonu sildi",
+  "chat.jumpTo": "Şuraya git…",
+  "chat.jumpToLabel": "Bir sohbete git",
+  "chat.noConversationMatch": "Bu adla eşleşen sohbet yok.",
+  "chat.addChannel": "Kanal ekle",
+  "chat.newDirect": "Yeni doğrudan mesaj",
+  "chat.welcomeChannel": "#{name} kanalına hoş geldiniz",
+  "chat.welcomeDirect": "{name} ile sohbetinizin başlangıcı",
+  "chat.welcomeGroup": "{name} sohbetinin başlangıcı",
+  "chat.welcomeBoard": "{name} tartışması",
+  "chat.viewThread": "Konuyu görüntüle",
+  "chat.mentionSomeone": "Birinden bahset",
+  "chat.insertEmoji": "Emoji",
+  "chat.sendHint": "Göndermek için Enter · Yeni satır için Shift + Enter"
 }

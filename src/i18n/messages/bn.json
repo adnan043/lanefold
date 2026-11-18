@@ -1948,5 +1948,18 @@
   "audit.action.chat.message_deleted": "{target} এ {subject} এর একটি মেসেজ মুছেছেন",
   "audit.action.flow.create": "{target} অটোমেশন বানিয়েছেন",
   "audit.action.flow.update": "{target} অটোমেশন বদলেছেন",
-  "audit.action.flow.delete": "একটি অটোমেশন মুছেছেন"
+  "audit.action.flow.delete": "একটি অটোমেশন মুছেছেন",
+  "chat.jumpTo": "এখানে যান…",
+  "chat.jumpToLabel": "একটি কথোপকথনে যান",
+  "chat.noConversationMatch": "এই নামের কোনো কথোপকথন নেই।",
+  "chat.addChannel": "চ্যানেল যোগ করুন",
+  "chat.newDirect": "নতুন সরাসরি মেসেজ",
+  "chat.welcomeChannel": "#{name}-এ স্বাগতম",
+  "chat.welcomeDirect": "{name}-এর সাথে আপনার কথোপকথনের শুরু এখান থেকে",
+  "chat.welcomeGroup": "{name}-এর শুরু এখান থেকে",
+  "chat.welcomeBoard": "{name} আলোচনা",
+  "chat.viewThread": "থ্রেড দেখুন",
+  "chat.mentionSomeone": "কাউকে উল্লেখ করুন",
+  "chat.insertEmoji": "ইমোজি",
+  "chat.sendHint": "পাঠাতে Enter · নতুন লাইনের জন্য Shift + Enter"
 }

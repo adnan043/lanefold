@@ -11,7 +11,15 @@ import {type ConversationT, memberSearchQuery, type PersonHit, useDebounced} fro
 type Kind = 'channel' | 'dm' | 'group';
 
 /** New channel, direct message or group. Viewers only message people directly (the server enforces it too). */
-export function NewConversationModal({workspaceId, role, open, onClose, onCreated}: {workspaceId: number; role: string; open: boolean; onClose: () => void; onCreated: (c: ConversationT) => void}) {
+export function NewConversationModal({workspaceId, role, open, initialKind, onClose, onCreated}: {
+  workspaceId: number;
+  role: string;
+  open: boolean;
+  /** The kind it opens on (a section's "+" button); falls back to a channel, or a DM for viewers. */
+  initialKind?: Kind;
+  onClose: () => void;
+  onCreated: (c: ConversationT) => void;
+}) {
   const t = useT();
   const {fieldErrors, errorMessage} = useI18n();
   const queryClient = useQueryClient();
@@ -23,6 +31,12 @@ export function NewConversationModal({workspaceId, role, open, onClose, onCreate
   const [names, setNames] = useState<Record<number, string>>({});
   const canGroup = role !== 'viewer';
   const [kind, setKind] = useState<Kind>(canGroup ? 'channel' : 'dm');
+  // Each opening starts on the kind asked for (adjusting state while rendering: no effect, no extra paint).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setKind(canGroup ? (initialKind ?? 'channel') : 'dm');
+  }
   const [peer, setPeer] = useState('');
   const [picked, setPicked] = useState<number[]>([]);
   const [status, setStatus] = useState('');

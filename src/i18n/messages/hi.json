@@ -1948,5 +1948,18 @@
   "audit.action.chat.message_deleted": "ने {target} में {subject} का एक संदेश हटाया",
   "audit.action.flow.create": "ने ऑटोमेशन {target} बनाया",
   "audit.action.flow.update": "ने ऑटोमेशन {target} बदला",
-  "audit.action.flow.delete": "ने एक ऑटोमेशन हटाया"
+  "audit.action.flow.delete": "ने एक ऑटोमेशन हटाया",
+  "chat.jumpTo": "यहाँ जाएँ…",
+  "chat.jumpToLabel": "किसी बातचीत पर जाएँ",
+  "chat.noConversationMatch": "इस नाम से कोई बातचीत नहीं मिली।",
+  "chat.addChannel": "चैनल जोड़ें",
+  "chat.newDirect": "नया डायरेक्ट मैसेज",
+  "chat.welcomeChannel": "#{name} में आपका स्वागत है",
+  "chat.welcomeDirect": "{name} के साथ आपकी बातचीत की शुरुआत",
+  "chat.welcomeGroup": "{name} की शुरुआत",
+  "chat.welcomeBoard": "{name} चर्चा",
+  "chat.viewThread": "थ्रेड देखें",
+  "chat.mentionSomeone": "किसी का उल्लेख करें",
+  "chat.insertEmoji": "इमोजी",
+  "chat.sendHint": "भेजने के लिए Enter · नई पंक्ति के लिए Shift + Enter"
 }

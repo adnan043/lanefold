@@ -2000,5 +2000,18 @@
   "audit.action.chat.message_deleted": "حذف رسالة من {subject} في {target}",
   "audit.action.flow.create": "أنشأ الأتمتة {target}",
   "audit.action.flow.update": "غيّر الأتمتة {target}",
-  "audit.action.flow.delete": "حذف أتمتة"
+  "audit.action.flow.delete": "حذف أتمتة",
+  "chat.jumpTo": "انتقل إلى…",
+  "chat.jumpToLabel": "انتقل إلى محادثة",
+  "chat.noConversationMatch": "لا توجد محادثة بهذا الاسم.",
+  "chat.addChannel": "إضافة قناة",
+  "chat.newDirect": "رسالة مباشرة جديدة",
+  "chat.welcomeChannel": "مرحبًا بك في #{name}",
+  "chat.welcomeDirect": "هذه بداية محادثتك مع {name}",
+  "chat.welcomeGroup": "هذه بداية {name}",
+  "chat.welcomeBoard": "نقاش {name}",
+  "chat.viewThread": "عرض السلسلة",
+  "chat.mentionSomeone": "الإشارة إلى شخص",
+  "chat.insertEmoji": "رموز تعبيرية",
+  "chat.sendHint": "Enter للإرسال · Shift + Enter لسطر جديد"
 }
