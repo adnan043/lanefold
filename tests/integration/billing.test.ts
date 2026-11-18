@@ -2,6 +2,7 @@ import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 
 import {inRequestScope} from '../../src/platform/request-scope';
 import {app} from '../../src/server/app';
+import {startGraceForWorkspaces} from '../../src/server/entitlements';
 import {applyWorkspacePlan, paymentHooks, recordMembership} from '../../src/server/payments-hooks';
 import {Browser, configureEnv, DATABASE_URL, db, ownerSignedIn, resetDatabase, signedIn, userId} from './support/harness';
 
@@ -260,5 +261,32 @@ describe.skipIf(!DATABASE_URL)('billing (integration, real Postgres)', () => {
     expect((res.json.entitlements as {overLimit: boolean; graceUntil: string | null}).overLimit).toBe(true);
     expect((res.json.entitlements as {graceUntil: string | null}).graceUntil).not.toBeNull();
     expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil).not.toBeNull();
+  });
+
+  it('an expired grace date is dropped once the workspace is back under its limits, so a later overage gets a fresh grace', async () => {
+    const past = new Date(Date.now() - 86_400_000);
+    await db.workspace.update({where: {id: w1}, data: {memberCount: 1, graceUntil: past}});
+    const under = await member.get(`/site-api/workspaces/${w1}/billing`);
+    expect(under.status).toBe(200);
+    expect(under.json.entitlements).toMatchObject({overLimit: false, readOnly: false});
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil).toBeNull();
+    // Over again: a new clock, not read-only.
+    await db.workspace.update({where: {id: w1}, data: {memberCount: 100000}});
+    const over = await member.get(`/site-api/workspaces/${w1}/billing`);
+    expect(over.json.entitlements).toMatchObject({overLimit: true, inGrace: true, readOnly: false});
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil!.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('a plan change restarts a grace clock that already ran out; a plain re-check does not', async () => {
+    const past = new Date(Date.now() - 86_400_000);
+    await db.workspace.update({where: {id: w1}, data: {memberCount: 100000, graceUntil: past}});
+    await startGraceForWorkspaces(db, [w1]);
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil).toEqual(past);
+    await startGraceForWorkspaces(db, [w1], {restartExpired: true});
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil!.getTime()).toBeGreaterThan(Date.now());
+    // A clock still running is never moved.
+    const running = (await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil;
+    await startGraceForWorkspaces(db, [w1], {restartExpired: true});
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil).toEqual(running);
   });
 });
