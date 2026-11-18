@@ -445,6 +445,8 @@ model UserProfile {
   emailNotifyMode   String    @default("off") @map("email_notify_mode") @db.VarChar(10)
   /// Last notification id already mailed (or skipped when switched on).
   emailNotifyCursor BigInt    @default(0) @map("email_notify_cursor")
+  /// The newest notification id seen (the bell's list was opened): the red count only counts unread ones above it.
+  notificationsSeenId BigInt  @default(0) @map("notifications_seen_id")
   emailNotifiedAt   DateTime? @map("email_notified_at") @db.Timestamptz(3)
   /// Morning digest (opt-in): the local hour (5 to 12) it is made at, null = off. CHECK in the migration.
   digestHour        Int?      @map("digest_hour") @db.SmallInt

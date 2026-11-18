@@ -92,7 +92,14 @@ export function NotificationBell() {
         onFocus={() => void loadPanel()}
         onClick={() => {
           setOpen(value => !value);
-          if (!open) void queryClient.invalidateQueries({queryKey: ['notifications']});
+          if (!open) {
+            // Opening the list: the red count goes at once (all seen); the list keeps each unread one marked until read.
+            // The list and count are re-read after the server has the "seen" mark, so the old count never comes back.
+            queryClient.setQueryData(countQuery.queryKey, {count: 0, more: false});
+            void call('POST', '/notifications/seen')
+              .catch(() => undefined)
+              .finally(() => void queryClient.invalidateQueries({queryKey: ['notifications']}));
+          }
         }}>
         <Icon name="bell" size={18} />
         {unread > 0 && (

@@ -124,7 +124,7 @@ export default function NotificationPanel({
         <Button
           size="sm"
           variant="ghost"
-          disabled={unread === 0 || cooldown.blocked}
+          disabled={(unread === 0 && !items?.some((n) => !n.read)) || cooldown.blocked}
           pending={readAll.isPending}
           pendingLabel={t("notif.markingAll")}
           onClick={() => readAll.mutate()}
