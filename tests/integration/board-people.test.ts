@@ -84,7 +84,7 @@ describe.skipIf(!DATABASE_URL)('board people (integration, real Postgres)', () =
     await db.boardMember.create({data: {boardId: boardA, userId: bobId, workspaceId: wsA, role: 'member'}});
     await db.boardMember.create({data: {boardId: boardA, userId: benId, workspaceId: wsA, role: 'member'}});
     const lane = (await db.lane.findFirstOrThrow({where: {boardId: boardA}, select: {id: true}})).id;
-    const card = (await ann.post(`/site-api/lanes/${lane}/cards`, {title: 'Plan'})).json.card.id;
+    const card = (await ann.post(`/site-api/lanes/${lane}/cards`, {title: 'Plan'})).json.items[0].id;
     const picker = (who: Browser) => who.get(`/site-api/cards/${card}/people`);
     const asGuest = await picker(bob);
     expect(asGuest.status).toBe(200);
