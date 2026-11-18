@@ -1,6 +1,6 @@
 import {useSortable} from '@dnd-kit/sortable';
 import {CSS} from '@dnd-kit/utilities';
-import {memo, useCallback, useRef} from 'react';
+import {memo, useCallback, useEffect, useRef, useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
 import {Icon, Menu, useToast} from '../../portal/ui';
@@ -45,6 +45,13 @@ export const CardFace = memo(function CardFace({card, canWrite, handlers}: {card
   };
   // The done tick needs a writer and a handler; select mode keeps the corner for the bulk tick.
   const doneToggle = canWrite && handlers?.onToggleDone !== undefined && !selectMode;
+  // Marking done plays a short celebration (the tick pops, light confetti): a new key restarts it, a timer clears it.
+  const [burst, setBurst] = useState(0);
+  useEffect(() => {
+    if (!burst) return;
+    const timer = window.setTimeout(() => setBurst(0), 900);
+    return () => window.clearTimeout(timer);
+  }, [burst]);
   const overdue = card.dueDate !== null && !card.completed && card.dueDate < todayISO();
   const labels = card.labels ?? [];
   const members = card.members ?? [];
@@ -111,15 +118,24 @@ export const CardFace = memo(function CardFace({card, canWrite, handlers}: {card
             type="button"
             className="lf-done-toggle"
             data-done={card.completed ? '' : undefined}
+            data-pop={burst && card.completed ? '' : undefined}
             aria-pressed={card.completed}
             aria-label={card.completed ? t('card.markNotDone', {title: card.title}) : t('card.markDone', {title: card.title})}
             title={card.completed ? t('card.markNotDoneShort') : t('card.markDoneShort')}
             onClick={event => {
               event.stopPropagation();
+              setBurst(card.completed ? 0 : Date.now());
               handlers?.onToggleDone?.(card);
             }}>
             {card.completed ? <Icon name="check-circle" size={16} /> : <span className="lf-done-ring" aria-hidden="true" />}
           </button>
+        )}
+        {doneToggle && burst > 0 && card.completed && (
+          <span key={burst} className="lf-done-burst" aria-hidden="true">
+            {Array.from({length: 10}, (_, i) => (
+              <i key={i} />
+            ))}
+          </span>
         )}
         {handlers ? (
           <button type="button" className="lf-card-title" dir="auto" data-done={card.completed ? '' : undefined} onClick={event => {
