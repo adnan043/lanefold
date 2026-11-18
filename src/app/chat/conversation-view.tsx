@@ -2,10 +2,10 @@ import {useQuery, useQueryClient} from '@tanstack/react-query';
 import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
-import {Button, EmptyState, ErrorNote, Icon, IconButton, LoadingBlock, Notice, useToast} from '../../portal/ui';
+import {Button, EmptyState, ErrorNote, Icon, IconButton, LoadingBlock, Menu, type MenuItem, Notice, useConfirm, useToast} from '../../portal/ui';
 import {useMe} from '../../portal/shared';
 import {call} from '../api';
-import {chatPeopleQuery, type ConversationT, type MemberT, type MessageT, useMarkRead, usePulse} from './api';
+import {type ChatPersonT, chatPeopleQuery, type ConversationT, conversationsQuery, type MessageT, type PulseItem, pulseKey, useMarkRead, usePulse} from './api';
 import {incomingSince, newestSeq} from './announce';
 import {Composer} from './composer';
 import {MembersButton} from './members-dialog';
@@ -15,14 +15,46 @@ import {MAX_KEPT, type MessageFeed, useMessageFeed} from './use-message-feed';
 import './chat.css';
 
 const GROUP_MS = 5 * 60_000;
+/** Newer rows are dropped while the reader is up the list only once the list is this far past `MAX_KEPT` (no churn per message). */
+const TRIM_SLACK = 25;
+
+/** Where the reader is: the first row on screen and how far below the list's top edge it starts. */
+type Anchor = {seq: string; offset: number};
+
+/** The first row on screen in `box` (binary search over the rows, which are in order). */
+function captureAnchor(box: HTMLElement | null): Anchor | null {
+  if (!box) return null;
+  const top = box.getBoundingClientRect().top;
+  const rows = box.querySelectorAll<HTMLElement>('.chat-rows > li[data-seq]');
+  let lo = 0;
+  let hi = rows.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (rows[mid]!.getBoundingClientRect().bottom > top) {
+      found = mid;
+      hi = mid - 1;
+    } else lo = mid + 1;
+  }
+  if (found < 0) return null;
+  const row = rows[found]!;
+  return {seq: row.dataset.seq!, offset: row.getBoundingClientRect().top - top};
+}
+
+/** Puts the anchored row back where it was on screen (rows were added or dropped above or below it). */
+function restoreAnchor(box: HTMLElement, anchor: Anchor) {
+  const row = box.querySelector<HTMLElement>(`.chat-rows > li[data-seq="${anchor.seq}"]`);
+  if (!row) return;
+  box.scrollTop += row.getBoundingClientRect().top - box.getBoundingClientRect().top - anchor.offset;
+}
 
 export const conversationTitle = (c: Pick<ConversationT, 'kind' | 'name' | 'peer'>, t: (key: any) => string) =>
   c.kind === 'dm' ? c.peer?.name || t('chat.deletedUser') : c.name || (c.kind === 'board' ? t('chat.boardChat') : t('chat.untitled'));
 
 type ListProps = {
   feed: MessageFeed;
-  people: ReadonlyMap<number, MemberT>;
-  peopleList: readonly MemberT[];
+  people: ReadonlyMap<number, ChatPersonT>;
+  peopleList: readonly ChatPersonT[];
   me: number | undefined;
   canModerate: boolean;
   canPin?: boolean;
@@ -46,11 +78,12 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [unseen, setUnseen] = useState(0);
-  /** The reader is at the newest messages (state twin of `stick`, for the trim below). */
+  /** The reader is at the end of the loaded rows (state twin of `stick`, for the trims below). */
   const [atBottom, setAtBottom] = useState(true);
-  const lastCount = useRef(0);
-  const anchor = useRef<{height: number} | null>(null);
-  const total = feed.items.length + feed.pending.length;
+  const lastNewest = useRef(0);
+  const lastPending = useRef(0);
+  /** Set right before rows are added or dropped around the reader: the layout effect keeps that row where it was. */
+  const anchor = useRef<Anchor | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const baseSeq = useRef<number | null>(null);
   const incoming = useRef(0);
@@ -77,50 +110,79 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
   }, [feed.items, feed.status, me, announceIn, t]);
   useEffect(() => () => window.clearTimeout(announceTimer.current), []);
 
+  const {hasNewer, reloadNewest} = feed;
   const toBottom = useCallback(() => {
     const el = box.current;
-    if (el) el.scrollTop = el.scrollHeight;
     stick.current = true;
     setAtBottom(true);
     setUnseen(0);
-  }, []);
+    // Newer rows were dropped: fetch the newest page; the layout effect sticks to the bottom once it is in.
+    if (hasNewer) void reloadNewest();
+    else if (el) el.scrollTop = el.scrollHeight;
+  }, [hasNewer, reloadNewest]);
 
   // A failed "Load older" added nothing: drop its anchor so the next new message still sticks to the bottom.
   useEffect(() => {
     if (feed.olderError != null) anchor.current = null;
   }, [feed.olderError]);
 
+  const newest = feed.items.length ? feed.items[feed.items.length - 1]!.seq : 0;
   useLayoutEffect(() => {
     const el = box.current;
-    if (!el) return;
-    if (anchor.current) {
-      // Older messages were added above: keep what the reader was looking at.
-      el.scrollTop += el.scrollHeight - anchor.current.height;
-      anchor.current = null;
-    } else if (stick.current) {
-      el.scrollTop = el.scrollHeight;
-    } else if (total > lastCount.current && lastCount.current > 0) {
-      setUnseen(n => n + (total - lastCount.current));
+    const pendingCount = feed.pending.length;
+    if (el) {
+      if (anchor.current) {
+        // Rows were added or dropped around the reader (older page, newer page, a trim): keep what they look at.
+        restoreAnchor(el, anchor.current);
+        anchor.current = null;
+      } else if (stick.current) {
+        el.scrollTop = el.scrollHeight;
+      } else if (lastNewest.current > 0 && (newest > lastNewest.current || pendingCount > lastPending.current)) {
+        // Only messages that arrived at the end count as unseen (never a page loaded above or a refresh).
+        const added = feed.items.filter(m => m.seq > lastNewest.current).length + Math.max(0, pendingCount - lastPending.current);
+        if (added > 0) setUnseen(n => n + added);
+      }
     }
-    lastCount.current = total;
-  }, [total, feed.status]);
+    lastNewest.current = newest;
+    lastPending.current = pendingCount;
+  }, [feed.items, feed.pending.length, feed.status, newest]);
 
   useEffect(() => {
-    if (feed.status === 'ready' && stick.current && !document.hidden) onSeen?.(feed.known);
-  }, [feed.known, feed.status, onSeen]);
+    if (feed.status === 'ready' && stick.current && !hasNewer && !document.hidden) onSeen?.(feed.known);
+  }, [feed.known, feed.status, hasNewer, onSeen]);
 
-  // A long session (or many "Load older") keeps at most MAX_KEPT rows: once the reader is back at the newest, the
-  // oldest are dropped and "Load older" fetches them again. Never while they read further up.
-  const {trim} = feed;
+  // A long session keeps at most MAX_KEPT rows. Back at the newest, the oldest are dropped ("Load older" fetches them
+  // again). Read further up ("Load older" many times), the newest are dropped once they are well below the screen,
+  // and scrolling back down loads them again: the reader's row never moves (anchor).
+  const {trim, trimNewest} = feed;
   const tooMany = feed.items.length > MAX_KEPT;
   useEffect(() => {
-    if (tooMany && atBottom && !holdTrim) trim();
+    if (!tooMany || !atBottom || holdTrim) return;
+    if (!stick.current) anchor.current = captureAnchor(box.current);
+    trim();
   }, [tooMany, atBottom, holdTrim, trim]);
   useEffect(() => {
-    const wake = () => stick.current && !document.hidden && feed.status === 'ready' && onSeen?.(feed.known);
+    const el = box.current;
+    if (!el || atBottom || holdTrim || feed.items.length <= MAX_KEPT + TRIM_SLACK) return;
+    const firstDropped = el.querySelector<HTMLElement>(`.chat-rows > li[data-seq="${feed.items[MAX_KEPT]!.seq}"]`);
+    if (!firstDropped) return;
+    // Still within two screens of the reader: keep it.
+    if (firstDropped.getBoundingClientRect().top - el.getBoundingClientRect().top < el.clientHeight * 2) return;
+    anchor.current = captureAnchor(el);
+    trimNewest();
+  }, [feed.items, atBottom, holdTrim, trimNewest]);
+  useEffect(() => {
+    const wake = () => stick.current && !hasNewer && !document.hidden && feed.status === 'ready' && onSeen?.(feed.known);
     document.addEventListener('visibilitychange', wake);
     return () => document.removeEventListener('visibilitychange', wake);
-  }, [feed.known, feed.status, onSeen]);
+  }, [feed.known, feed.status, hasNewer, onSeen]);
+
+  const {loadNewer, loadingNewer} = feed;
+  const fetchNewer = useCallback(() => {
+    if (loadingNewer) return;
+    anchor.current = captureAnchor(box.current);
+    void loadNewer();
+  }, [loadNewer, loadingNewer]);
 
   if (feed.status === 'loading') return <div className="chat-list-state"><LoadingBlock rows={5} /></div>;
   if (feed.status === 'error') {
@@ -140,7 +202,7 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
     const grouped = !newDay && !!previous && previous.sender.id === m.sender.id && !previous.deleted && !m.deleted && new Date(m.createdAt).getTime() - new Date(previous.createdAt).getTime() < GROUP_MS;
     previous = m;
     return (
-      <li key={m.id} className="chat-row">
+      <li key={m.id} className="chat-row" data-seq={m.seq}>
         {newDay && (
           <div className="chat-day" role="separator">
             <span>{formatDate(m.createdAt, {dateStyle: 'medium'})}</span>
@@ -167,9 +229,11 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
         onScroll={event => {
           const el = event.currentTarget;
           const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-          stick.current = near;
+          // At the end of a list that does not reach the newest: load the next newer page, never mark it read.
+          stick.current = near && !hasNewer;
           setAtBottom(near);
-          if (near) {
+          if (near && hasNewer) fetchNewer();
+          else if (near) {
             setUnseen(0);
             if (!document.hidden) onSeen?.(feed.known);
           }
@@ -183,7 +247,7 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
               pending={feed.loadingOlder}
               pendingLabel={t('common.loading')}
               onClick={() => {
-                anchor.current = {height: box.current?.scrollHeight ?? 0};
+                anchor.current = captureAnchor(box.current);
                 void feed.loadOlder();
               }}>
               {t('chat.loadOlder')}
@@ -210,6 +274,13 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
               </li>
             ))}
           </ul>
+        )}
+        {hasNewer && (
+          <div className="chat-older">
+            <Button variant="secondary" size="sm" icon="chevron-down" pending={loadingNewer} pendingLabel={t('common.loading')} onClick={fetchNewer}>
+              {t('chat.loadNewer')}
+            </Button>
+          </div>
         )}
       </div>
       {unseen > 0 && (
@@ -263,8 +334,8 @@ function ThreadPanel({workspaceId, boardId, conversationId, parent, pulseSeq, pe
   parent: MessageT;
   /** The conversation's `lastSeq` from the pulse: a reply moves it, so the thread fetches only when it moved. */
   pulseSeq: number | undefined;
-  people: ReadonlyMap<number, MemberT>;
-  peopleList: readonly MemberT[];
+  people: ReadonlyMap<number, ChatPersonT>;
+  peopleList: readonly ChatPersonT[];
   me: number | undefined;
   canModerate: boolean;
   canWriteMain: boolean;
@@ -330,12 +401,14 @@ type ViewProps = {
 export function ConversationView({conversation, workspaceId, role, embedded, onBack}: ViewProps) {
   const t = useT();
   const toast = useToast();
+  const confirm = useConfirm();
   const {errorMessage} = useI18n();
   const queryClient = useQueryClient();
   const me = useMe().data?.viewer.id ?? undefined;
   const pulse = usePulse(true);
   const markRead = useMarkRead();
-  const people = useQuery(chatPeopleQuery(workspaceId));
+  // The directory is the workspace's: a guest (a seat on one board) never asks for it.
+  const people = useQuery({...chatPeopleQuery(workspaceId), enabled: role !== 'guest'});
   const peopleList = useMemo(() => people.data ?? [], [people.data]);
   const byId = useMemo(() => new Map(peopleList.map(p => [p.userId, p])), [peopleList]);
   const pulseSeq = pulse.data?.find(p => p.conversationId === conversation.id)?.lastSeq;
@@ -362,15 +435,65 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
     setMuting(true);
     try {
       await call(muted ? 'DELETE' : 'PUT', `/conversations/${conversation.id}/mute`);
-      setMuted(!muted);
+      const next = !muted;
+      setMuted(next);
       toast.success(muted ? t('chat.unmuted') : t('chat.mutedToast'));
-      void queryClient.invalidateQueries({queryKey: ['chat']});
+      // Only what shows the muted flag, in place: never the whole chat cache (that refetched every list and message).
+      // Muting also joins a channel I had not joined, so the pulse is read again to pick it up.
+      const id = conversation.id;
+      const flip = <T extends {id: number; muted: boolean; joined?: boolean}>(c: T): T => (c.id === id ? {...c, muted: next, joined: true} : c);
+      queryClient.setQueryData<PulseItem[]>(pulseKey, items => items?.map(p => (p.conversationId === id ? {...p, muted: next} : p)));
+      queryClient.setQueriesData<ConversationT[]>({queryKey: ['chat', 'conversations']}, list => list?.map(flip));
+      queryClient.setQueriesData<ConversationT>({queryKey: ['chat', 'conversation', id]}, c => (c ? flip(c) : c));
+      if (conversation.kind === 'board' && boardId) queryClient.setQueriesData<ConversationT>({queryKey: ['chat', 'board', boardId]}, c => (c ? flip(c) : c));
+      void queryClient.invalidateQueries({queryKey: pulseKey});
     } catch (error) {
       toast.danger(errorMessage(error));
     } finally {
       setMuting(false);
     }
   };
+
+  // Workspace owners and admins archive a channel (the server checks again) and restore an archived one.
+  const canArchive = conversation.kind === 'channel' && (role === 'owner' || role === 'admin') && feed.status === 'ready';
+  const [archiving, setArchiving] = useState(false);
+  const setArchivedTo = async (archived: boolean) => {
+    await call(archived ? 'PUT' : 'DELETE', `/conversations/${conversation.id}/archive`);
+    // The open view keeps its conversation (read by id once the list drops it), then the list and the pulse follow.
+    const listed = queryClient.getQueryData(conversationsQuery(workspaceId).queryKey)?.find(c => c.id === conversation.id);
+    if (listed) queryClient.setQueryData(['chat', 'conversation', conversation.id], {...listed, workspaceId, archived, canWrite: false, canModerate: false});
+    await feed.reloadNewest();
+    void queryClient.invalidateQueries({queryKey: ['chat', 'conversations', workspaceId]});
+    void queryClient.invalidateQueries({queryKey: ['chat', 'conversation', conversation.id]});
+    void queryClient.invalidateQueries({queryKey: pulseKey});
+  };
+  const archiveChannel = () =>
+    void confirm({
+      title: t('chat.archiveTitle'),
+      body: t('chat.archiveBody'),
+      confirmLabel: t('chat.archiveChannel'),
+      pendingLabel: t('chat.archiving'),
+      action: async () => {
+        await setArchivedTo(true);
+        toast.success(t('chat.archivedToast'));
+      },
+    });
+  const restoreChannel = async () => {
+    setArchiving(true);
+    try {
+      await setArchivedTo(false);
+      toast.success(t('chat.restoredToast'));
+    } catch (error) {
+      toast.danger(errorMessage(error));
+    } finally {
+      setArchiving(false);
+    }
+  };
+  const channelMenu: MenuItem[] = !canArchive
+    ? []
+    : feed.archived
+      ? [{label: t('chat.restoreChannel'), icon: 'refresh', onSelect: () => void restoreChannel(), disabled: archiving}]
+      : [{label: t('chat.archiveChannel'), icon: 'archive', danger: true, onSelect: archiveChannel}];
 
   const parent = thread ? (feed.items.find(m => m.id === thread) ?? null) : null;
   const bumpReply = () => thread && feed.patch(thread, m => ({...m, replyCount: m.replyCount + 1}));
@@ -389,6 +512,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
         <Button variant="ghost" size="sm" icon="bell" aria-pressed={muted} pending={muting} pendingLabel={muted ? t('chat.unmuting') : t('chat.muting')} onClick={() => void toggleMute()}>
           {muted ? t('chat.unmute') : t('chat.mute')}
         </Button>
+        {channelMenu.length > 0 && <Menu label={t('chat.channelActions')} items={channelMenu} disabled={archiving} />}
       </header>
       <div className="chat-view-body" data-thread={thread ? '' : undefined}>
         <div className="chat-main">
@@ -412,7 +536,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
             (feed.canWrite ? (
               <Composer people={peopleList} workspaceId={workspaceId} draft={{kind: 'chat', id: conversation.id}} label={t('chat.composerLabel')} placeholder={t('chat.composerPlaceholder', {name: title})} onSend={(body, mentions, cardIds) => feed.send(body, mentions, cardIds)} />
             ) : (
-              <Notice tone="info">{t('chat.readOnly')}</Notice>
+              <Notice tone="info">{feed.archived ? t('chat.archivedNotice') : t('chat.readOnly')}</Notice>
             ))}
         </div>
         {thread && parent && (

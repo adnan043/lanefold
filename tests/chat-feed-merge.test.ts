@@ -57,4 +57,9 @@ describe('chat feed merge', () => {
     expect(mergeMessages(list, [msg(3), msg(4)]).map(m => m.seq)).toEqual([1, 2, 3, 4]);
     expect(mergeMessages([], [msg(2), msg(1)]).map(m => m.seq)).toEqual([1, 2]);
   });
+
+  it('sees a changed mention name (a person renamed), and treats a missing list as empty', () => {
+    expect(sameMessage(msg(1, {mentions: [5], mentionNames: ['Ann']}), msg(1, {mentions: [5], mentionNames: ['Ann Lee']}))).toBe(false);
+    expect(sameMessage(msg(1), msg(1, {mentionNames: []}))).toBe(true);
+  });
 });

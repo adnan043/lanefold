@@ -9,7 +9,7 @@ import {Link} from '../nav';
 import {useWriteCooldown} from '../write-cooldown';
 import {CardChips} from './card-chip';
 import {CreateCardDialog} from './create-card-dialog';
-import {displayName, type MemberT, type MessageT, type ReactionT} from './api';
+import {type ChatPersonT, displayName, type MessageT, type ReactionT} from './api';
 import {MAX_BODY, mentionedIds, segments} from './mentions';
 import type {PendingMessage} from './use-message-feed';
 
@@ -17,9 +17,10 @@ import {QUICK_EMOJI} from '../emoji';
 
 export {QUICK_EMOJI};
 
-export function Body({message, people}: {message: Pick<MessageT, 'body' | 'mentions' | 'numberRefs'>; people: ReadonlyMap<number, MemberT>}) {
+export function Body({message, people}: {message: Pick<MessageT, 'body' | 'mentions' | 'mentionNames' | 'numberRefs'>; people: ReadonlyMap<number, ChatPersonT>}) {
   const t = useT();
-  const names = message.mentions.map(id => people.get(id)?.name ?? '').filter(Boolean);
+  // The server sends the names with the message; the directory is only the fallback of an older answer.
+  const names = message.mentions.map((id, i) => message.mentionNames?.[i] || people.get(id)?.name || '').filter(Boolean);
   const refs = message.numberRefs;
   const numbers = refs && Object.keys(refs).length > 0 ? new Set(Object.keys(refs).map(Number)) : undefined;
   return (
@@ -50,8 +51,8 @@ type ItemProps = {
   message: MessageT;
   /** Same sender as the message above, close in time: no name or avatar. */
   grouped: boolean;
-  people: ReadonlyMap<number, MemberT>;
-  peopleList: readonly MemberT[];
+  people: ReadonlyMap<number, ChatPersonT>;
+  peopleList: readonly ChatPersonT[];
   me: number | undefined;
   canWrite: boolean;
   canModerate: boolean;
@@ -103,7 +104,9 @@ function MessageItemInner({message, grouped, people, peopleList, me, canWrite, c
   const edit = useMutation({
     mutationFn: (body: string) => {
       // Mentions travel only when they changed; linked cards are never sent (the server keeps them when absent).
-      const ids = mentionedIds(body, peopleList);
+      // The people already named keep their mention even when they are outside the loaded directory.
+      const named = message.mentions.map((userId, i) => ({userId, name: message.mentionNames?.[i] || null}));
+      const ids = mentionedIds(body, [...named, ...peopleList]);
       const before = new Set(message.mentions);
       const changed = ids.length !== before.size || ids.some(id => !before.has(id));
       return call<{message: MessageT}>('PATCH', `/messages/${message.id}`, {body, ...(changed ? {mentions: ids} : {})});
