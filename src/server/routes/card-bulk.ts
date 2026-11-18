@@ -1,13 +1,14 @@
-import {Hono} from 'hono';
+import {type Context, Hono} from 'hono';
 
+import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {MAX_CARDS_PER_LANE} from '../entitlements';
 import {runFlows} from '../flows/engine';
 import {notify} from '../notifications';
-import {idOf, type FieldError} from '../validation';
+import {idOf, invalid, type FieldError} from '../validation';
 import {notFound} from '../workspaces';
 import {body, dateOnly, errAt, noStore, type Parsed, seatFilter} from './card-detail';
-import {boardFor, bumpRev, cardFinder, keysAtEnd, refused, type Tx} from './boards';
+import {boardFor, bumpRev, cardFinder, DUE_BEFORE_START, keysAtEnd, refused} from './boards';
 import {afterResponse} from '../after-response';
 
 /**
@@ -42,8 +43,13 @@ import {afterResponse} from '../after-response';
  *  - ALL or NOTHING. Every id must be a live card of THIS board and workspace, read under the board row lock; one id
  *    that is not (another board, another workspace, archived, missing) is a 404 for the whole request and the
  *    transaction (rev bump included) rolls back. A move that would pass the lane's cap is a 409 and changes nothing.
- *  - One transaction, one board lock, ONE rev bump. Every write is set based (updateMany / createMany / one UPDATE ..
- *    unnest): no query per card.
+ *  - What does not depend on the cards' state (the target lane, the label, the person's seat, from the access boardFor
+ *    already read) is checked BEFORE the transaction; under the board lock only the cards (and their labels or people)
+ *    are read, side by side, then ONE statement writes everything (conditional on the lane, label and seat again).
+ *  - One transaction, one board lock, ONE rev bump. Every write is set based (one UPDATE .. unnest / INSERT .. SELECT):
+ *    no query per card.
+ *  - `set_due`: a due day never before a card's start day (the card panel's rule, 422 on dueDate); an Undo skips such
+ *    cards instead.
  *  - Side effects, bounded: ONE activity row for the whole action (`cards.bulk`, meta {action, count, cardIds}); an
  *    assignee follows the cards and gets ONE bell notification (pointing at the first card they were added to);
  *    followers of the cards are NOT told one by one (bulk edits would flood them); Flows run for the first 20 moved
@@ -182,8 +188,39 @@ export function inverseSteps(input: BulkInput, ids: number[], before: Before): U
 
 /** Thrown inside the transaction: rolls the rev bump back and names the answer. */
 class Stop extends Error {
-  constructor(readonly why: 'cards' | 'lane' | 'label' | 'person' | 'full' | 'assignees' | 'unchanged') {
+  constructor(readonly why: 'cards' | 'lane' | 'label' | 'person' | 'full' | 'assignees' | 'unchanged' | 'dates') {
     super(why);
+  }
+}
+
+/**
+ * What the action needs that does not depend on the cards' state, read BEFORE the transaction (and so before the board
+ * lock): the board's open lanes (move), the label (label_*), the person's seat (assign). The writes under the lock are
+ * still conditional on them (the lane open and below its cap, the label of this board, the seat), so a change in
+ * between can only make the write do less, never break a rule.
+ */
+async function precheck(db: PrismaClient, input: BulkInput, boardId: number, workspaceId: number, seat: Prisma.Sql): Promise<Stop | {laneOrder?: Map<number, number>}> {
+  switch (input.action) {
+    case 'move': {
+      const lanes = await db.lane.findMany({where: {boardId, workspaceId, archivedAt: null}, select: {id: true}, orderBy: [{position: 'asc'}, {id: 'asc'}], take: 100});
+      if (!lanes.some(l => l.id === input.laneId)) return new Stop('lane');
+      return {laneOrder: new Map(lanes.map((l, i) => [l.id, i]))};
+    }
+    case 'label_add':
+    case 'label_remove': {
+      const label = await db.label.findFirst({where: {id: input.labelId, boardId, workspaceId}, select: {id: true}});
+      return label ? {} : new Stop('label');
+    }
+    case 'assign': {
+      // Who may be assigned: an active member of the workspace with a seat on THIS board (the same rule as the card panel).
+      const rows = await db.$queryRaw<{id: number}[]>`
+        SELECT u.id FROM workspace_members m JOIN users u ON u.id = m.user_id
+        WHERE m.workspace_id = ${workspaceId}::int AND u.status = 'active' AND u.id = ${input.userId}::int ${seat}
+        LIMIT 1`;
+      return rows[0] ? {} : new Stop('person');
+    }
+    default:
+      return {};
   }
 }
 
@@ -210,23 +247,53 @@ export const cardBulkRoutes = new Hono()
   const {workspaceId} = access;
   const input = c.req.valid('json') as BulkInput;
   const {cardIds} = input;
+  // The seat rule of this board from the access already read (visibility; a personal Inbox is only its owner's, and
+  // boardFor let us in, so its owner is us): no second board read.
+  const seat = seatFilter({visibility: access.visibility, boardId, inboxOf: access.inbox ? userId : null});
+
+  const pre = await precheck(db, input, boardId, workspaceId, seat);
+  if (pre instanceof Stop) return answerStop(c, pre.why, cardIds.length);
+
+  /** ONE activity row for the whole action (a row per card would be 50 writes), as a CTE of the action's statement. */
+  const activity = (meta: object) => Prisma.sql`
+    INSERT INTO activity (workspace_id, board_id, actor_id, kind, meta)
+    VALUES (${workspaceId}::int, ${boardId}::int, ${userId}::int, 'cards.bulk', ${JSON.stringify(meta)}::jsonb)`;
 
   const out = await db
     .$transaction(async tx => {
       const rev = await bumpRev(tx, boardId, workspaceId);
-      // Read AFTER the board lock. Every id must be a card of THIS board and workspace, whatever its state (anything else
-      // is a 404 for the whole request, the Undo included: an id of another board never changes).
-      const found = await tx.card.findMany({
-        where: {id: {in: cardIds}, boardId, workspaceId},
-        select: {id: true, laneId: true, position: true, archivedAt: true, updatedRev: true, dueDate: true, priority: true},
-        take: MAX_BULK_CARDS,
-      });
+      // Read AFTER the board lock, side by side with what the action reads of the cards' relations. Every id must be a
+      // card of THIS board and workspace, whatever its state (anything else is a 404 for the whole request, the Undo
+      // included: an id of another board never changes).
+      const [found, last, people, counts, labelled] = await Promise.all([
+        tx.card.findMany({
+          where: {id: {in: cardIds}, boardId, workspaceId},
+          select: {id: true, laneId: true, position: true, archivedAt: true, updatedRev: true, startDate: true, dueDate: true, priority: true},
+          take: MAX_BULK_CARDS,
+        }),
+        input.action === 'move' ? cardFinder(tx, workspaceId, input.laneId)({}, 'desc') : null,
+        input.action === 'assign' || input.action === 'unassign'
+          ? tx.cardMember.findMany({where: {cardId: {in: cardIds}, userId: input.userId, workspaceId}, select: {cardId: true}, take: MAX_BULK_CARDS})
+          : [],
+        input.action === 'assign' ? tx.cardMember.groupBy({by: ['cardId'], where: {cardId: {in: cardIds}, workspaceId}, _count: {_all: true}}) : [],
+        input.action === 'label_add' || input.action === 'label_remove'
+          ? tx.cardLabel.findMany({where: {cardId: {in: cardIds}, labelId: input.labelId}, select: {cardId: true}, take: MAX_BULK_CARDS})
+          : [],
+      ]);
       if (found.length !== cardIds.length) throw new Stop('cards');
       // The state the action needs: live cards (restore: archived ones). Without the Undo guard a card in another state is a 404.
       const inState = found.filter(card => (card.archivedAt !== null) === (input.action === 'restore'));
       if (input.since === undefined && inState.length !== found.length) throw new Stop('cards');
       // The Undo guard: skip what was written after the action it takes back.
-      const cards = input.since === undefined ? inState : inState.filter(card => card.updatedRev <= input.since!);
+      let cards = input.since === undefined ? inState : inState.filter(card => card.updatedRev <= input.since!);
+      if (input.action === 'set_due' && input.dueDate) {
+        // The card panel's rule: a due day never before the start day, against the start as it is now (under the lock).
+        const due = input.dueDate;
+        const fits = cards.filter(card => !card.startDate || card.startDate <= due);
+        // A new action is refused whole (422); an Undo skips the cards it can no longer put back.
+        if (input.since === undefined && fits.length !== cards.length) throw new Stop('dates');
+        cards = fits;
+      }
       if (!cards.length) throw new Stop('unchanged');
       const ids = cards.map(card => card.id);
       let changed = cards.length;
@@ -234,119 +301,176 @@ export const cardBulkRoutes = new Hono()
       let moved: {id: number; from: number}[] = [];
       let labelCards: number[] = [];
       let personCards: number[] = [];
+      const meta = () => ({action: input.action, count: changed, cardIds: ids, ...(input.since === undefined ? {} : {undo: true})});
 
+      // Each action is ONE statement: its writes, the lane counters and the activity row (data-modifying CTEs all run).
       switch (input.action) {
         case 'move': {
-          const lanes = await tx.lane.findMany({where: {boardId, workspaceId, archivedAt: null}, select: {id: true}, orderBy: [{position: 'asc'}, {id: 'asc'}], take: 100});
-          if (!lanes.some(l => l.id === input.laneId)) throw new Stop('lane');
-          const laneOrder = new Map(lanes.map((l, i) => [l.id, i]));
+          const laneOrder = pre.laneOrder!;
           // The cards keep their on-screen order: by lane, then position; the ones already in the target stay put.
           const moving = cards
             .filter(card => card.laneId !== input.laneId)
             .sort((a, b) => (laneOrder.get(a.laneId) ?? 0) - (laneOrder.get(b.laneId) ?? 0) || (a.position < b.position ? -1 : a.position > b.position ? 1 : a.id - b.id));
           changed = moving.length;
-          if (!moving.length) break;
-          const last = await cardFinder(tx, workspaceId, input.laneId)({}, 'desc');
+          if (!moving.length) {
+            await tx.$executeRaw`${activity(meta())}`;
+            break;
+          }
           const keys = keysAtEnd(last?.position ?? null, moving.length);
-          // The target's cap is ONE conditional update (the same as the single move), so a parallel add cannot pass it.
-          const room = await tx.$queryRaw<{id: number}[]>`
-            UPDATE lanes SET card_count = card_count + ${moving.length}::int, updated_rev = ${rev}::bigint
-            WHERE id = ${input.laneId} AND board_id = ${boardId} AND workspace_id = ${workspaceId}
-              AND card_count + ${moving.length}::int <= ${MAX_CARDS_PER_LANE}::int
-            RETURNING id`;
-          if (!room[0]) throw new Stop('full');
-          await tx.$executeRaw`
-            UPDATE cards SET lane_id = ${input.laneId}::int, position = u.k, updated_rev = ${rev}::bigint
-            FROM unnest(${moving.map(m => m.id)}::int[], ${keys}::text[]) AS u(id, k)
-            WHERE cards.id = u.id AND cards.workspace_id = ${workspaceId}::int AND cards.board_id = ${boardId}::int AND cards.archived_at IS NULL`;
-          await decrementLanes(tx, moving, boardId, workspaceId, rev);
+          const per = perLane(moving);
+          // The target's cap and its being open are ONE conditional update (the same as the single move), so a parallel
+          // add or archive cannot get past it; the cards and the source counters move only when it applied.
+          const [row] = await tx.$queryRaw<{room: boolean; open: boolean}[]>`
+            WITH t AS (
+              UPDATE lanes SET card_count = card_count + ${moving.length}::int, updated_rev = ${rev}::bigint
+              WHERE id = ${input.laneId}::int AND board_id = ${boardId}::int AND workspace_id = ${workspaceId}::int
+                AND archived_at IS NULL AND card_count + ${moving.length}::int <= ${MAX_CARDS_PER_LANE}::int
+              RETURNING id
+            ), k AS (
+              UPDATE cards SET lane_id = ${input.laneId}::int, position = u.k, updated_rev = ${rev}::bigint
+              FROM unnest(${moving.map(m => m.id)}::int[], ${keys}::text[]) AS u(id, k)
+              WHERE EXISTS (SELECT 1 FROM t)
+                AND cards.id = u.id AND cards.workspace_id = ${workspaceId}::int AND cards.board_id = ${boardId}::int AND cards.archived_at IS NULL
+              RETURNING cards.id
+            ), f AS (
+              UPDATE lanes SET card_count = GREATEST(card_count - u.n, 0), updated_rev = ${rev}::bigint
+              FROM unnest(${per.ids}::int[], ${per.counts}::int[]) AS u(id, n)
+              WHERE EXISTS (SELECT 1 FROM t)
+                AND lanes.id = u.id AND lanes.board_id = ${boardId}::int AND lanes.workspace_id = ${workspaceId}::int
+              RETURNING lanes.id
+            ), a AS (${activity(meta())})
+            SELECT EXISTS (SELECT 1 FROM t) AS room,
+                   EXISTS (SELECT 1 FROM lanes WHERE id = ${input.laneId}::int AND board_id = ${boardId}::int AND archived_at IS NULL) AS open`;
+          if (!row?.room) throw new Stop(row?.open ? 'full' : 'lane');
           moved = moving.map(m => ({id: m.id, from: m.laneId}));
           break;
         }
         case 'archive': {
-          await tx.card.updateMany({where: {id: {in: ids}, boardId, workspaceId, archivedAt: null}, data: {archivedAt: new Date(), updatedRev: rev}});
-          await decrementLanes(tx, cards, boardId, workspaceId, rev);
+          const per = perLane(cards);
+          await tx.$executeRaw`
+            WITH k AS (
+              UPDATE cards SET archived_at = now(), updated_rev = ${rev}::bigint, updated_at = now()
+              WHERE id = ANY(${ids}::int[]) AND board_id = ${boardId}::int AND workspace_id = ${workspaceId}::int AND archived_at IS NULL
+              RETURNING id
+            ), f AS (
+              UPDATE lanes SET card_count = GREATEST(card_count - u.n, 0), updated_rev = ${rev}::bigint
+              FROM unnest(${per.ids}::int[], ${per.counts}::int[]) AS u(id, n)
+              WHERE lanes.id = u.id AND lanes.board_id = ${boardId}::int AND lanes.workspace_id = ${workspaceId}::int
+              RETURNING lanes.id
+            ), a AS (${activity(meta())})
+            SELECT 1`;
           break;
         }
         case 'restore': {
           // The counters go up ONLY for open lanes with room (one conditional statement, like the single restore); else
           // the whole transaction, the rev bump included, rolls back and the person is told why.
-          const per = new Map<number, number>();
-          for (const card of cards) per.set(card.laneId, (per.get(card.laneId) ?? 0) + 1);
-          const laneIds = [...per.keys()];
-          const room = await tx.$queryRaw<{id: number}[]>`
-            UPDATE lanes SET card_count = card_count + u.n, updated_rev = ${rev}::bigint
-            FROM unnest(${laneIds}::int[], ${[...per.values()]}::int[]) AS u(id, n)
-            WHERE lanes.id = u.id AND lanes.board_id = ${boardId}::int AND lanes.workspace_id = ${workspaceId}::int
-              AND lanes.archived_at IS NULL AND lanes.card_count + u.n <= ${MAX_CARDS_PER_LANE}::int
-            RETURNING lanes.id`;
-          if (room.length !== laneIds.length) {
-            const open = await tx.lane.findMany({where: {id: {in: laneIds}, boardId, workspaceId, archivedAt: null}, select: {id: true}, take: laneIds.length});
-            throw new Stop(open.length === laneIds.length ? 'full' : 'lane');
-          }
-          await tx.card.updateMany({where: {id: {in: ids}, boardId, workspaceId, archivedAt: {not: null}}, data: {archivedAt: null, updatedRev: rev}});
+          const per = perLane(cards);
+          const [row] = await tx.$queryRaw<{room: number; open: number}[]>`
+            WITH r AS (
+              UPDATE lanes SET card_count = card_count + u.n, updated_rev = ${rev}::bigint
+              FROM unnest(${per.ids}::int[], ${per.counts}::int[]) AS u(id, n)
+              WHERE lanes.id = u.id AND lanes.board_id = ${boardId}::int AND lanes.workspace_id = ${workspaceId}::int
+                AND lanes.archived_at IS NULL AND lanes.card_count + u.n <= ${MAX_CARDS_PER_LANE}::int
+              RETURNING lanes.id
+            ), k AS (
+              UPDATE cards SET archived_at = NULL, updated_rev = ${rev}::bigint, updated_at = now()
+              WHERE id = ANY(${ids}::int[]) AND board_id = ${boardId}::int AND workspace_id = ${workspaceId}::int AND archived_at IS NOT NULL
+              RETURNING id
+            ), a AS (${activity(meta())})
+            SELECT (SELECT count(*)::int FROM r) AS room,
+                   (SELECT count(*)::int FROM lanes
+                    WHERE id = ANY(${per.ids}::int[]) AND board_id = ${boardId}::int AND workspace_id = ${workspaceId}::int AND archived_at IS NULL) AS open`;
+          if (!row || row.room !== per.ids.length) throw new Stop(row && row.open === per.ids.length ? 'full' : 'lane');
           break;
         }
         case 'label_add':
         case 'label_remove': {
-          const label = await tx.label.findFirst({where: {id: input.labelId, boardId, workspaceId}, select: {id: true}});
-          if (!label) throw new Stop('label');
           // What the Undo needs: which cards carried the label BEFORE (read under the board lock).
-          const had = new Set((await tx.cardLabel.findMany({where: {cardId: {in: ids}, labelId: label.id}, select: {cardId: true}, take: MAX_BULK_CARDS})).map(r => r.cardId));
+          const had = new Set(labelled.map(r => r.cardId));
           labelCards = input.action === 'label_add' ? ids.filter(id => !had.has(id)) : ids.filter(id => had.has(id));
-          if (input.action === 'label_add') await tx.cardLabel.createMany({data: ids.map(cardId => ({cardId, labelId: label.id})), skipDuplicates: true});
-          else await tx.cardLabel.deleteMany({where: {cardId: {in: ids}, labelId: label.id}});
-          await touch(tx, ids, boardId, workspaceId, rev);
+          // The insert joins the label of THIS board, so a label deleted since the precheck adds nothing.
+          const write =
+            input.action === 'label_add'
+              ? Prisma.sql`
+                  INSERT INTO card_labels (card_id, label_id)
+                  SELECT u.id, l.id FROM unnest(${ids}::int[]) AS u(id)
+                  JOIN labels l ON l.id = ${input.labelId}::int AND l.board_id = ${boardId}::int AND l.workspace_id = ${workspaceId}::int
+                  ON CONFLICT DO NOTHING`
+              : Prisma.sql`DELETE FROM card_labels WHERE card_id = ANY(${ids}::int[]) AND label_id = ${input.labelId}::int`;
+          await tx.$executeRaw`
+            WITH w AS (${write}), t AS (${touch(ids, boardId, workspaceId, rev)}), a AS (${activity(meta())})
+            SELECT 1`;
           break;
         }
         case 'assign': {
-          // Who may be assigned: an active member of the workspace with a seat on THIS board (the same rule as the card panel).
-          const board = await tx.board.findFirst({where: {id: boardId, workspaceId}, select: {visibility: true, inboxOf: true}});
-          if (!board) throw new Stop('cards');
-          const seat = await tx.$queryRaw<{id: number}[]>`
-            SELECT u.id FROM workspace_members m JOIN users u ON u.id = m.user_id
-            WHERE m.workspace_id = ${workspaceId}::int AND u.status = 'active' AND u.id = ${input.userId}::int
-              ${seatFilter({visibility: board.visibility, boardId, inboxOf: board.inboxOf})}
-            LIMIT 1`;
-          if (!seat[0]) throw new Stop('person');
-          const [has, counts] = await Promise.all([
-            tx.cardMember.findMany({where: {cardId: {in: ids}, userId: input.userId, workspaceId}, select: {cardId: true}, take: MAX_BULK_CARDS}),
-            tx.cardMember.groupBy({by: ['cardId'], where: {cardId: {in: ids}, workspaceId}, _count: {_all: true}}),
-          ]);
-          const already = new Set(has.map(r => r.cardId));
+          const already = new Set(people.map(r => r.cardId));
           const fresh = ids.filter(id => !already.has(id));
-          if (counts.some(r => !already.has(r.cardId) && r._count._all >= MAX_ASSIGNEES)) throw new Stop('assignees');
-          if (fresh.length) {
-            await tx.cardMember.createMany({data: fresh.map(cardId => ({cardId, userId: input.userId, workspaceId})), skipDuplicates: true});
-            // Whoever is assigned follows the cards (one statement).
-            await tx.cardWatcher.createMany({data: fresh.map(cardId => ({cardId, userId: input.userId})), skipDuplicates: true});
-            await touch(tx, fresh, boardId, workspaceId, rev);
-            notifyCard = fresh[0]!;
-          }
+          if (counts.some(r => ids.includes(r.cardId) && !already.has(r.cardId) && r._count._all >= MAX_ASSIGNEES)) throw new Stop('assignees');
           changed = fresh.length;
           personCards = fresh;
+          if (!fresh.length) {
+            await tx.$executeRaw`${activity(meta())}`;
+            break;
+          }
+          // The seat again, IN the statement: someone who lost it since the precheck is not assigned (404, rolled back).
+          // Whoever is assigned follows the cards.
+          const [row] = await tx.$queryRaw<{seated: boolean}[]>`
+            WITH s AS (
+              SELECT 1 FROM workspace_members m JOIN users u ON u.id = m.user_id
+              WHERE m.workspace_id = ${workspaceId}::int AND u.status = 'active' AND u.id = ${input.userId}::int ${seat}
+              LIMIT 1
+            ), cm AS (
+              INSERT INTO card_members (card_id, user_id, workspace_id)
+              SELECT u.id, ${input.userId}::int, ${workspaceId}::int FROM unnest(${fresh}::int[]) AS u(id) WHERE EXISTS (SELECT 1 FROM s)
+              ON CONFLICT DO NOTHING
+            ), cw AS (
+              INSERT INTO card_watchers (card_id, user_id)
+              SELECT u.id, ${input.userId}::int FROM unnest(${fresh}::int[]) AS u(id) WHERE EXISTS (SELECT 1 FROM s)
+              ON CONFLICT DO NOTHING
+            ), t AS (${touch(fresh, boardId, workspaceId, rev)}), a AS (${activity(meta())})
+            SELECT EXISTS (SELECT 1 FROM s) AS seated`;
+          if (!row?.seated) throw new Stop('person');
+          notifyCard = fresh[0]!;
           break;
         }
         case 'unassign': {
-          const had = await tx.cardMember.findMany({where: {cardId: {in: ids}, userId: input.userId, workspaceId}, select: {cardId: true}, take: MAX_BULK_CARDS});
-          personCards = had.map(r => r.cardId);
-          const removed = await tx.cardMember.deleteMany({where: {cardId: {in: ids}, userId: input.userId, workspaceId}});
-          if (removed.count) await touch(tx, ids, boardId, workspaceId, rev);
-          changed = removed.count;
+          const inIds = new Set(ids);
+          personCards = people.map(r => r.cardId).filter(id => inIds.has(id));
+          changed = personCards.length;
+          if (!personCards.length) {
+            await tx.$executeRaw`${activity(meta())}`;
+            break;
+          }
+          await tx.$executeRaw`
+            WITH d AS (
+              DELETE FROM card_members WHERE card_id = ANY(${personCards}::int[]) AND user_id = ${input.userId}::int AND workspace_id = ${workspaceId}::int
+            ), t AS (${touch(personCards, boardId, workspaceId, rev)}), a AS (${activity(meta())})
+            SELECT 1`;
           break;
         }
-        case 'set_due':
-          await tx.card.updateMany({where: {id: {in: ids}, boardId, workspaceId, archivedAt: null}, data: {dueDate: input.dueDate, updatedRev: rev}});
+        case 'set_due': {
+          const day = dayOf(input.dueDate);
+          await tx.$executeRaw`
+            WITH k AS (
+              UPDATE cards SET due_date = ${day}::date, updated_rev = ${rev}::bigint, updated_at = now()
+              WHERE id = ANY(${ids}::int[]) AND board_id = ${boardId}::int AND workspace_id = ${workspaceId}::int AND archived_at IS NULL
+                AND (${day}::date IS NULL OR start_date IS NULL OR start_date <= ${day}::date)
+              RETURNING id
+            ), a AS (${activity(meta())})
+            SELECT 1`;
           break;
+        }
         case 'set_priority':
-          await tx.card.updateMany({where: {id: {in: ids}, boardId, workspaceId, archivedAt: null}, data: {priority: input.priority, updatedRev: rev}});
+          await tx.$executeRaw`
+            WITH k AS (
+              UPDATE cards SET priority = ${input.priority}, updated_rev = ${rev}::bigint, updated_at = now()
+              WHERE id = ANY(${ids}::int[]) AND board_id = ${boardId}::int AND workspace_id = ${workspaceId}::int AND archived_at IS NULL
+              RETURNING id
+            ), a AS (${activity(meta())})
+            SELECT 1`;
           break;
       }
 
-      // ONE activity row for the whole action (a row per card would be 50 writes).
-      await tx.activity.create({
-        data: {workspaceId, boardId, actorId: userId, kind: 'cards.bulk', meta: {action: input.action, count: changed, cardIds: ids, ...(input.since === undefined ? {} : {undo: true})}},
-      });
       const undo = inverseSteps(input, ids, {cards, moved, labelCards, personCards});
       return {rev, changed, notifyCard, moved, undo, skipped: cardIds.length - cards.length};
     })
@@ -355,14 +479,7 @@ export const cardBulkRoutes = new Hono()
       throw err;
     });
 
-  if (out === 'cards') return notFound(c, 'card');
-  if (out === 'lane') return notFound(c, 'lane');
-  if (out === 'label') return notFound(c, 'label');
-  if (out === 'person') return notFound(c, 'person');
-  if (out === 'full') return c.json(problem('lane_card_limit', `A lane holds up to ${MAX_CARDS_PER_LANE} cards.`), 409);
-  if (out === 'assignees') return c.json(problem('limit_reached', `A card holds up to ${MAX_ASSIGNEES} assignees.`), 409);
-  // An Undo whose cards were all written since: nothing to take back, nothing changed (the rev bump rolled back).
-  if (out === 'unchanged') return c.json({changed: 0, skipped: cardIds.length});
+  if (typeof out === 'string') return answerStop(c, out, cardIds.length);
 
   // After the answer, never failing the request.
   if (input.action === 'assign' && out.notifyCard) {
@@ -383,18 +500,29 @@ export const cardBulkRoutes = new Hono()
   });
 });
 
-/** The cards' rows follow the change (the board sync sends rows by `updated_rev`). One statement. */
-function touch(tx: Tx, ids: number[], boardId: number, workspaceId: number, rev: bigint) {
-  return tx.card.updateMany({where: {id: {in: ids}, boardId, workspaceId}, data: {updatedRev: rev}});
+/** The answer for a refusal (a precheck's or one thrown under the lock). */
+function answerStop(c: Context, why: Stop['why'], requested: number) {
+  if (why === 'cards') return notFound(c, 'card');
+  if (why === 'lane') return notFound(c, 'lane');
+  if (why === 'label') return notFound(c, 'label');
+  if (why === 'person') return notFound(c, 'person');
+  if (why === 'full') return c.json(problem('lane_card_limit', `A lane holds up to ${MAX_CARDS_PER_LANE} cards.`), 409);
+  if (why === 'assignees') return c.json(problem('limit_reached', `A card holds up to ${MAX_ASSIGNEES} assignees.`), 409);
+  if (why === 'dates') return invalid(c, {dueDate: {code: 'invalid', message: DUE_BEFORE_START}});
+  // An Undo whose cards were all written since: nothing to take back, nothing changed (the rev bump rolled back).
+  return c.json({changed: 0, skipped: requested});
 }
 
-/** Lower the counters of the lanes the cards leave, in ONE statement (a count per source lane). */
-async function decrementLanes(tx: Tx, leaving: {laneId: number}[], boardId: number, workspaceId: number, rev: bigint) {
+/** The cards' rows follow the change (the board sync sends rows by `updated_rev`): a CTE of the action's statement. */
+function touch(ids: number[], boardId: number, workspaceId: number, rev: bigint) {
+  return Prisma.sql`
+    UPDATE cards SET updated_rev = ${rev}::bigint, updated_at = now()
+    WHERE id = ANY(${ids}::int[]) AND board_id = ${boardId}::int AND workspace_id = ${workspaceId}::int`;
+}
+
+/** How many of the cards sit in each lane (the lanes they leave or come back to), as two parallel arrays for unnest. */
+function perLane(cards: {laneId: number}[]): {ids: number[]; counts: number[]} {
   const per = new Map<number, number>();
-  for (const card of leaving) per.set(card.laneId, (per.get(card.laneId) ?? 0) + 1);
-  if (!per.size) return;
-  await tx.$executeRaw`
-    UPDATE lanes SET card_count = GREATEST(card_count - u.n, 0), updated_rev = ${rev}::bigint
-    FROM unnest(${[...per.keys()]}::int[], ${[...per.values()]}::int[]) AS u(id, n)
-    WHERE lanes.id = u.id AND lanes.board_id = ${boardId}::int AND lanes.workspace_id = ${workspaceId}::int`;
+  for (const card of cards) per.set(card.laneId, (per.get(card.laneId) ?? 0) + 1);
+  return {ids: [...per.keys()], counts: [...per.values()]};
 }

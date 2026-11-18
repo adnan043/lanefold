@@ -149,6 +149,58 @@ describe.skipIf(!DATABASE_URL)('bulk card actions (integration, real Postgres)',
     expect((await row(cards[2])).priority).toBe('urgent');
   });
 
+  it('set_due refuses a due day before a card start day (422, nothing changes); the start day itself and clearing are fine', async () => {
+    await db.card.update({where: {id: cards[1]}, data: {startDate: new Date('2030-05-10T00:00:00Z')}});
+    const before = await rev(boardA);
+    const early = await bulk(ann, boardA, {cardIds: cards, action: 'set_due', dueDate: '2030-05-09'});
+    expect(early.status).toBe(422);
+    expect(early.json.fieldCodes).toEqual({dueDate: 'invalid'});
+    for (const id of cards) expect((await row(id)).dueDate).toBeNull();
+    expect(await rev(boardA)).toBe(before);
+    expect(await db.activity.count({where: {boardId: boardA, kind: 'cards.bulk'}})).toBe(0);
+    expect((await bulk(ann, boardA, {cardIds: cards, action: 'set_due', dueDate: '2030-05-10'})).status).toBe(200);
+    expect((await row(cards[1])).dueDate?.toISOString().slice(0, 10)).toBe('2030-05-10');
+    // Its Undo (back to no due day) is never refused.
+    expect((await bulk(ann, boardA, {cardIds: cards, action: 'set_due', dueDate: null})).status).toBe(200);
+  });
+
+  it('an Undo of set_due skips a card whose start day moved past the old due day instead of failing', async () => {
+    await db.card.updateMany({where: {id: {in: cards}}, data: {dueDate: new Date('2030-05-05T00:00:00Z')}});
+    const res = await bulk(ann, boardA, {cardIds: cards, action: 'set_due', dueDate: '2030-06-01'});
+    expect(res.status).toBe(200);
+    // Someone else sets a start day after the old due day without touching the card's rev (as a direct edit would not).
+    await db.card.update({where: {id: cards[0]}, data: {startDate: new Date('2030-05-20T00:00:00Z')}});
+    const undo = await bulk(ann, boardA, res.json.undo[0]);
+    expect(undo.status).toBe(200);
+    expect(undo.json.skipped).toBe(1);
+    expect((await row(cards[0])).dueDate?.toISOString().slice(0, 10)).toBe('2030-06-01');
+    expect((await row(cards[1])).dueDate?.toISOString().slice(0, 10)).toBe('2030-05-05');
+  });
+
+  it('assign writes the member, the follower, the card rev and ONE activity row in one go', async () => {
+    const before = await rev(boardA);
+    const res = await bulk(ann, boardA, {cardIds: cards, action: 'assign', userId: benId});
+    expect(res.status).toBe(200);
+    expect(res.json.changed).toBe(3);
+    expect(await db.cardMember.count({where: {cardId: {in: cards}, userId: benId}})).toBe(3);
+    expect(await db.cardWatcher.count({where: {cardId: {in: cards}, userId: benId}})).toBe(3);
+    for (const id of cards) expect((await row(id)).updatedRev).toBe(before + 1n);
+    const act = await db.activity.findMany({where: {boardId: boardA, kind: 'cards.bulk'}, select: {meta: true, actorId: true}});
+    expect(act).toEqual([{actorId: annId, meta: {action: 'assign', count: 3, cardIds: cards}}]);
+    // Again: nobody new, nothing written but the activity row; the Undo takes back nothing.
+    const again = await bulk(ann, boardA, {cardIds: cards, action: 'assign', userId: benId});
+    expect(again.json.changed).toBe(0);
+    expect(again.json.undo).toBeUndefined();
+  });
+
+  it('a move into an archived lane is a 404 and changes nothing', async () => {
+    await db.lane.update({where: {id: laneA2}, data: {archivedAt: new Date()}});
+    const res = await bulk(ann, boardA, {cardIds: [cards[0]], action: 'move', laneId: laneA2});
+    expect(res.status).toBe(404);
+    expect((await row(cards[0])).laneId).toBe(laneA1);
+    expect(await laneCount(laneA1)).toBe(3);
+  });
+
   it('is all or nothing: one id of another board, another workspace or missing is a 404 and nothing changes', async () => {
     const before = await rev(boardA);
     const res = await bulk(ann, boardA, {cardIds: [cards[0], foreign], action: 'set_priority', priority: 'high'});
