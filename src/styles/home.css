@@ -988,8 +988,8 @@
 .home-cta {
   /* A deep blue panel (its own colour, not the accent), the same in both themes. */
   --cta-hue: #1d4ed8;
-  --cta-deep: color-mix(in srgb, var(--cta-hue) 82%, black);
-  --cta-deeper: color-mix(in srgb, var(--cta-hue) 56%, black);
+  --cta-deep: color-mix(in srgb, var(--cta-hue) 62%, black);
+  --cta-deeper: color-mix(in srgb, var(--cta-hue) 34%, black);
   --cta-text: white;
   --cta-soft: color-mix(in oklab, white 78%, transparent);
   --cta-glass: color-mix(in oklab, white 8%, transparent);
