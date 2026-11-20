@@ -5,6 +5,10 @@ import {type StaffWorkspace, staffWorkspacesQuery} from '../queries';
 import {when} from '../shared';
 import {Card, type Column, DataTable, EmptyState, LoadMore, Notice, PageHeader, StatusBadge} from '../ui';
 
+/** "20 Nov 2026": the day a workspace's grace period ends. */
+const dayFormat = new Intl.DateTimeFormat('en-GB', {dateStyle: 'medium'});
+const day = (iso: string) => dayFormat.format(new Date(iso));
+
 /** `/dashboard/workspaces`: every workspace, newest first (`site:workspace:read`). Each load is audited. */
 export function Workspaces() {
   const workspaces = useInfiniteQuery(staffWorkspacesQuery);
@@ -28,14 +32,18 @@ export function Workspaces() {
       key: 'status',
       header: 'Status',
       width: 'shrink',
-      cell: row =>
-        row.graceUntil ? (
-          <StatusBadge tone={new Date(row.graceUntil).getTime() > Date.now() ? 'warning' : 'danger'}>
-            {new Date(row.graceUntil).getTime() > Date.now() ? 'In grace' : 'Read-only'}
-          </StatusBadge>
-        ) : (
-          <StatusBadge tone="success">OK</StatusBadge>
-        ),
+      cell: row => {
+        if (!row.graceUntil) return <StatusBadge tone="success">Within limits</StatusBadge>;
+        const inGrace = new Date(row.graceUntil).getTime() > Date.now();
+        return (
+          <div>
+            <StatusBadge tone={inGrace ? 'warning' : 'danger'}>{inGrace ? 'Over limit' : 'Read-only'}</StatusBadge>
+            <span className="cell-sub">
+              {inGrace ? 'Read-only from' : 'Since'} {day(row.graceUntil)}
+            </span>
+          </div>
+        );
+      },
     },
     {key: 'created', header: 'Created', width: 'shrink', hideOnMobile: true, cell: row => when(row.createdAt)},
   ];
