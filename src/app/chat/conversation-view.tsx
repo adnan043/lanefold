@@ -604,7 +604,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
           </div>
         )}
         <span className="chat-view-spacer" />
-        {conversation.kind !== 'board' && <MembersButton key={conversation.id} conversationId={conversation.id} kind={conversation.kind} title={title} workspaceId={workspaceId} />}
+        {(conversation.kind === 'channel' || conversation.kind === 'group') && <MembersButton key={conversation.id} conversationId={conversation.id} kind={conversation.kind} title={title} workspaceId={workspaceId} />}
         <IconButton icon={muted ? 'bell-off' : 'bell'} label={muting ? (muted ? t('chat.unmuting') : t('chat.muting')) : muted ? t('chat.unmute') : t('chat.mute')} aria-pressed={muted} pending={muting} onClick={() => void toggleMute()} />
         {channelMenu.length > 0 && <Menu label={t('chat.channelActions')} items={channelMenu} disabled={archiving} />}
       </header>
