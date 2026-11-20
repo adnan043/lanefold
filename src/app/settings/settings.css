@@ -1,4 +1,10 @@
 /* Settings screens (src/app/settings) and the board density they control. Tokens only, logical properties. */
+/* Every settings screen (each starts with its SettingsNav): one 960px column, centred, so tabs never jump width. */
+.app-page:has(> .lf-settings-nav) {
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
+}
 .lf-settings-nav {
   display: flex;
   flex-wrap: wrap;

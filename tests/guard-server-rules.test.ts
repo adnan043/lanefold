@@ -186,7 +186,6 @@ describe('server guard: route guards', () => {
     'src/server/routes/public-board.ts:GET /public/boards/:token': 'public read-only board: the unguessable hashed share token in the where is the capability; no viewer is read',
     'src/server/routes/billing.ts:GET /billing/public-plans': 'public pricing page data: plan limits and catalogue amounts only, cached, no viewer read, price keys stripped',
     'src/server/routes/site.ts:GET /': 'the public brand (name, logo), re-projected field by field',
-    'src/server/routes/branding.ts:GET /brand.css': 'the brand colour as accent CSS for every page: one hex from app_settings, cached, no viewer read',
   };
 
   type Route = {rel: string; id: string; head: string; line: number};

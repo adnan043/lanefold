@@ -9,7 +9,6 @@ import {syncPermissions} from '../platform/permission-sync';
 import {devFileRoutes} from './files';
 import {authSettings} from './auth-settings';
 import {billingRoutes} from './routes/billing';
-import {brandingRoutes} from './routes/branding';
 import {checkoutRoutes, membershipRoutes} from './routes/checkout';
 import {abilitiesFor, CATALOGUE} from './permissions';
 import {accountPreflightRoutes} from './routes/account-preflight';
@@ -57,7 +56,6 @@ import {publicBoardRoutes} from './routes/public-board';
  *   *    /auth/...      sign-up, sign-in, sessions, passwords   platform/auth/routes.ts
  *   *    /admin/...     users, roles, audit log (admins)        platform/auth/admin.ts
  *   GET  /site          the site's brand                        routes/site.ts
- *   GET  /brand.css     the brand colour's accent tokens        routes/branding.ts
  *   *    /checkout/...  start and confirm a payment             routes/checkout.ts
  *   *    /memberships/... the member's memberships               routes/checkout.ts
  *
@@ -122,7 +120,6 @@ export const app = new Hono()
   .route('/', chatExtraRoutes)
   .route('/', chatFileRoutes)
   .route('/', billingRoutes)
-  .route('/', brandingRoutes)
   .route('/', memberRoutes)
   .route('/', workspaceSettingsRoutes)
   .route('/', workspaceAuditRoutes)

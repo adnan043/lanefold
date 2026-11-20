@@ -144,12 +144,6 @@ export const billingSettingsQuery = queryOptions({
   queryFn: () => read<{billingMode: 'PAID' | 'FREE_FOR_ALL'; graceDays: number; payments: PaymentsStatus}>(api.billing.settings.$get()),
 });
 
-/** The site's brand colour (`/dashboard/branding`); null = the default green. */
-export const brandingQuery = queryOptions({
-  queryKey: ['branding'],
-  queryFn: () => read<{brandColor: string | null}>(api.branding.$get()),
-});
-
 /** The workspaces the visitor owns or administers, with their plan. */
 export const myWorkspacesQuery = queryOptions({
   queryKey: ['billing', 'mine'],

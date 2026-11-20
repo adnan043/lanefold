@@ -170,7 +170,7 @@ describe('colour tokens (global.css)', () => {
 describe('accent swatch check mark (accents.css)', () => {
   const css = readFileSync('src/app/settings/accents.css', 'utf8');
   const dots = [...css.matchAll(/\.lf-swatch\[data-accent='(\w+)'\] \{ --swatch-bg: (#[0-9a-f]{6}); \}/g)];
-  it('covers all eight accents', () => expect(dots.length).toBe(8));
+  it('covers all nine accent dots (brand is the default green)', () => expect(dots.length).toBe(9));
   for (const [, name, bg] of dots) {
     it(`${name}: the white check is 4.5:1 on its dot`, () => {
       expect(contrastRatio('#ffffff', bg!)).toBeGreaterThanOrEqual(4.5);

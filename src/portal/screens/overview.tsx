@@ -2,9 +2,7 @@ import {useQuery} from '@tanstack/react-query';
 import {Link} from '@tanstack/react-router';
 
 import {
-  firstUsersQuery,
   healthQuery,
-  myWorkspacesQuery,
   type OverviewCard,
   overviewMyDayQuery,
   overviewWorkspacesQuery,
@@ -13,7 +11,7 @@ import {
   twoFactorQuery,
   unreadCountQuery,
 } from '../queries';
-import {pageCount, useMe} from '../shared';
+import {useMe} from '../shared';
 import {todayISO} from '../ui/date';
 import {
   Avatar,
@@ -34,7 +32,7 @@ import {
 
 /**
  * `/` of the dashboard: what is on YOUR plate in Lanefold first (cards due,
- * unread notifications, your workspaces), then your account and, for admins, the site's numbers.
+ * unread notifications, your workspaces), then your account.
  * Every number is cheap (one bounded read, never a count per request):
  * docs/agent/performance.md.
  */
@@ -74,7 +72,6 @@ function rememberWorkspace(id: number) {
 export function Overview() {
   const me = useMe();
   const viewer = me.data?.viewer;
-  const abilities = me.data?.abilities;
   const today = todayISO();
   const health = useQuery(healthQuery);
   const site = useQuery(siteQuery);
@@ -83,9 +80,6 @@ export function Overview() {
   const myDay = useQuery(overviewMyDayQuery(today));
   const workspaces = useQuery(overviewWorkspacesQuery);
   const unread = useQuery(unreadCountQuery);
-  // Under the screens' own query keys, so a save there refreshes these too.
-  const users = useQuery({...firstUsersQuery, enabled: Boolean(abilities?.manageUsers)});
-  const billed = useQuery({...myWorkspacesQuery, enabled: Boolean(abilities?.manageBilling)});
   const firstName = viewer?.name?.split(/\s+/)[0];
 
   const cards = (myDay.data?.items ?? []).filter(c => !c.completed);
@@ -170,40 +164,6 @@ export function Overview() {
           />
         </div>
       </section>
-
-      {(abilities?.manageUsers || abilities?.manageBilling) && (
-        <section className="overview-section" aria-labelledby="overview-site">
-          <h3 id="overview-site" className="overview-section-title">
-            This site
-          </h3>
-          <div className="stat-grid">
-            {abilities?.manageUsers && (
-              <Stat
-                label="Users"
-                icon="users"
-                value={pageCount(users.data?.users, Boolean(users.data?.nextBefore))}
-                hint="Accounts on this site"
-                to="/users"
-              />
-            )}
-            {abilities?.manageBilling && (
-              <Stat
-                label="Billed workspaces"
-                icon="credit-card"
-                value={pageCount(billed.data?.workspaces, false)}
-                hint="You own or administer"
-                to="/billing"
-              />
-            )}
-            <Stat
-              label="Sign-in"
-              icon="lock"
-              value={health.data ? (health.data.auth ? 'Ready' : 'Not set up') : null}
-              hint={health.data?.siteKey ? 'Emails are sent' : 'Emails are not sent here'}
-            />
-          </div>
-        </section>
-      )}
 
       <div className="grid-main-side">
         <div className="overview-column">
