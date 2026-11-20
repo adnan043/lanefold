@@ -1386,7 +1386,7 @@ export const chatRoutes = new Hono()
       if (count === 0) return null;
       let added: number[] = [];
       if (mentions !== undefined) {
-        const had = await tx.messageMention.findMany({where: {messageId: row.id}, select: {userId: true}});
+        const had = await tx.messageMention.findMany({where: {messageId: row.id}, select: {userId: true}, take: MAX_MENTIONS});
         added = mentions.filter(id => id !== me && !had.some(h => h.userId === id));
         await tx.messageMention.deleteMany({where: {messageId: row.id}});
         await tx.messageMention.createMany({data: mentions.map(userId => ({messageId: row.id, userId}))});
