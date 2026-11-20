@@ -237,10 +237,30 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([\w+#.-]{0,30})[^\n]*$/;
 const HEADING = /^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/;
 const ITEM = /^ {0,3}(?:([-*+])|(\d{1,9})[.)])[ \t]+(.*)$/;
 const QUOTE = /^ {0,3}>[ \t]?(.*)$/;
+/** A list line wrapped whole in emphasis (`_- text_`, `**1. text**`): the marker moves out so it stays a list item. */
+const WRAPPED_ITEM = /^( {0,3})(\*\*|__|\*|_)((?:[-*+]|\d{1,9}[.)])[ \t]+)(\S(?:.*\S)?)\2[ \t]*$/;
+
+/** Moves list markers out of a whole-line emphasis, outside fenced code. */
+function unwrapItems(lines: string[]): string[] {
+  let fence = '';
+  return lines.map(line => {
+    const open = FENCE.exec(line);
+    if (fence) {
+      if (line.trim().startsWith(fence) && line.trim().replace(new RegExp(`^${fence[0]}+`), '') === '') fence = '';
+      return line;
+    }
+    if (open) {
+      fence = open[1];
+      return line;
+    }
+    const m = WRAPPED_ITEM.exec(line);
+    return m ? `${m[1]}${m[3]}${m[2]}${m[4]}${m[2]}` : line;
+  });
+}
 
 export function parseMarkdown(source: string, mentions: string[] = []): Block[] {
   const names = [...new Set(mentions.filter(Boolean))].sort((a, b) => b.length - a.length).slice(0, 100);
-  const lines = cleanText(source).split('\n');
+  const lines = unwrapItems(cleanText(source).split('\n'));
   const budget: Budget = {left: SCAN_BUDGET};
   const blocks: Block[] = [];
   let i = 0;

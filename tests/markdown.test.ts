@@ -7,6 +7,12 @@ import {Markdown, MAX_SOURCE, parseMarkdown, safeUrl} from '../src/lib/markdown'
 const html = (source: string, mentions?: string[]) => renderToStaticMarkup(createElement(Markdown, {source, mentions}));
 
 describe('markdown subset', () => {
+  it('keeps a list line wrapped whole in emphasis in its list', () => {
+    expect(html('- one\n_- two_\n- three')).toBe('<div class="md"><ul><li><span>one</span></li><li><span><em>two</em></span></li><li><span>three</span></li></ul></div>');
+    expect(html('**1. one**')).toContain('<ol start="1"><li><span><strong>one</strong></span></li></ol>');
+    expect(html('```\n_- code_\n```')).toContain('_- code_');
+  });
+
   it('renders paragraphs and line breaks', () => {
     expect(html('one\ntwo\n\nthree')).toBe('<div class="md"><p>one<br/>two</p><p>three</p></div>');
   });
