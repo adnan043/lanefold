@@ -41,9 +41,15 @@ export function EditorToolbar({area, text, setText, disabled, onMention}: {area:
       // A selection starting at a list, quote or heading marker wraps the text after it, so "- item" becomes "- _item_", not "_- item_".
       const lineStart = text.lastIndexOf('\n', start - 1) + 1;
       const marker = start <= lineStart ? (/^ {0,3}(?:[-*+]|\d{1,9}[.)]|>|#{1,6})[ \t]+(?:\[[ xX]\][ \t]+)?/.exec(text.slice(lineStart, end))?.[0] ?? '') : '';
-      const at = start + Math.max(0, lineStart + marker.length - start);
-      const chosen = text.slice(at, end) || placeholder;
-      next = text.slice(0, at) + before + chosen + after + text.slice(end);
+      let at = start + Math.max(0, lineStart + marker.length - start);
+      let stop = end;
+      // Spaces at the edges of the selection stay outside the markers: "**notes **" is not bold in Markdown.
+      if (after) {
+        while (at < stop && /\s/.test(text[at]!)) at++;
+        while (stop > at && /\s/.test(text[stop - 1]!)) stop--;
+      }
+      const chosen = text.slice(at, stop) || placeholder;
+      next = text.slice(0, at) + before + chosen + after + text.slice(stop);
       from = at + before.length;
       to = from + chosen.length;
     }
