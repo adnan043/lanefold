@@ -1,3 +1,5 @@
+import {FILE_CEILING_BYTES} from './file-limits';
+
 /**
  * Files sent in chat: ONE place for the rules, read by the server route (the real check), the composer (a quick check
  * before an upload starts) and the help text, so the three always agree (files.md › Your own limits).
@@ -22,7 +24,7 @@ export const CHAT_FILE_TYPES: readonly string[] = [
 export const CHAT_FILE_ACCEPT = '.pdf,.txt,.csv,.docx,.xlsx,.pptx,.zip,.png,.jpg,.jpeg,.webp,.gif';
 
 /** The most one chat file may weigh (the workspace plan may allow less: the server checks both). */
-export const CHAT_FILE_MAX_BYTES = 100 * 1024 * 1024;
+export const CHAT_FILE_MAX_BYTES = FILE_CEILING_BYTES;
 
 /** Files on one message. */
 export const CHAT_FILES_PER_MESSAGE = 10;

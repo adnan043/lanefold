@@ -1,6 +1,7 @@
 import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 
 import {app} from '../../src/server/app';
+import {FILE_CEILING_BYTES} from '../../src/lib/file-limits';
 import {cleanupOld} from '../../src/server/jobs/sweeps';
 import {Browser, configureEnv, DATABASE_URL, db, resetDatabase, signedIn} from './support/harness';
 
@@ -139,7 +140,7 @@ describe.skipIf(!DATABASE_URL)('chat files (integration, real Postgres)', () => 
     expect((await post(mia, {name: 'x.html', contentType: 'text/html', size: 10})).status).toBe(422);
     expect((await post(mia, {name: 'x.svg', contentType: 'image/svg+xml', size: 10})).status).toBe(422);
     expect((await post(mia, {name: 'x.pdf', contentType: PDF, size: 0})).status).toBe(422);
-    expect((await post(mia, {name: 'x.pdf', contentType: PDF, size: 100 * 1024 * 1024 + 1})).status).toBe(422);
+    expect((await post(mia, {name: 'x.pdf', contentType: PDF, size: FILE_CEILING_BYTES + 1})).status).toBe(422);
     // Over the plan's file size (the free plan allows less than the chat's own cap).
     expect((await post(mia, {name: 'x.pdf', contentType: PDF, size: 50 * 1024 * 1024})).status).toBe(413);
     // A viewer cannot send here; another workspace does not see the conversation.
