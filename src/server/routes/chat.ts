@@ -639,15 +639,9 @@ async function notifyEveryone(db: PrismaClient, a: Access, me: number, named: re
 const MENTION_PREFIX = /[\s(\["'>*_;]/;
 
 /**
- * Of `ids`, the people whose display name stands in the body as `@Name` (at the start or after whitespace or one of ( [ " ' > * _ ;, not
- * followed by a letter or digit; longest names first, so "@Ann Lee" does not also mention Ann). ONE query.
+ * Of `ids`, the people whose display name (in `names`) stands in the body as `@Name` (at the start or after whitespace or one of
+ * ( [ " ' > * _ ;, not followed by a letter or digit; longest names first, so "@Ann Lee" does not also mention Ann).
  */
-async function mentionedInBody(db: PrismaClient, body: string, ids: number[]): Promise<number[]> {
-  if (ids.length === 0) return [];
-  return mentionIdsIn(body, await namesOf(db, ids), ids);
-}
-
-/** The pure part of `mentionedInBody` (names already loaded). */
 export function mentionIdsIn(body: string, names: Map<number, string>, ids: number[]): number[] {
   const isWord = (ch: string | undefined) => ch !== undefined && /[\p{L}\p{N}\p{M}_]/u.test(ch);
   const sorted = ids.filter(id => names.get(id)).sort((x, y) => names.get(y)!.length - names.get(x)!.length);
@@ -904,23 +898,29 @@ export const chatRoutes = new Hono()
     const readOnly = () => c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
 
     if (input.kind === 'channel') {
-      if ((await entitlements)?.readOnly) return readOnly();
       const isGeneral = input.name!.trim().toLowerCase() === 'general';
+      // Independent reads, one round trip: the plan, this member's channels (below) and the workspace's open channels.
+      const [ent, mine, existing] = await Promise.all([
+        entitlements,
+        !isGeneral && member.rank < 3
+          ? db.conversation.findMany({
+              where: {workspaceId, kind: 'channel', createdBy: me},
+              select: {createdAt: true},
+              orderBy: {id: 'desc'},
+              take: MEMBER_CHANNELS,
+            })
+          : Promise.resolve(null),
+        // Archived channels free their slot.
+        db.conversation.findMany({where: {workspaceId, kind: 'channel', archivedAt: null}, select: {id: true, name: true}, take: MAX_CHANNELS}),
+      ]);
+      if (ent?.readOnly) return readOnly();
       // Only owners and admins archive channels, so the workspace's 50 slots are guarded: a member (not an admin) starts at
       // most CHANNELS_PER_HOUR an hour and MEMBER_CHANNELS in all; one bounded read on (workspace, kind, created_by).
-      if (!isGeneral && member.rank < 3) {
-        const mine = await db.conversation.findMany({
-          where: {workspaceId, kind: 'channel', createdBy: me},
-          select: {createdAt: true},
-          orderBy: {id: 'desc'},
-          take: MEMBER_CHANNELS,
-        });
+      if (mine) {
         const lastHour = mine.filter(r => r.createdAt.getTime() > Date.now() - 3_600_000).length;
         if (lastHour >= CHANNELS_PER_HOUR) return c.json(problem('conversation_rate_limited', 'You started many channels in the last hour. Try again later.'), 429);
         if (mine.length >= MEMBER_CHANNELS) return c.json(problem('limit_reached', `You can start up to ${MEMBER_CHANNELS} channels here. Ask an admin for more.`), 409);
       }
-      // Archived channels free their slot.
-      const existing = await db.conversation.findMany({where: {workspaceId, kind: 'channel', archivedAt: null}, select: {id: true, name: true}, take: MAX_CHANNELS});
       if (!isGeneral && existing.length >= MAX_CHANNELS) return c.json(problem('limit_reached', `A workspace can have ${MAX_CHANNELS} channels.`), 409);
       const findGeneral = (client: PrismaClient | Tx) =>
         client.conversation.findFirst({where: {workspaceId, kind: 'channel', archivedAt: null, name: {equals: 'general', mode: 'insensitive'}}, select: convCols, orderBy: {id: 'asc'}});
@@ -1373,11 +1373,13 @@ export const chatRoutes = new Hono()
     if (blocked) return blocked;
     const input = c.req.valid('json');
     // Absent = unchanged; present = replaced (mentions only those really named in the new text).
-    const [allowed, cardIds] = await Promise.all([
+    // The names are read alongside who may be mentioned (one round trip, as the send route does).
+    const [allowed, names, cardIds] = await Promise.all([
       input.mentions === undefined ? undefined : mentionable(db, a, input.mentions),
+      input.mentions === undefined ? undefined : namesOf(db, input.mentions),
       input.cardIds === undefined ? undefined : cardsInWorkspace(db, a, me, input.cardIds),
     ]);
-    const mentions = allowed === undefined ? undefined : await mentionedInBody(db, input.body, allowed);
+    const mentions = allowed === undefined ? undefined : mentionIdsIn(input.body, names ?? new Map(), allowed);
     const updated = await db.$transaction(async tx => {
       const {count} = await tx.message.updateMany({
         where: {id: row.id, conversationId: a.conversationId, workspaceId: a.workspaceId, senderId: me, deletedAt: null, kind: 'user'},
@@ -1386,7 +1388,7 @@ export const chatRoutes = new Hono()
       if (count === 0) return null;
       let added: number[] = [];
       if (mentions !== undefined) {
-        const had = await tx.messageMention.findMany({where: {messageId: row.id}, select: {userId: true}});
+        const had = await tx.messageMention.findMany({where: {messageId: row.id}, select: {userId: true}, take: MAX_MENTIONS});
         added = mentions.filter(id => id !== me && !had.some(h => h.userId === id));
         await tx.messageMention.deleteMany({where: {messageId: row.id}});
         await tx.messageMention.createMany({data: mentions.map(userId => ({messageId: row.id, userId}))});

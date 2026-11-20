@@ -2027,5 +2027,7 @@
   "chat.messageFiles": "الملفات",
   "chat.downloadFile": "تنزيل {name}",
   "chat.openFile": "فتح {name}",
-  "chat.morePictures": "{n} صور أخرى"
+  "chat.morePictures": "{n} صور أخرى",
+  "errors.already_subscribed": "لدى مساحة العمل هذه هذه الخطة أو خطة أكبر بالفعل. حدّث الصفحة لرؤيتها.",
+  "errors.would_lower_role": "يمكن لمسؤول اللوحة فقط جعل عضو مساحة العمل مشاهدًا في هذه اللوحة."
 }

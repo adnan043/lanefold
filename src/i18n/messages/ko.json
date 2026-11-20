@@ -1962,5 +1962,7 @@
   "chat.messageFiles": "파일",
   "chat.downloadFile": "{name} 다운로드",
   "chat.openFile": "{name} 열기",
-  "chat.morePictures": "사진 {n}장 더"
+  "chat.morePictures": "사진 {n}장 더",
+  "errors.already_subscribed": "이 워크스페이스에는 이미 이 요금제 또는 더 큰 요금제가 있습니다. 페이지를 새로 고쳐 확인하세요.",
+  "errors.would_lower_role": "보드 관리자만 워크스페이스 멤버를 이 보드의 뷰어로 만들 수 있습니다."
 }

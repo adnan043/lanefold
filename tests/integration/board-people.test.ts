@@ -92,4 +92,17 @@ describe.skipIf(!DATABASE_URL)('board people (integration, real Postgres)', () =
     expect(asGuest.json.items.map((p: J) => p.id).sort()).toEqual([annId, benId].sort());
     expect((await picker(ben)).json.items.map((p: J) => p.id).sort()).toEqual([annId, benId, cyId].sort());
   });
+
+  it('a guest cannot probe the workspace by assigning: an unseated member is 404 to them, a seated one works', async () => {
+    const bobId = (await db.user.findUniqueOrThrow({where: {email: 'bob@example.test'}, select: {id: true}})).id;
+    await db.boardMember.create({data: {boardId: boardA, userId: bobId, workspaceId: wsA, role: 'member'}});
+    await db.boardMember.create({data: {boardId: boardA, userId: benId, workspaceId: wsA, role: 'member'}});
+    const lane = (await db.lane.findFirstOrThrow({where: {boardId: boardA}, select: {id: true}})).id;
+    const card = (await ann.post(`/site-api/lanes/${lane}/cards`, {title: 'Plan'})).json.items[0].id;
+    // cy: a workspace member with no seat on this board. To the guest she does not exist.
+    expect((await bob.request('PUT', `/site-api/cards/${card}/members/${cyId}`, {})).status).toBe(404);
+    expect((await bob.request('PUT', `/site-api/cards/${card}/members/${benId}`, {})).status).toBe(200);
+    // A workspace member may still assign anyone who can see the board.
+    expect((await ben.request('PUT', `/site-api/cards/${card}/members/${cyId}`, {})).status).toBe(200);
+  });
 });

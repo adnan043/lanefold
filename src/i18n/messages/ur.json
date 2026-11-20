@@ -1975,5 +1975,7 @@
   "chat.messageFiles": "فائلیں",
   "chat.downloadFile": "{name} ڈاؤن لوڈ کریں",
   "chat.openFile": "{name} کھولیں",
-  "chat.morePictures": "مزید {n} تصاویر"
+  "chat.morePictures": "مزید {n} تصاویر",
+  "errors.already_subscribed": "اس ورک اسپیس کے پاس یہ پلان یا اس سے بڑا پلان پہلے سے موجود ہے۔ دیکھنے کے لیے صفحہ ریفریش کریں۔",
+  "errors.would_lower_role": "صرف بورڈ ایڈمن ہی ورک اسپیس کے کسی رکن کو اس بورڈ پر ناظر بنا سکتا ہے۔"
 }
