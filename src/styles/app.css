@@ -2362,10 +2362,6 @@
   }
 }
 
-.account-screen .card-body .form-stack {
-  max-width: 44rem;
-}
-
 .account-screen .form-stack > p {
   margin: 0;
 }
@@ -2562,7 +2558,9 @@
 }
 
 .screen-roles .roles-all-warn {
-  background: var(--warning-soft);
+  /* A light tint with a hairline, not the full warning fill: it is a note, not an error. */
+  background: color-mix(in oklab, var(--warning-soft) 45%, var(--card));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--warning) 18%, transparent);
 }
 
 .screen-roles .roles-all-warn .icon {
@@ -3162,93 +3160,6 @@
 .table-wrap-virtual thead th { position: sticky; inset-block-start: 0; z-index: 1; background: var(--surface, Canvas); }
 .table-spacer td { padding: 0; border: 0; }
 
-/* ------------------------------------------- dashboard: branding -- */
-/* The brand colour preview: its colours arrive as --pv-* through element.style (screens/branding.tsx). */
-
-.brand-form {
-  display: grid;
-  gap: 1rem;
-}
-
-.brand-samples {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 0.75rem;
-}
-
-.brand-sample {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem;
-  background: var(--pv-bg);
-  color: var(--pv-ink);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.brand-sample-mode {
-  flex-basis: 100%;
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.brand-sample-button {
-  padding: 0.45rem 0.85rem;
-  background: var(--pv-accent);
-  color: var(--pv-accent-ink);
-  border-radius: var(--radius-sm);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.brand-sample-link {
-  color: var(--pv-accent-text);
-  font-weight: 500;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.brand-sample-badge {
-  padding: 0.15rem 0.55rem;
-  background: var(--pv-accent-soft);
-  color: var(--pv-accent-text);
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.brand-sample-hex {
-  margin-inline-start: auto;
-  padding: 0;
-  background: none;
-  color: inherit;
-  font-size: 0.8rem;
-}
-
-/* The colour field: label, a compact picker and the saved colour under it (never stretched across the card). */
-.brand-colour {
-  justify-self: start;
-  inline-size: min(100%, 18rem);
-}
-
-.brand-colour .picker-trigger {
-  inline-size: 100%;
-}
-
-.brand-colour .picker-value {
-  flex: 1;
-  text-align: start;
-  font-variant-numeric: tabular-nums;
-}
-
-.brand-note {
-  margin: 0;
-  font-size: 0.875rem;
-}
-
 /* The built-in Lanefold mark (public/logo.svg) carries its own fill. */
 .app-brand-mark:has(.app-brand-default) {
   background: none;
@@ -3277,6 +3188,14 @@
 
 .app-page.screen-overview {
   gap: 1.75rem;
+}
+
+/* Activity and Your account: one readable column, centred. */
+.app-page.screen-activity,
+.app-page.account-screen {
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
 }
 
 .screen-overview .grid-main-side {

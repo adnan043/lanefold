@@ -76,14 +76,6 @@ export const CATALOGUE = definePermissions({
     group: 'Billing',
     ability: 'manageMaintenance',
   },
-  /** The site's brand colour (`/dashboard` Branding): website, dashboard and app. Owners only. */
-  BRANDING_MANAGE: {
-    codename: 'site:branding:manage',
-    title: 'Manage branding',
-    description: 'Change the brand colour of the website, the dashboard and the app.',
-    group: 'Site',
-    ability: 'manageBranding',
-  },
 });
 
 /** Codenames by key: `PERMISSIONS.BILLING_MANAGE` is `'site:billing:manage'`. */

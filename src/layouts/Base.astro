@@ -34,7 +34,6 @@ import {config} from '../platform/config';
 // The latin Inter file every page draws its first text with: fetched with the HTML, not after the CSS (same hashed URL
 // the @font-face in @fontsource-variable/inter points at).
 import interLatin from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
-import {BRAND_CSS_PATH, brandCssHref} from '../server/routes/branding';
 
 interface Props {
   site: Site | null;
@@ -116,9 +115,6 @@ const indexable = !noindex && !secretInUrl;
 const structured = indexable
   ? [...(path === '/' ? [siteJsonLd({name, logo: site?.logo}, description, SITE.lang)] : []), ...(jsonLd ? [jsonLd] : [])]
   : [];
-// The brand colour's sheet. On request: a versioned link, cached for good (no Worker trip before first paint). A
-// prerendered page is built once, so it links the plain URL, revalidated on each load, and still follows a new colour.
-const brandHref = Astro.isPrerendered ? BRAND_CSS_PATH : await brandCssHref();
 ---
 
 <!doctype html>
@@ -152,8 +148,6 @@ const brandHref = Astro.isPrerendered ? BRAND_CSS_PATH : await brandCssHref();
     {socialImage && <meta name="twitter:image:alt" content={imageAlt ?? `${name}: kanban boards with built-in chat`} />}
     <meta name="color-scheme" content="light" />
     {site?.favIcon ? <link rel="icon" href={site.favIcon} /> : <link rel="icon" href="/favicon.svg" type="image/svg+xml" />}
-    {/* The admin's brand colour (/dashboard Branding, src/server/routes/branding.ts); empty when none is set. */}
-    <link rel="stylesheet" href={brandHref} />
     <link rel="alternate" type="application/rss+xml" title={`${name} blog`} href="/rss.xml" />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
     {structured.map(data => <script type="application/ld+json" set:html={jsonLdText(data)} />)}

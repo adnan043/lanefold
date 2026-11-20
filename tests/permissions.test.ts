@@ -26,7 +26,6 @@ describe('the permission catalogue', () => {
       [
         'editRoles',
         'manageBilling',
-        'manageBranding',
         'manageFlows',
         'manageMaintenance',
         'managePlans',
@@ -55,18 +54,12 @@ describe('the permission catalogue', () => {
       managePlans: false,
       readWorkspaces: false,
       manageMaintenance: false,
-      manageBranding: false,
       shareBoards: false,
       manageFlows: false,
     } satisfies Abilities);
     // The type is exact: a key nobody declared does not exist.
     // @ts-expect-error not in the catalogue
     void NO_ABILITIES.manageEverything;
-  });
-
-  it('keeps branding to owners: no role gets it by default', () => {
-    expect(CATALOGUE.BRANDING_MANAGE.codename).toBe('site:branding:manage');
-    expect('roles' in CATALOGUE.BRANDING_MANAGE).toBe(false);
   });
 
   it('gives the member role no `site:` codename (the platform counts those as admin power)', () => {

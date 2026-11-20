@@ -19,8 +19,6 @@ import {logout} from '../platform/browser';
 import {
   auditQuery,
   billingSettingsQuery,
-  brandingQuery,
-  firstUsersQuery,
   healthQuery,
   meQuery,
   myWorkspacesQuery,
@@ -146,7 +144,6 @@ const NAV_GROUPS: {label: string; items: NavItem[]}[] = [
       {to: '/billing', label: 'Billing', icon: 'credit-card', ability: 'manageBilling'},
       {to: '/plans', label: 'Plan limits', icon: 'settings', ability: 'managePlans'},
       {to: '/workspaces', label: 'Workspaces', icon: 'layout-kanban', ability: 'readWorkspaces'},
-      {to: '/branding', label: 'Branding', icon: 'palette', ability: 'manageBranding'},
     ],
   },
 ];
@@ -379,21 +376,15 @@ const overviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   staticData: {title: 'Overview'},
-  loader: async ({context: {queryClient}}) => {
-    // The tiles the visitor may see, as the screen's `enabled` flags decide.
-    const [me] = await Promise.all([queryClient.ensureQueryData(meQuery).catch(() => null), warm(
-        queryClient.ensureQueryData(healthQuery),
-        queryClient.ensureQueryData(twoFactorQuery),
-        queryClient.ensureQueryData(siteQuery),
-        queryClient.ensureQueryData(overviewMyDayQuery(todayISO())),
-        queryClient.ensureQueryData(overviewWorkspacesQuery),
-        queryClient.ensureQueryData(unreadCountQuery)
-      )]);
-    const can = me?.abilities;
-    await warm(
-      ...(can?.manageUsers ? [queryClient.ensureQueryData(firstUsersQuery)] : [])
-    );
-  },
+  loader: ({context: {queryClient}}) =>
+    warm(
+      queryClient.ensureQueryData(healthQuery),
+      queryClient.ensureQueryData(twoFactorQuery),
+      queryClient.ensureQueryData(siteQuery),
+      queryClient.ensureQueryData(overviewMyDayQuery(todayISO())),
+      queryClient.ensureQueryData(overviewWorkspacesQuery),
+      queryClient.ensureQueryData(unreadCountQuery),
+    ),
   component: lazyRouteComponent(() => import('./screens/overview'), 'Overview'),
 });
 const accountRoute = createRoute({
@@ -456,13 +447,6 @@ const workspacesRoute = createRoute({
   component: lazyRouteComponent(() => import('./screens/workspaces'), 'Workspaces'),
 });
 
-const brandingRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/branding',
-  staticData: {title: 'Branding'},
-  loader: ({context: {queryClient}}) => warm(queryClient.ensureQueryData(brandingQuery)),
-  component: lazyRouteComponent(() => import('./screens/branding'), 'Branding'),
-});
 
 // The UI kit on screen, for the owner and their agent. Dev only: the whole route (and its
 // chunk) is left out of a build, because `import.meta.env.DEV` is `false` there.
@@ -486,6 +470,5 @@ export const routeTree = rootRoute.addChildren([
   billingRoute,
   plansRoute,
   workspacesRoute,
-  brandingRoute,
   ...devRoutes,
 ]);

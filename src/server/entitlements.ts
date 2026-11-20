@@ -26,8 +26,7 @@ export type PlanLimits = {
   auditLog: boolean;
 };
 
-/** `brandColor`: the admin's `#rrggbb` brand colour, null = the default green (src/lib/brand.ts). */
-export type AppSettingsValue = {billingMode: BillingMode; graceDays: number; maintenanceMessage: string; brandColor: string | null};
+export type AppSettingsValue = {billingMode: BillingMode; graceDays: number; maintenanceMessage: string};
 
 /** What FREE_FOR_ALL still caps, so nothing runs away (never shown as a plan limit). */
 export const SAFETY_CAPS = {
@@ -121,21 +120,20 @@ const CONFIG_KEY = 'app:config';
 /** Cleared by the route that saves (`invalidateAppSettings`), so long; the hour is the safety net. */
 const SETTINGS_TTL = 3600;
 
-const DEFAULT_SETTINGS: AppSettingsValue = {billingMode: 'PAID', graceDays: 14, maintenanceMessage: '', brandColor: null};
+const DEFAULT_SETTINGS: AppSettingsValue = {billingMode: 'PAID', graceDays: 14, maintenanceMessage: ''};
 
 /** `app_settings` (the single row), through the Site Cache. Shared by every visitor: nothing personal in it. */
 export function getAppSettings(db: PrismaClient): Promise<AppSettingsValue> {
   return cache.getOrSet(SETTINGS_KEY, SETTINGS_TTL, async () => {
     const row = await db.appSettings.findUnique({
       where: {id: 1},
-      select: {billingMode: true, graceDays: true, maintenanceMessage: true, brandColor: true},
+      select: {billingMode: true, graceDays: true, maintenanceMessage: true},
     });
     if (!row) return DEFAULT_SETTINGS;
     return {
       billingMode: row.billingMode === 'FREE_FOR_ALL' ? 'FREE_FOR_ALL' : 'PAID',
       graceDays: row.graceDays,
       maintenanceMessage: row.maintenanceMessage,
-      brandColor: row.brandColor,
     } satisfies AppSettingsValue;
   });
 }

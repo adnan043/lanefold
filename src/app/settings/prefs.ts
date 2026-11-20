@@ -7,7 +7,7 @@ import {normalizeHex} from '../../portal/ui/contrast';
 /**
  * This device's look, applied as attributes on <html> so CSS does the work:
  * mode (`data-theme`: light | dark | contrast, absent = the device), density, accent (`data-accent`, absent =
- * `brand`: the site's brand colour the admin sets in /dashboard Branding, served by /site-api/brand.css), text size (`data-font`) and motion (`data-motion`, honoured by a11y.css).
+ * `brand`: the site's own colour, global.css's green), text size (`data-font`) and motion (`data-motion`, honoured by a11y.css).
  * Everything is kept in this browser (localStorage) and applied at boot by AppRoot, before the first paint.
  * Mode, density, text size, corner radius and motion are also saved to the signed-in user's profile (`GET / PATCH /preferences`, see
  * `usePreferences` in sync.ts); locale lives in the `lf_locale` cookie and the profile too.
