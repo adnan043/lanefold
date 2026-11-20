@@ -563,6 +563,7 @@
   "chat.deleteTitle": "このメッセージを削除しますか?",
   "chat.deleting": "削除中…",
   "chat.direct": "ダイレクトメッセージ",
+  "chat.groups": "グループ",
   "chat.discard": "破棄",
   "chat.edit": "編集",
   "chat.edited": "(編集済み)",

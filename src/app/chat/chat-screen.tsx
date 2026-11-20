@@ -133,7 +133,8 @@ export function Chat() {
   const needle = jump.trim().toLocaleLowerCase();
   const shown = needle ? items.filter(c => conversationTitle(c, t).toLocaleLowerCase().includes(needle)) : items;
   const channels = shown.filter(c => c.kind === 'channel');
-  const direct = shown.filter(c => c.kind === 'dm' || c.kind === 'group');
+  const direct = shown.filter(c => c.kind === 'dm');
+  const groups = shown.filter(c => c.kind === 'group');
   const boards = shown.filter(c => c.kind === 'board');
   const canAddChannel = current.role !== 'viewer' && current.role !== 'guest';
   const section = (label: string, rows: ConversationT[], add?: {label: string; kind: 'channel' | 'dm'}) =>
@@ -178,8 +179,8 @@ export function Chat() {
                   event.preventDefault();
                   setJump('');
                 }
-                // Enter opens the first match as listed (channels, then direct, then boards), never mid-composition.
-                const first = channels[0] ?? direct[0] ?? boards[0];
+                // Enter opens the first match as listed (channels, direct, groups, then boards), never mid-composition.
+                const first = channels[0] ?? direct[0] ?? groups[0] ?? boards[0];
                 if (event.key === 'Enter' && !event.nativeEvent.isComposing && first) void navigate({to: '/chat', search: {c: first.id} as never});
               }}
             />
@@ -195,6 +196,7 @@ export function Chat() {
           {noChannels && !isAdmin && <p className="muted chat-list-note">{t('chat.noChannelsMember')}</p>}
           {section(t('chat.channels'), channels, canAddChannel ? {label: t('chat.addChannel'), kind: 'channel'} : undefined)}
           {section(t('chat.direct'), direct, current.role !== 'guest' ? {label: t('chat.newDirect'), kind: 'dm'} : undefined)}
+          {section(t('chat.groups'), groups)}
           {section(t('chat.boardChats'), boards)}
           {needle && shown.length === 0 && <p className="muted chat-list-note">{t('chat.noConversationMatch')}</p>}
           {items.length === 0 && !general.isPending && (
