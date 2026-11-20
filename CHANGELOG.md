@@ -4,6 +4,77 @@ Template releases. `npm run platform -- check` says when a newer one is out;
 `npm run platform -- upgrade` applies it (see `scripts/platform.mjs`).
 Managed by the template: replaced on upgrade.
 
+## 0.10.24
+- The player: resume tries again, briefly, when the first seek lands at the start (a source that can't seek yet).
+- The player: YouTube plays on pages that send no referrer (the frame sends the site's origin), Wistia plays on the first press, and a YouTube or Vimeo error shows the site's own "can't play" screen.
+
+**Required upgrade.** Selling with the owner's own payment account, the owner picks:
+- `src/platform/payment-providers/` (new): small server-only `fetch` clients, no SDK to install, for an app that lets the owner
+  pick Ezypay, Stripe or PayPal in its admin. `ezypay.ts` (prices, connected gateways, checkout as a form, popup or payment
+  window, payment and subscription reads, cancel, the `ezy-signature` check plus the event re-read), `stripe.ts` (Product +
+  Price, Checkout Session for subscriptions and one-time, subscription read and cancel, Billing Portal, `Stripe-Signature` over
+  the raw body), `paypal.ts` (product + plan, subscription approval link, read and cancel, `verify-webhook-signature` with the
+  raw event), `keys.ts` (the secret names, the mode from the keys, a live key never in the Preview, `keyStatus` booleans only),
+  `access.ts` (active, trialing and past due to the period end, then a re-check), `money.ts`, `signature.ts` (5-minute
+  tolerance, constant time). Checkout takes a stored price row, never an amount.
+- `docs/agent/payments-providers.md` (new), `AGENTS.md`, `docs/agent/payments.md`, `docs/agent/store-apps.md`: when to use the
+  built-in payments and when the owner's own account; an app that sells supports all three and the owner picks; keys on the
+  Secrets page (sandbox under Staging, live under Production), the webhook URL, copy-paste routes, security and access rules.
+- `.env.example`: the provider secret names (empty).
+- Quick and bounded: the webhook checks and the subscription reads (`get…Subscription`) time out after 4 s (checkout
+  creation keeps 10 s); concurrent PayPal calls share ONE token request; `settleWithin()` (`access.ts`) lets a gated page
+  wait 1.5 s at most on a re-read, then decide from the stored row while the re-read finishes after the answer.
+- Webhook hardening: `webhookIpAllowed()` (`webhook-limit.ts`, new), a per-IP limit for `/site-api/payment-webhooks/*`;
+  `paypalTransmissionFresh()`, run first by `verifyPaypalWebhook`, drops a delivery more than 5 minutes old before PayPal's
+  verify call; the doc says when to pass Ezypay's `requireSignature: true`.
+- Steps for an existing site: `docs/agent/upgrade.md`, "Coming from below 0.10.24".
+- `AGENTS.md`, `docs/agent/video.md`: the video rule no longer bans comedy or entertainment as such; never movies or
+  films, TV dramas, music videos or indecent content.
+
+## 0.10.23
+
+**Required upgrade.** Video on demand:
+- `src/platform/video.ts` (new): the platform's video, server side with the Site Key: `createUpload()`, `confirm()`, `getVideo()`,
+  `getVideos(ids)` (up to 50 in one call), `listVideos()`, `videoUsage()`, `videoOrigins()`, `playback()` (a fresh link for one
+  viewer, with their id and IP; a guest sends `guest: true` and must send the IP), `allowVideo(Astro.csp, Astro.url)` (the video service on that page's CSP only, from the static
+  `/origins` call: 1.5 s at most, remembered 10 minutes, a failure 1 minute, one request at a time; a local
+  `http://localhost`/`127.0.0.1` platform is accepted only on a page served locally, then also in `media-src`/`img-src`).
+  Also as one object,
+  `video.*`. No delete: the owner deletes videos in the dashboard.
+- `src/platform/video-browser.ts` (new): `uploadVideo()` sends the bytes straight to the video service (resumable, in parts, with
+  progress, retry, resume after a reload and cancel), `attachVideo()` plays a link (HLS natively on Safari, hls.js elsewhere,
+  loaded only on play), `videoProblem()` the plain words for each state. Types for the states and error codes.
+- `src/platform/player/` (new): the platform's video player (Video.js 10): HLS, YouTube and Vimeo (Wistia in its own iframe), captions, key
+  moments (chapters), watermark with the viewer's name, resume, speed and quality, keyboard; and a signed link renewed about
+  2 minutes before it ends and when the stream refuses a part, from the same moment. `player.css` its look.
+- `src/components/video/VideoPlayer.tsx` and `src/portal/video/VideoUpload.tsx` (new, this site's own): the player for a
+  platform video or a YouTube, Vimeo or Wistia embed (`embedUrl`), with a screen for each state, and the dashboard's upload box.
+- `src/platform/video.ts`: `allowVideoEmbeds(Astro.csp, kinds)` lets a page load YouTube's or Vimeo's player API (Wistia: its
+  iframe only, `frame-src`).
+- `package.json`: `@videojs/react`, `@videojs/hlsjs-video`, `@videojs/youtube-video` and `@videojs/vimeo-video` 10.3.0
+  (the player; hls.js comes with it); `astro` and `hono` raised to versions without known
+  security problems.
+- `AGENTS.md`, `docs/agent/files.md`, `docs/agent/video.md`: files and video ALWAYS use the platform's built-in storage
+  and video; never offer the owner's own bucket, S3, R2 or a video host; video is the built-in upload or an embed
+  (YouTube, Vimeo, Wistia: `fast.wistia.net` added to the CSP's `frame-src` and the sanitizer), never a direct file
+  link; no storage or video yet → tell the owner to add it on the Storage page. Own storage only when the owner asks,
+  with a plain warning.
+- `docs/agent/video.md` (new), `AGENTS.md`, `docs/agent/files.md`: when to use platform video, who may watch (the app decides
+  first), a link per viewer per view, each state's screen, hours kept and watched, and a site without the helper.
+- `src/platform/auth/after-sign-in.ts` (new): after every sign-in (password, emailed code, two-step, sign-up code, "View as
+  admin"), someone who can open the admin lands on `/dashboard/` unless `next` is already a `/dashboard/…` or `/portal/…` link;
+  everyone else as before. `src/lib/account.ts` `nextParam()`: the sign-in pages send only their own `?next=`.
+- Store listings: a read-only demo admin for the store's previews. `npm run platform -- demo-login --email … --password …`
+  writes `prisma/demo-login.sql` (data only: a `Demo (read-only)` role with the catalogue's read and view permissions, and that
+  user on it); the platform runs it only on its previews and a real install deletes it. `src/platform/DemoLogin.astro` (new,
+  on `src/pages/account/login.astro`) shows the demo's email and password with copy buttons and "Fill in", only where the
+  platform set `SITE_DEMO_LOGIN` (`config.demoLogin`, `GET /site-api/auth/demo-login`). `docs/agent/store-apps.md` (new).
+- `AGENTS.md`, `docs/agent/video.md` "What video is for": the platform's video is for teaching, coaching, courses, talks,
+  workshops, Q&A and group or business video; never build movie, film, TV-drama, music-video or entertainment
+  features on it, and refuse such a request in one plain line; a "series" is a learning or coaching show.
+- `src/platform/player/`: the solid-band skin is `dark` (was `cinema`; a saved `cinema` config still reads as `dark`).
+- Steps for an existing site: `docs/agent/upgrade.md`, "Coming from below 0.10.23".
+
 ## 0.10.22
 
 **Required upgrade.** File uploads go straight to storage:

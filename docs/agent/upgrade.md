@@ -83,6 +83,26 @@ Start with a clean git tree: commit what's there. Never stash: Publish ships the
    it from `src/platform/files`). Without it the browser blocks the upload. Then check each upload route still checks its own
    types and max size before `createUpload()` (`files.md`, "Your own limits"); a route that used `MAX_FILE_BYTES` as its limit
    now allows 5 GB: give it a limit of its own. And after `putFile()`, the browser code checks the complete call's answer.
+   **Coming from below 0.10.23** (video). The upgrade brings `src/platform/video.ts`, `video-browser.ts`, the player
+   (`src/platform/player/`) and `docs/agent/video.md` (managed), and adds `src/components/video/` (the player) and `src/portal/video/` (the upload box) when this site has none.
+   They are this site's own from then on. `AGENTS.md` is left to you: copy the template's (`cp /tmp/site-template/AGENTS.md AGENTS.md`;
+   this site's own rules at its end go back after it). `package.json` is left to you: add `"@videojs/react"`, `"@videojs/hlsjs-video"`, `"@videojs/youtube-video"`
+   and `"@videojs/vimeo-video"`, each `"10.3.0"`, to `dependencies` (a site that had `"hls.js"` only for
+   the old player may remove it), and raise
+   `"astro"` to at least `"^7.4.7"` and `"hono"` to at least `"^4.13.16"` (then `npm audit fix` in step 9 finds nothing). A site
+   that doesn't use video keeps the player files unused: nothing loads them. A site that already plays video its own way (files
+   from `files.md`, or its own player): leave it working, and move it to `video.md` only when a task touches it or the owner asks.
+   `astro.config.mjs` is left to you: add ` https://fast.wistia.net` at the end of its `frame-src` line (Wistia embeds).
+   The sign-in page is left to you: add `import DemoLogin from '../../platform/DemoLogin.astro';` to the top of
+   `src/pages/account/login.astro` (or this site's own sign-in page) and `<DemoLogin />` inside its card, above the first form
+   (it shows only on the store's previews, `store-apps.md`). `src/env.d.ts`: add `SITE_DEMO_LOGIN?: string;` to `Env`.
+   **Coming from below 0.10.24** (the owner's own payment provider). The upgrade brings `src/platform/payment-providers/` and
+   `docs/agent/payments-providers.md` (managed) and `tests/payment-providers.test.ts` (with the tests in step 3). Nothing else
+   changes by itself: a site that sells through the built-in payments keeps them. `.env.example` is left to you: if this
+   site still has the template's, copy the provider lines from the end of `/tmp/site-template/.env.example` (names only).
+   A site whose own code already calls Stripe or PayPal with the owner's keys: leave it working, and move it onto the
+   helpers only when a task touches it (`payments-providers.md`, its signature checks and access rules first). An app
+   for the store that sells: it must let the owner pick Ezypay, Stripe or PayPal in its admin (`store-apps.md`).
 9. Check it:
    ```bash
    npm install

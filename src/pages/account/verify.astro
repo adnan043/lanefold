@@ -61,7 +61,7 @@ const {site, viewer} = await staticContext(Astro.request);
 </Base>
 
 <script>
-  import {nextPath, replaceWithMessage, signUpEmail, takeToken} from '../../lib/account';
+  import {nextParam, nextPath, replaceWithMessage, signUpEmail, takeToken} from '../../lib/account';
   import {bindForm, postJson} from '../../lib/form';
   import {AUTH_RULES} from '../../lib/rules';
   import {verifyOutcome} from '../../lib/verify-outcome';
@@ -90,7 +90,7 @@ const {site, viewer} = await staticContext(Astro.request);
         rules: {},
         pendingLabel: 'Confirming…',
         async submit() {
-          const {data, result} = await postJson(siteFetch, '/site-api/auth/register/verify', {token: signUpLink, next: nextPath()});
+          const {data, result} = await postJson(siteFetch, '/site-api/auth/register/verify', {token: signUpLink, next: nextParam()});
           if (!result.ok) {
             linkForm.hidden = true;
             codeForm.hidden = false;
@@ -117,7 +117,7 @@ const {site, viewer} = await staticContext(Astro.request);
       rules: {email: AUTH_RULES.email},
       pendingLabel: 'Confirming…',
       async submit(values) {
-        const {data, result} = await postJson(siteFetch, '/site-api/auth/register/verify', {...values, next: nextPath()});
+        const {data, result} = await postJson(siteFetch, '/site-api/auth/register/verify', {...values, next: nextParam()});
         if (!result.ok) return result;
         const target = (data as {next?: unknown} | null)?.next;
         return {ok: true, redirect: typeof target === 'string' ? target : nextPath()};

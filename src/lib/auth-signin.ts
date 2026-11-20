@@ -1,4 +1,4 @@
-import {nextPath, rememberSignUpEmail} from './account';
+import {nextParam, nextPath, rememberSignUpEmail} from './account';
 import {bindForm, postJson} from './form';
 import {AUTH_RULES, rules} from './rules';
 import {siteFetch} from '../platform/browser';
@@ -11,6 +11,7 @@ import {siteFetch} from '../platform/browser';
  * set one. With two-step sign-in on, the first step answers a challenge and the authenticator step
  * (`/site-api/auth/login/two-factor`) finishes it; `?mfa=<challenge>` opens that step directly (a
  * one-click sign-in from the dashboard, owner.ts). `?notice=` explains why the visitor landed here.
+ * `<DemoLogin />` (in AuthTabs) shows a store preview's demo admin, and nothing anywhere else.
  *
  * Returns `true` when `?mfa=` opened the authenticator step (the caller then skips the
  * "already signed in?" check and shows this tab).
@@ -23,6 +24,8 @@ export function initSignIn(): boolean {
 
   const params = new URLSearchParams(window.location.search);
   const next = nextPath();
+  // What the sign-in routes get: the page's own `next` only. They answer where to go (an admin: the admin).
+  const asked = nextParam();
   const notice = params.get('notice');
   const $ = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
   const noticeBox = $('login-notice');
@@ -69,7 +72,7 @@ export function initSignIn(): boolean {
   const done = (data: {next?: unknown} | null | undefined) => ({ok: true as const, redirect: typeof data?.next === 'string' ? data.next : next});
 
   async function sendCode(address: string) {
-    const {result} = await postJson(siteFetch, '/site-api/auth/code', {email: address, next});
+    const {result} = await postJson(siteFetch, '/site-api/auth/code', {email: address, next: asked});
     if (result.ok) {
       email = address;
       $('email-code-lead').textContent = `If ${address} has an account here, we sent it a 6-digit code. It works for 10 minutes. Check your spam folder if it isn't there.`;
@@ -94,7 +97,7 @@ export function initSignIn(): boolean {
     rules: {code: [rules.required('Enter the 6-digit code from the email.')]},
     pendingLabel: 'Checking…',
     async submit(values) {
-      const {result, data} = await postJson(siteFetch, '/site-api/auth/code/verify', {email, code: values.code, next});
+      const {result, data} = await postJson(siteFetch, '/site-api/auth/code/verify', {email, code: values.code, next: asked});
       if (result.ok && data?.twoFactor === true && typeof data.challenge === 'string') {
         askTwoFactor(data.challenge);
         return {ok: true};
@@ -128,7 +131,7 @@ export function initSignIn(): boolean {
     rules: {email: AUTH_RULES.email, password: AUTH_RULES.password},
     pendingLabel: 'Signing in…',
     async submit(values) {
-      const {result, data} = await postJson(siteFetch, '/site-api/auth/login', {...values, next});
+      const {result, data} = await postJson(siteFetch, '/site-api/auth/login', {...values, next: asked});
       // Never confirmed: this browser knows the password, and the emailed code finishes it.
       if ((data as {needsCode?: unknown} | null)?.needsCode) {
         rememberSignUpEmail(String(values.email));
@@ -147,7 +150,7 @@ export function initSignIn(): boolean {
     rules: {code: [rules.required('Enter the 6-digit code from your app, or a recovery code.')]},
     pendingLabel: 'Checking…',
     async submit(values) {
-      const {result, data, res} = await postJson(siteFetch, '/site-api/auth/login/two-factor', {...values, challenge, next});
+      const {result, data, res} = await postJson(siteFetch, '/site-api/auth/login/two-factor', {...values, challenge, next: asked});
       if (res?.status === 401) {
         // The challenge expired (5 minutes) or the password changed: start again.
         window.location.replace(`/account/login/?next=${encodeURIComponent(next)}`);

@@ -16,6 +16,14 @@ export function nextPath(fallback = '/app'): string {
 }
 
 /**
+ * `?next=` exactly as the page was given it (a same-site PATH), or undefined. Send THIS to the sign-in
+ * routes and go where they answer: the server decides, so an admin lands in the admin.
+ */
+export function nextParam(): string | undefined {
+  return nextPath('') || undefined;
+}
+
+/**
  * Reads a secret token from the URL ONCE and removes it from the address bar
  * (and so from history, bookmarks and the Referer of the next page).
  */

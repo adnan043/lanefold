@@ -1,6 +1,8 @@
 import {Hono} from 'hono';
 
+import {config} from '../config';
 import {requireAuth, withAuthCore, withViewer, problem} from '../guards';
+import {afterSignIn} from './after-sign-in';
 import {audit} from './audit';
 import {sha256Hex} from './encoding';
 import {signAccessToken} from './jwt';
@@ -8,7 +10,7 @@ import {claimUnconfirmed, endAccess} from './end-access';
 import {hashPassword, DUMMY_PASSWORD_HASH, PASSWORD_LIMITS, passwordProblem, verifyPassword} from './password';
 import {rotate, revokeByToken} from './refresh';
 import {pendingFromLogin, resendPending, SIGN_UP_CODE_PATH, signUpRoutes} from './sign-up';
-import {normalizeEmail, safeNext} from './input';
+import {normalizeEmail} from './input';
 import {
   attempt,
   background,
@@ -50,6 +52,7 @@ import {refreshStore} from './store';
  * `/site-api/auth/*`: this site's own sign-in (docs/agent/auth.md).
  *
  *   GET   /csrf                 the CSRF token (also set as a cookie)
+ *   GET   /demo-login           a store preview's read-only demo admin {email, password}; 404 everywhere else
  *   POST  /register             {email, password, name}  a pending sign-up + an emailed code (sign-up.ts)
  *   POST  /register/verify      {email, code}            the code → the account, signed in
  *   POST  /resend-verification  {email}                  a new code or link; always the same answer
@@ -132,6 +135,14 @@ export function authRoutes(settings: AuthSettings) {
         // the page script reads it from `document.cookie`.
         c.header('Cache-Control', 'no-store');
         return c.json({ok: true});
+      })
+      // A store preview's demo admin, for <DemoLogin /> on the sign-in page. Only where the platform set
+      // SITE_DEMO_LOGIN (its previews): everywhere else, a real install included, there is none.
+      .get('/demo-login', c => {
+        c.header('Cache-Control', 'no-store');
+        const demo = config.demoLogin;
+        if (!demo) return c.json(problem('not_found', 'No such Site API route.'), 404);
+        return c.json({ok: true, email: demo.email, password: demo.password});
       })
 
       .post(
@@ -298,7 +309,7 @@ export function authRoutes(settings: AuthSettings) {
           }
           await startSession(c, user, keys.ipHash);
           maybeSweep(c);
-          return c.json({ok: true, user: publicUser(user), next: safeNext(next, settings.afterSignInPath)});
+          return c.json({ok: true, user: publicUser(user), next: await afterSignIn(db, user.id, next, settings)});
         }
       )
 

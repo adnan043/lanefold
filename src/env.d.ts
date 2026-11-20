@@ -11,6 +11,8 @@
  *   JWT_SECRET          a secret: signs access tokens (platform-managed, >= 32 chars).
  *   SITE_JOBS_SECRET  a secret: checks background-job deliveries (platform-managed).
  *   SITE_OWNER_ID    a plain var: the platform's opaque id for the account's owner. Never an email.
+ *   SITE_DEMO_LOGIN  a plain var, ONLY on the platform's store previews: the listing's read-only demo
+ *                       admin as JSON {email, password} (`src/platform/DemoLogin.astro`).
  *
  * Never send a secret to the browser, log it, or write it to a file.
  */
@@ -24,6 +26,7 @@ declare namespace Cloudflare {
     SITE_JOBS_SECRET?: string;
     SITE_OWNER_ID?: string;
     SITE_DB_TRANSPORT?: string;
+    SITE_DEMO_LOGIN?: string;
   }
 }
 

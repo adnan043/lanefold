@@ -74,7 +74,7 @@ export default defineConfig({
         "base-uri 'self'",
         "form-action 'self'",
         // Blog posts may embed these players (src/platform/sanitize.ts allows them).
-        'frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com',
+        'frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://fast.wistia.net',
       ],
     },
   },

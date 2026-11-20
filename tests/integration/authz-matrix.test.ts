@@ -431,6 +431,7 @@ const TABLE: Row[] = [
   row('DELETE /auth/sessions/:id', 'platform', {signedOut: [401]}),
   row('POST /auth/delete-account', 'platform'),
   row('GET /auth/csrf', 'platform', {signedOut: [200]}),
+  row('GET /auth/demo-login', 'platform', {signedOut: [404]}), // only on a store preview (SITE_DEMO_LOGIN)
   row('POST /auth/register', 'platform'),
   row('POST /auth/register/verify', 'platform'),
   row('POST /auth/verify-email', 'platform'),

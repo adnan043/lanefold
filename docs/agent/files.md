@@ -8,8 +8,19 @@ owner adds in the dashboard (the app's Storage tab: a storage pack, then "Turn o
 calls answer `E_STORAGE_NEEDS_PACK`, while it is off `E_STORAGE_OFF`. Files count against the
 storage the owner has (their packs); at that limit uploads stop with `E_STORAGE_LIMIT`.
 
-Not for: the site's own images (commit them in `src/assets/`), blog covers (Markdown), or data
-(use the Site Database: store the FILE ID there, never the bytes).
+**Always this storage, by default.** Never offer, suggest or scaffold another one: the owner's own bucket, S3,
+R2, a video host's account, a "files" service. No storage on the account yet (`E_STORAGE_NEEDS_PACK`,
+`E_STORAGE_OFF`, the feature needs room it doesn't have): tell the owner in one plain line how to add it ("Add
+storage on the dashboard's Storage page, then turn it on for this app") and don't build a way around it.
+
+**Only when the OWNER asks in so many words for their own storage** ("use my S3 bucket"): build it (its key from
+`config.ownerSecret`, never in code), and tell them plainly, in the same reply, that the platform doesn't support
+or watch over that storage, that its cost and risk are theirs (it can fail, leak or be billed without warning), and
+that it doesn't count toward their plan or show on its Storage page. Never move existing files there unasked.
+
+Not for: the site's own images (commit them in `src/assets/`), blog covers (Markdown), data
+(use the Site Database: store the FILE ID there, never the bytes), or video people watch in the app (lessons,
+courses, a library: `video.md`, converted for every screen and played from short-lived links).
 
 ## How an upload works (three steps, one file each)
 ```

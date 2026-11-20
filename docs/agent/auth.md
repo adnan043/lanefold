@@ -37,6 +37,9 @@ write your own login, token, cookie or password code.
   address hears when it's asked for and can cancel while it waits; afterwards it gets a plain notice, with no way back.
 - **Every sign-in code email also carries a reset link,** so a stranger asking for codes can't leave a person with no link.
 
+- **A store listing's demo admin is read-only and preview-only** (`store-apps.md`): `prisma/demo-login.sql`, written by
+  `npm run platform -- demo-login`, and `<DemoLogin />` on the sign-in page. Never a demo account in seed data or a migration.
+
 ## On your own machine: local development mode
 For building the site on a developer's own computer, never anywhere else (`src/platform/local-dev.ts`).
 It is on only when ALL hold, checked on the server, failing closed: no `SITE_KEY`, no `SITE_PREVIEW`, a
@@ -137,6 +140,10 @@ single-use token and hash only after it checks out.
 - Links in emails carry single-use tokens (reset: 30 min, verify: 24 h), stored hashed. Pages that
   read one strip it from the URL (`takeToken()`) and send `Referrer-Policy: no-referrer`.
 - Redirect after sign-in only to a same-site PATH (`safeNext()` / `nextPath()`): never a URL.
+- WHERE A SIGN-IN LANDS is the server's answer (`next`, from `afterSignIn` in `after-sign-in.ts`), by every road: someone who can
+  open the admin (Users, Roles or Activity) goes to `/dashboard/` unless `next` is already a `/dashboard/…` (or `/portal/…`) link;
+  everyone else to `next` or `afterSignInPath`. Every sign-in page, the template's and any of this site's own, sends only its own
+  `?next=` (`nextParam()`) and goes to the `next` the route answers: never a default of its own.
 - Sessions are cookies only. Never put a token in `localStorage`, a URL, a log or a response body
   (the Preview's header-carried cookies are the managed core's, Preview-only exception).
 - THE OWNER COMES ONLY FROM THE DASHBOARD. The account's owner presses "View as admin" on the app's

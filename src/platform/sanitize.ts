@@ -15,7 +15,7 @@ for (const tag of Object.keys(whiteList)) {
 whiteList.iframe = ['src', 'width', 'height', 'allow', 'allowfullscreen', 'title'];
 
 /** Only video embeds may be framed. */
-const EMBED_HOSTS = ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com', 'player.vimeo.com'];
+const EMBED_HOSTS = ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com', 'player.vimeo.com', 'fast.wistia.net'];
 
 const filter = new FilterXSS({
   whiteList,

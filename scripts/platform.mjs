@@ -21,6 +21,12 @@
  *                                            (docs/agent/plans-catalogue.md). Same SITE_KEY + SITE_URL.
  *   npm run platform -- setup                your own computer: checks Node and packages, makes .env (a new
  *                                            JWT_SECRET), checks the database, runs the migrations (`npm run setup`)
+ *   npm run platform -- demo-login --email <e> --password <p>
+ *                                            a store listing's READ-ONLY demo admin: writes
+ *                                            prisma/demo-login.sql (a "Demo (read-only)" role with only the
+ *                                            catalogue's read/view permissions, and that user on it). The
+ *                                            platform runs it ONLY on its previews; installs delete it
+ *                                            (docs/agent/store-apps.md). Changes no database.
  *   npm run platform -- dev-admin <email>    LOCAL DEVELOPMENT ONLY: gives a user you signed up on your
  *                                            own machine the `admin` role, in a LOCAL database. Refused
  *                                            with a SITE_KEY, SITE_PREVIEW or NODE_ENV=production, and when
@@ -677,6 +683,156 @@ export function localDatabaseProblem(url) {
   return `DATABASE_URL points at "${host}", which is not this computer: dev-admin only changes a local database.`;
 }
 
+/*
+ * `demo-login`: a store listing's read-only demo admin (docs/agent/store-apps.md). The file is DATA
+ * only (INSERT … ON CONFLICT and UPDATE: the platform refuses anything else) and safe to run twice.
+ * The role holds only the catalogue's `…:read` / `…:view` codenames, read from the catalogue files
+ * (`src/platform/auth/codenames.ts` and every `src/server/**.ts` that calls `definePermissions`).
+ */
+export const DEMO_LOGIN_FILE = 'prisma/demo-login.sql';
+export const DEMO_ROLE = {slug: 'demo-read-only', name: 'Demo (read-only)', description: 'The store preview demo admin: opens every admin screen, changes nothing.'};
+/** The template's password hash (src/platform/auth/password.ts PASSWORD_HASH): scrypt, N=2^14, r=8, p=5. */
+const DEMO_HASH = {N: 16_384, r: 8, p: 5, saltBytes: 16, keyBytes: 32};
+const READ_ONLY_CODENAME = /:(read|view)$/;
+
+/** `scrypt$v1$16384$8$5$<salt>$<key>`, the same string `hashPassword` writes. */
+export async function demoPasswordHash(password, salt = randomBytes(DEMO_HASH.saltBytes)) {
+  const {scrypt} = await import('node:crypto');
+  const {N, r, p, keyBytes} = DEMO_HASH;
+  const key = await new Promise((done, fail) =>
+    scrypt(Buffer.from(password.normalize('NFKC'), 'utf8'), salt, keyBytes, {N, r, p, maxmem: 2 * 128 * r * (N + p)}, (error, out) => (error ? fail(error) : done(out)))
+  );
+  return ['scrypt', 'v1', N, r, p, Buffer.from(salt).toString('base64url'), Buffer.from(key).toString('base64url')].join('$');
+}
+
+const quoted = text => `'${String(text).replace(/'/g, "''")}'`;
+const literal = /(['"])((?:\\.|(?!\1)[^\\\n])*)\1/;
+const field = (block, name) => {
+  const match = new RegExp(`\\b${name}\\s*:\\s*${literal.source}`).exec(block);
+  return match ? match[2].replace(/\\(.)/g, '$1') : null;
+};
+
+/** The permission entries declared in catalogue source text: codename, title, description, group, roles. */
+export function catalogueEntries(sources) {
+  const out = new Map();
+  for (const text of sources) {
+    const starts = [...text.matchAll(/\bcodename\s*:\s*(['"])([^'"\n]+)\1/g)];
+    starts.forEach((match, i) => {
+      const end = i + 1 < starts.length ? starts[i + 1].index : text.length;
+      const open = text.lastIndexOf('{', match.index);
+      const block = text.slice(open < 0 ? match.index : open, Math.min(end, match.index + 1200));
+      const roles = /\broles\s*:\s*\[([^\]]*)\]/.exec(block);
+      out.set(match[2], {
+        codename: match[2],
+        title: field(block, 'title') ?? match[2],
+        description: field(block, 'description'),
+        group: field(block, 'group') ?? 'General',
+        roles: roles ? [...roles[1].matchAll(/(['"])([a-z][a-z0-9-]*)\1/g)].map(m => m[2]) : [],
+      });
+    });
+  }
+  return [...out.values()];
+}
+
+/** The catalogue files of this project, as text. */
+function catalogueSources(root = ROOT) {
+  const files = [join(root, 'src/platform/auth/codenames.ts')];
+  const walk = dir => {
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(name)) files.push(full);
+    }
+  };
+  walk(join(root, 'src/server'));
+  return files.filter(existsSync).map(file => readFileSync(file, 'utf8')).filter(text => text.includes('codename'));
+}
+
+/** The whole `prisma/demo-login.sql`. Pure: `entries` from `catalogueEntries`, `passwordHash` from `demoPasswordHash`. */
+export function demoLoginSql({email, name = 'Demo admin', passwordHash, entries}) {
+  const reads = entries.filter(entry => READ_ONLY_CODENAME.test(entry.codename));
+  if (!reads.length) throw new Error('the permission catalogue has no read or view permission for the demo to hold.');
+  const list = reads.map(entry => quoted(entry.codename)).join(', ');
+  const defaults = reads.flatMap(entry => entry.roles.filter(slug => slug !== 'owner').map(slug => `(${quoted(slug)}, ${quoted(entry.codename)})`));
+  const lines = [
+    '-- prisma/demo-login.sql: the store preview\'s READ-ONLY demo admin. Written by',
+    '-- `npm run platform -- demo-login`; run it again to change the address or password.',
+    '-- The platform runs this file ONLY on its previews (the review copy and the public "Try it"),',
+    '-- after prisma/seed.sql. A real install deletes it and never runs it. Data only: INSERT … ON',
+    '-- CONFLICT and UPDATE (anything else is refused at submit). Never put this account in',
+    '-- prisma/seed.sql or a migration. docs/agent/store-apps.md.',
+    'BEGIN;',
+    '',
+    '-- The read permissions this site declares (rows the permission sync would add anyway).',
+    'INSERT INTO "permissions" ("codename", "title", "description", "group_name") VALUES',
+    reads.map(entry => `  (${quoted(entry.codename)}, ${quoted(entry.title)}, ${entry.description === null ? 'NULL' : quoted(entry.description)}, ${quoted(entry.group)})`).join(',\n'),
+    'ON CONFLICT ("codename") DO NOTHING;',
+    '',
+  ];
+  if (defaults.length) {
+    lines.push(
+      '-- Their default roles, as the permission sync grants them the first time.',
+      'INSERT INTO "role_permissions" ("role_id", "permission_id")',
+      'SELECT r."id", p."id"',
+      `FROM (VALUES ${defaults.join(', ')}) AS g(slug, codename)`,
+      'JOIN "roles" r ON r."slug" = g.slug',
+      'JOIN "permissions" p ON p."codename" = g.codename',
+      'ON CONFLICT DO NOTHING;',
+      ''
+    );
+  }
+  lines.push(
+    '-- The demo role: read and view permissions only, never a write.',
+    'INSERT INTO "roles" ("slug", "name", "description", "is_system", "updated_at") VALUES',
+    `  (${quoted(DEMO_ROLE.slug)}, ${quoted(DEMO_ROLE.name)}, ${quoted(DEMO_ROLE.description)}, false, now())`,
+    'ON CONFLICT ("slug") DO UPDATE SET "name" = EXCLUDED."name", "description" = EXCLUDED."description", "updated_at" = now();',
+    '',
+    'INSERT INTO "role_permissions" ("role_id", "permission_id")',
+    'SELECT r."id", p."id"',
+    'FROM "roles" r',
+    `JOIN "permissions" p ON p."codename" IN (${list})`,
+    `WHERE r."slug" = ${quoted(DEMO_ROLE.slug)}`,
+    'ON CONFLICT DO NOTHING;',
+    '',
+    '-- The demo admin: confirmed, active, no two-step sign-in.',
+    'INSERT INTO "users" ("email", "name", "password_hash", "status", "email_verified_at", "updated_at") VALUES',
+    `  (${quoted(email)}, ${quoted(name)}, ${quoted(passwordHash)}, 'active', now(), now())`,
+    'ON CONFLICT ("email") DO UPDATE SET "name" = EXCLUDED."name", "password_hash" = EXCLUDED."password_hash", "status" = \'active\',',
+    '  "email_verified_at" = now(), "totp_secret_sealed" = NULL, "totp_pending_sealed" = NULL, "totp_enabled_at" = NULL,',
+    '  "session_version" = "users"."session_version" + 1, "updated_at" = now();',
+    '',
+    'INSERT INTO "user_roles" ("user_id", "role_id")',
+    'SELECT u."id", r."id"',
+    'FROM "users" u',
+    `JOIN "roles" r ON r."slug" IN (${quoted(DEMO_ROLE.slug)}, 'member')`,
+    `WHERE u."email" = ${quoted(email)}`,
+    'ON CONFLICT DO NOTHING;',
+    '',
+    'COMMIT;',
+    ''
+  );
+  return lines.join('\n');
+}
+
+async function demoLogin() {
+  const email = (option('--email') ?? '').trim().toLowerCase();
+  const password = option('--password') ?? '';
+  if (!/^[^\s@'"\\]+@[^\s@'"\\]+\.[^\s@'"\\]+$/.test(email) || email.length > 254) {
+    throw new Error('usage: npm run platform -- demo-login --email demo@example.com --password "<at least 10 characters>"');
+  }
+  if (password.length < 10 || password.length > 128) throw new Error('the demo password needs 10 to 128 characters.');
+  const sql = demoLoginSql({email, passwordHash: await demoPasswordHash(password), entries: catalogueEntries(catalogueSources())});
+  mkdirSync(join(ROOT, 'prisma'), {recursive: true});
+  writeFileSync(join(ROOT, DEMO_LOGIN_FILE), sql);
+  console.log(
+    `Wrote ${DEMO_LOGIN_FILE}: ${email} signs in to a read-only "${DEMO_ROLE.name}" role on the store's previews only.\n` +
+      'Next: make every write refuse that role (docs/agent/store-apps.md), keep <DemoLogin /> on the login page, and give the\n' +
+      'same email and password on the submission form. Try it on your machine: npm run db:seed, then psql "$DATABASE_URL" -f ' +
+      `${DEMO_LOGIN_FILE}, and sign in with the password.`
+  );
+}
+
 /** Why local development mode is off here, or null when it is on. */
 export function localDevProblem(environment) {
   if (environment.SITE_KEY) return 'SITE_KEY is set: this copy talks to the platform, where the owner comes from "View as admin".';
@@ -846,11 +1002,11 @@ Then create your admin account (README "Create your admin account"):
   npm run dev-admin -- you@example.com`);
 }
 
-const commands = {docs, check, upgrade, jobs, prices, plans, setup, 'dev-admin': devAdmin};
+const commands = {docs, check, upgrade, jobs, prices, plans, setup, 'dev-admin': devAdmin, 'demo-login': demoLogin};
 // Run as a command (`npm run platform -- …`), not when a test imports the helpers above.
 const isMain = Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain && !commands[command]) {
-  console.log('usage: npm run platform -- docs [--site URL] | check [--from DIR] | upgrade [--to vX.Y.Z] [--from DIR] [--base DIR] [--dry-run] [--force] | jobs | prices [add --key … --name … --amount-cents … --currency … --interval …] | plans [--write] | setup | dev-admin <email>');
+  console.log('usage: npm run platform -- docs [--site URL] | check [--from DIR] | upgrade [--to vX.Y.Z] [--from DIR] [--base DIR] [--dry-run] [--force] | jobs | prices [add --key … --name … --amount-cents … --currency … --interval …] | plans [--write] | setup | dev-admin <email> | demo-login --email <e> --password <p>');
 } else if (isMain) {
   commands[command]().catch(error => {
     console.error(`platform ${command}: ${error.message}`);

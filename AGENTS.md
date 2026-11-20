@@ -21,9 +21,9 @@ is compared byte for byte). Read `docs/agent/<topic>.md` in this folder instead 
 `{{DOCS_URL}}`; for any other one, `DEVELOPERS.md` or `STORE-LISTING.md`, if present, says what it is on
 that computer; otherwise it isn't available there: do the task without it and say so in one line.
 
-## First: is this site on the required template version? (0.10.22)
-Read `version` in `template.json` at the start of a session, new or resumed, before anything else. **If it's below 0.10.22, this site
-has problems these rules can't fix for it:** below 0.10.22 file uploads can fail on a custom domain and are limited to 100 MB; below 0.10.21 a list bound as one raw-SQL parameter (`unnest(${ids}::text[])`,
+## First: is this site on the required template version? (0.10.24)
+Read `version` in `template.json` at the start of a session, new or resumed, before anything else. **If it's below 0.10.24, this site
+has problems these rules can't fix for it:** below 0.10.24 it has no safe helpers for the owner's own Ezypay, Stripe or PayPal account (an app that sells can't let the owner pick); below 0.10.23 it can't upload or play the platform's video; below 0.10.22 file uploads can fail on a custom domain and are limited to 100 MB; below 0.10.21 a list bound as one raw-SQL parameter (`unnest(${ids}::text[])`,
 `= ANY(${ids})`) fails on the live database with `malformed array literal` although every local test passes; below 0.10.20 `npm run platform -- check` puts a half-done merge back
 with the wrong file, and on a developer's computer its AI can open a placeholder as a link; below 0.10.19 it can't tell when the template's own files
 were changed, and a Windows copy can change their line endings; below 0.10.18 its sample data doesn't stop on a database in use, and it can't be
@@ -90,11 +90,14 @@ upgraded and can be older; when they differ, the current copy wins:
 | `seo.md` | a new public page, titles and descriptions, URLs, social cards, sitemap, robots.txt, RSS |
 | `site-api.md` | any server route or backend code |
 | `background-jobs.md` | anything that happens later, on a schedule, with retries: reminders, follow-ups, summaries, cleanups |
-| `files.md` | anything that stores a file a person picks (photos, documents, attachments, avatars, audio, video) or shows one back |
+| `files.md` | anything that stores a file a person picks (photos, documents, attachments, avatars, audio) or shows one back |
+| `video.md` | any video people watch in the app: lessons, courses, a video library, members' or product videos (upload, play, who may watch) |
 | `publishing.md` | git, scripts, dependencies, config, redirects, the Preview, going live |
 | `payments.md` | anything sold: a Buy or Subscribe button, a price, checkout, a membership or paid page, orders, refunds |
+| `payments-providers.md` | selling with the OWNER's own Ezypay, Stripe or PayPal account (every store app that sells): the owner picks in the admin, keys, checkout, webhooks, cancel, access |
 | `orders-and-stock.md` | anything charged, booked or limited: bookings, tickets, seats, stock, coupons with a limit, your own payment provider |
 | `plans-catalogue.md` | the platform's plans an owner resells (sign-up links to their studio), not the site's own products; their real plans: `npm run platform -- plans --write` |
+| `store-apps.md` | submitting this app to the store, its sign-in page, its roles, or anything an admin can save: the read-only demo admin (`prisma/demo-login.sql`, `npm run platform -- demo-login`, `<DemoLogin />`) |
 
 **Anything charged, booked or limited → `orders-and-stock.md`.** Everything charged or booked carries an idempotency key
 (`idempotent()`, built into checkout). The database decides what's left, in one conditional statement, a unique index or a
@@ -102,7 +105,22 @@ short lock: never read, check in code, then write, and never the cache. Test it 
 
 **Selling anything → `payments.md`**: built in (Buy / Subscribe buttons, checkout, memberships,
 orders in the Site Database), always sandbox while you build; use it by default, never a
-third-party checkout script or a hard-coded amount.
+third-party checkout script or a hard-coded amount. **An app that sells (a store listing), or an owner who asks for their own
+account → `payments-providers.md`**: support Ezypay and the owner's own Stripe and PayPal, and let the OWNER pick which in the
+app's admin (`src/platform/payment-providers/`); never one provider hard-coded, keys only from the owner's secrets.
+
+**Files and video → the platform's own, ALWAYS (`files.md`, `video.md`).** Every upload uses the built-in file
+storage and every video people watch uses the built-in video. Never offer, suggest or scaffold the owner's own
+bucket, S3, R2, a video host's account, Vimeo or anything else as storage. Video an app may show: the built-in upload
+(default) and embeds (YouTube, Vimeo, Wistia and other embed links); never a direct link to a video file. The
+account has no storage or video yet: tell the owner how to add it (the dashboard's **Storage** page) and stop there;
+never work around it. Only if the OWNER asks in so many words to use their own storage: build it, and tell them
+plainly that the platform doesn't support or watch over it, that its cost and risk are theirs, and that it doesn't
+count toward their plan.
+
+**Video is for teaching, coaching, talks and group or business video (`video.md` "What video is for").** Never
+build movie, film, TV-drama or music-video features on it, and refuse such a request in one plain line.
+A "series" is a learning or coaching show, never a TV drama.
 
 ## Architecture: one Worker, Hono is the backend
 ```
@@ -182,6 +200,7 @@ are made in its Users screen. Say exactly that when they ask how
 to reach the admin, and put the app's admin screens inside `/dashboard`.
 On a developer's own computer with no Site Key only, local development mode prints account codes in the
 terminal and `npm run platform -- dev-admin <email>` makes a local admin, never an owner (`auth.md`).
+After any sign-in, someone who can open the admin lands in it (`/dashboard/`): every sign-in page, yours too, goes to the `next` the route answers.
 
 ## Which kind of page (decide FIRST, every time)
 | The page is… | Build it as |
@@ -312,6 +331,10 @@ whole-table loops, nothing big in module memory (`performance.md`).
   the bytes straight to storage with `putFile()` (the page calls `allowFileUploads()`); your route
   confirms with `completeUpload()` and keeps the file id in your own table. Private by default;
   show files through your route (it checks access, then redirects to a short link).
+- **Video people watch** (lessons, a course, a library): `video.md`. Only through the platform's video helper
+  (`src/platform/video.ts`): never store or serve video files yourself, or pass their bytes through this site. Check
+  who may watch by THIS app's rules first, then a fresh `playback()` link per viewer, every view: never cached or shared.
+  A guest's (not signed in) `playback()` always sends `guest: true` and the visitor's IP (`viewerIp`).
 - **Something to sell** (a product, a booking fee, a membership): `payments.md`. Create the
   sandbox price (`npm run platform -- prices add …`), put `<BuyButton price="<key>" />` on the
   page, record what was bought in `src/server/payments-hooks.ts`, gate member pages with
@@ -393,6 +416,8 @@ whole-table loops, nothing big in module memory (`performance.md`).
   awaiting independent reads one after the other.
 - `Cache-Control: public` on anything that read the visitor (`pageContext`, `withViewer`).
 - `setTimeout`/`setInterval` for later work, or a page someone must visit to run it: send a job.
+- Offer, suggest or scaffold the owner's own storage (a bucket, S3, R2, a video host's account) when they didn't
+  ask for it in so many words, or play video from a direct file link (`<video src="https://…mp4">`).
 - A signed-in app as one `.astro` page per screen, a second UI kit, a second lockfile.
 
 ## How changes go live

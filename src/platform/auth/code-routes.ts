@@ -1,9 +1,10 @@
 import {Hono} from 'hono';
 
 import {problem, withAuthCore} from '../guards';
+import {afterSignIn} from './after-sign-in';
 import {audit} from './audit';
 import {toHex, utf8} from './encoding';
-import {normalizeEmail, safeNext} from './input';
+import {normalizeEmail} from './input';
 import {hmacKey} from './keys';
 import {claimUnconfirmed} from './end-access';
 import {attempt, background, body, type Ctx, deviceTrusted, type Env, forgiveAddress, invalid, keysFor, mailDue, maybeSweep, newResetPath, publicUser, RESET_TTL_MINUTES, sendEmail, settle, startSession, text} from './kit';
@@ -177,7 +178,7 @@ export function codeRoutes(settings: AuthSettings) {
         }
         await startSession(c, current, keys.ipHash);
         maybeSweep(c);
-        return c.json({ok: true, user: publicUser(current), next: safeNext(next, settings.afterSignInPath)});
+        return c.json({ok: true, user: publicUser(current), next: await afterSignIn(c.var.db, current.id, next, settings)});
       }
     );
 }

@@ -1,10 +1,10 @@
 # Store listing: a whole web app
 
-This repository is the Web App template (`astro-app`), release 0.10.22: exactly what every new
+This repository is the Web App template (`astro-app`), release 0.10.24: exactly what every new
 site starts from, plus four files for you, the developer:
 - `DEVELOPERS.md`: setting up, your admin account, updates by `git merge`, and steps for your AI.
 - `STORE-LISTING.md` (this file): what the store needs from a whole-site listing, and how review works.
-- `store-check.mjs`: the store's checks for release 0.10.22, run on your machine with `node store-check.mjs`.
+- `store-check.mjs`: the store's checks for release 0.10.24, run on your machine with `node store-check.mjs`.
 - `LICENSE`: what you may do with the template.
 
 Keep them committed: each release updates them when you merge it. Submit leaves all four out, so they
@@ -75,20 +75,20 @@ This repository is for a **web app**.
 ## 3. The rules
 Submit refuses a version on the first one it breaks, and says which file and how to fix it.
 `node store-check.mjs` runs the same checks before you push.
-- **`template.json`** stays as the template wrote it (version `0.10.22` in this release).
+- **`template.json`** stays as the template wrote it (version `0.10.24` in this release).
   The version must be the template's CURRENT release on the day you submit, for a first version and for every
   update: older is refused, and so is any version that isn't a release. When a newer one comes out, merge it:
   `git fetch upstream --tags`, then `git merge "$(git describe --tags --abbrev=0 upstream/main)"`
   (a conflict in `package-lock.json`: `git checkout --theirs package-lock.json`, then `npm install`),
   then `npm install`, `npm run check` and `node store-check.mjs` (the merge brings its new copy). Follow the new release's `docs/agent/upgrade.md`
   for the steps a merge leaves to you. (`bad_template`, `template_outdated`)
-- **`src/platform/` untouched.** It is the template's managed core (49 files): nothing
+- **`src/platform/` untouched.** It is the template's managed core (88 files): nothing
   changed, added or deleted. The checks compare every byte with this release's copy. Your code goes in
   `src/server/`, `src/lib/`, your pages and components. (`platform_changed`)
 - **The template's own files untouched:** `template.json`, `CHANGELOG.md`, `scripts/platform.mjs`, `scripts/managed-files.json`. Byte for byte this release's copies,
   none deleted. (`managed_file_changed`)
 - **Put any of them back** with git, from the release tag you are on:
-  `git checkout v0.10.22 -- src/platform docs/agent AGENTS.md CLAUDE.md GEMINI.md template.json CHANGELOG.md scripts/platform.mjs scripts/managed-files.json`
+  `git checkout v0.10.24 -- src/platform docs/agent AGENTS.md CLAUDE.md GEMINI.md template.json CHANGELOG.md scripts/platform.mjs scripts/managed-files.json`
   Line endings count: the template's `.gitattributes` keeps every text file LF, also on Windows.
 - **Instructions for the customer's AI untouched.** Keep `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and `docs/agent/`
   as the template has them: they are the template's instructions for the AI that works on the customer's site
@@ -172,6 +172,41 @@ Write it so that it can't hurt anyone:
   passwords: people sign up.
 - Only your tables (and the template's own where it needs rows): nothing outside the site's database.
 
+### The read-only demo admin: `prisma/demo-login.sql`
+**Required for a web app.** Every web app gives the store's previews a demo admin that can open every
+admin screen and change nothing. Reviewers sign in with it by hand.
+- Make it with `npm run platform -- demo-login --email <email> --password <password>`: it writes
+  `prisma/demo-login.sql` (a "Demo (read-only)" role with only your read and view permissions, and that user
+  on it). Data only: `INSERT … ON CONFLICT` and `UPDATE`; anything else is refused
+  (`demo_login_unsafe`), and so is a web app without the file (`demo_login_missing`).
+- The platform runs it ONLY on its previews (review and "Try it"), after your sample data. A real install
+  deletes it and never runs it. Never put the demo account in `prisma/seed.sql` or a migration.
+- Every write must refuse the demo role, and your sign-in page keeps `<DemoLogin />`: it shows the
+  demo's email and password on the previews only. `docs/agent/store-apps.md` says how.
+- On the submission form you give the same email and password and accept the demo agreement: the demo
+  is read-only, and its credentials show on the sign-in page.
+- **What happens when it fails.** A version whose demo login is missing, doesn't sign in, can change
+  anything, or isn't shown on the sign-in page is refused with that reason, and only a new submission can
+  be approved. Found after approval, the listing is suspended and its "Try it" preview goes; it is
+  listed again once a fixed version is approved.
+
+### Payments: the owner picks the provider
+**Required for a web app that sells anything** (a product, a booking, a membership, a plan). The app is
+your code and may take payments however you build it, but the owner who installs it must be able to
+choose, in the app's admin, how they get paid: **Ezypay** or **their own Stripe or PayPal account**.
+- Support all three and let the owner pick in the app's admin. Never hard-code one provider, and never
+  use your own keys: each owner adds their own keys as site secrets in the dashboard's secret manager
+  (test keys for staging, live keys for production).
+- The template's own helpers in `src/platform/payment-providers/` do the provider calls (`ezypay.ts`,
+  `stripe.ts`, `paypal.ts`). `docs/agent/payments-providers.md` says how: keys, webhooks,
+  checkout, cancelling, and who gets access. The site's built-in payments (`docs/agent/payments.md`)
+  stay as they are.
+- On the submission form you say whether your app sells anything and, if it does, accept the payments
+  agreement for that version.
+- **What happens when it fails.** A reviewer opens the preview's admin and looks for the choice. A version
+  that sells without it is refused with that reason; only a new submission can be approved. We never read
+  or switch off your payment code.
+
 ## 7. Review
 Your version goes through levels, one after another. Each runs on its own and must pass before the next
 starts; every failure names the file and the fix, and a new version starts again from the first level it failed:
@@ -187,8 +222,10 @@ starts; every failure names the file and the fix, and a new version starts again
 - [ ] Sign-up and sign-in work
 - [ ] View as admin opens its admin
 - [ ] Its migrations ran on the preview database
-- [ ] No leftover demo keys, passwords or accounts
+- [ ] No leftover demo keys or passwords, and no demo account outside prisma/demo-login.sql
 - [ ] Sample data is only in prisma/seed.sql
+- [ ] Signed in with the demo login: it opens the admin and every save is refused
+- [ ] The demo email and password show on the sign-in page
 - [ ] Price matches the listing and checkout
 - [ ] Screenshots match the real app
 - [ ] Data note is clear and accurate

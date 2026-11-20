@@ -6,6 +6,7 @@
  * The forms' logic: `src/lib/auth-signin.ts` and `src/lib/auth-signup.ts`.
  * Both pages are PRERENDERED: nothing here knows the visitor until the script runs.
  */
+import DemoLogin from '../../platform/DemoLogin.astro';
 import Icon from '../home/Icon.astro';
 
 interface Props {
@@ -37,6 +38,8 @@ const heading = HEADINGS[active];
   <!-- Sign in -->
   <section class="auth-panel" role="tabpanel" id="panel-signin" aria-labelledby="tab-signin" hidden={!signin}>
     <p class="notice notice-error" id="login-notice" role="alert" hidden></p>
+    <!-- The store preview's read-only demo admin: shows only where the platform set it (docs/agent/store-apps.md). -->
+    <DemoLogin />
 
     <!-- 1. The usual way: a code by email (no password needed). -->
     <form id="email-form" class="auth-form" novalidate>

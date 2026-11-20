@@ -26,6 +26,9 @@ import {localDevAllowed, nodeEnv} from './local-dev';
  *                                   refresh token still works).
  *   ownerId     SITE_OWNER_ID   a plain var: the platform's opaque id for the account's owner. Never an
  *                                   email. A change means the site changed hands (auth/owner-seat.ts).
+ *   demoLogin   SITE_DEMO_LOGIN  a plain var, set ONLY on the platform's store previews (the review copy
+ *                                   and the public "Try it"): JSON {email, password} of the listing's
+ *                                   read-only demo admin, shown by `DemoLogin.astro`. Never on a real install.
  */
 /** The platform's own names: never readable as an owner secret. */
 const PLATFORM_NAMES = /^(SITE_|DATABASE_URL$|JWT_SECRET$)/;
@@ -55,6 +58,20 @@ export const config = {
   },
   get ownerId(): string | null {
     return env.SITE_OWNER_ID || null;
+  },
+  /** The store preview's demo admin ({email, password}), or null: unset, not JSON, or not two short strings. */
+  get demoLogin(): {email: string; password: string} | null {
+    const raw = env.SITE_DEMO_LOGIN;
+    if (!raw || raw.length > 600) return null;
+    try {
+      const value = JSON.parse(raw) as {email?: unknown; password?: unknown};
+      const {email, password} = value ?? {};
+      if (typeof email !== 'string' || typeof password !== 'string') return null;
+      if (!/^[^\s@]+@[^\s@]+$/.test(email) || email.length > 254 || !password || password.length > 128) return null;
+      return {email, password};
+    } catch {
+      return null;
+    }
   },
   ownerSecret(name: string): string | null {
     if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(name) || PLATFORM_NAMES.test(name)) return null;
