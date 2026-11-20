@@ -3,7 +3,7 @@ import {Link, useNavigate} from './nav';
 import {useState} from 'react';
 
 import {useT} from '../i18n';
-import {Button, buttonClass, Card, Icon, ProgressBar, useToast} from '../portal/ui';
+import {buttonClass, Card, Icon, ProgressBar, useToast} from '../portal/ui';
 import {useMe} from '../portal/shared';
 import {boardsQuery} from './queries';
 import {createBoardFromTemplate, TEMPLATES, type TemplateId} from './templates';
@@ -21,7 +21,7 @@ function read(userId: number, workspaceId: number): {dismissed?: boolean; cards?
 
 /**
  * "Get started" on My Day: four steps that tick from real data where the app can tell (a board exists, a teammate
- * joined) and on click otherwise. With no board yet it shows the starter-template strip. Hides when done or dismissed.
+ * joined) and on click otherwise. With no board yet it shows the starter-template strip. Hides when done.
  */
 export function SetupChecklist() {
   const {current} = useWorkspace();
@@ -75,13 +75,7 @@ function SetupChecklistFor({userId}: {userId: number}) {
   };
 
   return (
-    <Card
-      title={t('setup.title')}
-      actions={
-        <Button variant="ghost" size="sm" onClick={() => save({dismissed: true})}>
-          {t('setup.dismiss')}
-        </Button>
-      }>
+    <Card title={t('setup.title')}>
       <p className="muted lf-setup-count">{t('setup.progress', {done: doneCount, total: steps.length})}</p>
       <ProgressBar value={doneCount} max={steps.length} label={t('setup.title')} />
       <ul className="lf-setup-list">
