@@ -424,22 +424,19 @@
   display: flex;
 }
 
-.hv-avatars i,
+.hv-avatars img,
 .hv-card-avatar {
+  display: block;
   inline-size: 22px;
   block-size: 22px;
   border-radius: 999px;
   border: 2px solid var(--card);
-  background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+  object-fit: cover;
+  background: var(--accent-soft);
 }
 
-.hv-avatars i + i {
+.hv-avatars img + img {
   margin-inline-start: -7px;
-  background: linear-gradient(135deg, var(--info-soft), var(--info));
-}
-
-.hv-avatars i + i + i {
-  background: linear-gradient(135deg, var(--warning-soft), var(--warning));
 }
 
 .hv-lanes {
