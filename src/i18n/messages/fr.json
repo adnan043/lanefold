@@ -571,6 +571,7 @@
   "chat.deleteTitle": "Supprimer ce message ?",
   "chat.deleting": "Suppression…",
   "chat.direct": "Messages directs",
+  "chat.groups": "Groupes",
   "chat.discard": "Abandonner",
   "chat.edit": "Modifier",
   "chat.edited": "(modifié)",

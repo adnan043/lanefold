@@ -563,6 +563,7 @@
   "chat.deleteTitle": "删除这条消息？",
   "chat.deleting": "正在删除…",
   "chat.direct": "私信",
+  "chat.groups": "群组",
   "chat.discard": "放弃",
   "chat.edit": "编辑",
   "chat.edited": "（已编辑）",

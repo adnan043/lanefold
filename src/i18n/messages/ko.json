@@ -563,6 +563,7 @@
   "chat.deleteTitle": "이 메시지를 삭제할까요?",
   "chat.deleting": "삭제 중…",
   "chat.direct": "다이렉트 메시지",
+  "chat.groups": "그룹",
   "chat.discard": "버리기",
   "chat.edit": "편집",
   "chat.edited": "(수정됨)",
