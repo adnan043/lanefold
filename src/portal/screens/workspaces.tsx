@@ -34,7 +34,7 @@ export function Workspaces() {
             {new Date(row.graceUntil).getTime() > Date.now() ? 'In grace' : 'Read-only'}
           </StatusBadge>
         ) : (
-          <StatusBadge tone="success">OK</StatusBadge>
+          <StatusBadge tone="success">Active</StatusBadge>
         ),
     },
     {key: 'created', header: 'Created', width: 'shrink', hideOnMobile: true, cell: row => when(row.createdAt)},
