@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 
 import type {ChatFileT} from '../../lib/chat-files';
 import {useI18n, useT} from '../../i18n';
@@ -70,6 +70,34 @@ export function MessageFiles({files}: {files: readonly ChatFileT[]}) {
   );
 }
 
+/** One picture of the viewer: hidden until it has loaded, then it fades or slides in (an animation that started
+    before the load played on an empty box, so the picture just popped in). */
+function ViewerImage({file, direction}: {file: ChatFileT; direction: 'next' | 'prev' | null}) {
+  const [loaded, setLoaded] = useState(false);
+  const ref = useRef<HTMLImageElement>(null);
+  // Shown only once decoded: decoding during the slide dropped frames and the picture shook. `decode()` also covers
+  // a picture already in the cache (complete before a load event could be heard).
+  useEffect(() => {
+    const img = ref.current;
+    if (!img) return;
+    let live = true;
+    const show = () => live && setLoaded(true);
+    img.decode().then(show, show);
+    return () => {
+      live = false;
+    };
+  }, []);
+  return (
+    <img
+      ref={ref}
+      src={chatFileUrl(file.id)}
+      alt={file.name}
+      data-slide={direction ?? 'open'}
+      data-loaded={loaded ? '' : undefined}
+    />
+  );
+}
+
 /**
  * A message's pictures, one at a time, in a rounded dialog. The round arrow buttons on either side (and the arrow
  * keys) slide to the previous or next picture; Esc or a click outside closes, and focus goes back to the tile that
@@ -126,7 +154,7 @@ function ImageViewer({images, index, onIndex, onClose}: {images: readonly ChatFi
       {current && (
         <div className="chat-viewer">
           {/* Keyed by picture: each one mounts fresh, so the slide-in plays on every move. */}
-          <img key={current.id} src={chatFileUrl(current.id)} alt={current.name} decoding="async" data-slide={direction ?? undefined} />
+          <ViewerImage key={current.id} file={current} direction={direction} />
           {many && (
             <>
               <button type="button" className="chat-viewer-arrow" data-side="prev" aria-label={t('cd.previous')} onClick={() => go(-1)}>

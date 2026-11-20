@@ -19,7 +19,6 @@ import {
   auditQuery,
   billingSettingsQuery,
   brandingQuery,
-  firstAuditQuery,
   firstUsersQuery,
   healthQuery,
   meQuery,
@@ -389,8 +388,7 @@ const overviewRoute = createRoute({
       )]);
     const can = me?.abilities;
     await warm(
-      ...(can?.manageUsers ? [queryClient.ensureQueryData(firstUsersQuery)] : []),
-      ...(can?.readAudit ? [queryClient.ensureQueryData(firstAuditQuery)] : [])
+      ...(can?.manageUsers ? [queryClient.ensureQueryData(firstUsersQuery)] : [])
     );
   },
   component: lazyRouteComponent(() => import('./screens/overview'), 'Overview'),

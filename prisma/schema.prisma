@@ -584,7 +584,8 @@ model WorkspaceJoinLink {
 
 // NOTE: these exist ONLY in SQL; if a later `--create-only` migration drops one, delete that line before applying
 // (docs/agent/database.md › Indexes):
-//  - `boards_inbox_of_key` UNIQUE (inbox_of) WHERE inbox_of IS NOT NULL (20261102120928_lanefold_mvp: one Inbox per person),
+//  - `boards_inbox_of_workspace_id_key` UNIQUE (inbox_of, workspace_id) WHERE inbox_of IS NOT NULL
+//    (20261120090000_inbox_per_workspace: one Inbox per person per workspace),
 //  - `boards_name_trgm_idx` GIN (name gin_trgm_ops) (20261103100000_search_trigram: search).
 model Board {
   id             Int       @id @default(autoincrement())

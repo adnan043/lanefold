@@ -10,7 +10,8 @@ import {incomingSince, newestSeq} from './announce';
 import {Composer} from './composer';
 import {MembersButton} from './members-dialog';
 import {dayKey} from './mentions';
-import {MessageItem, PendingItem} from './message-item';
+import {MessageItem, PendingItem, saveMessageBody} from './message-item';
+import type {PersonRef} from './mentions';
 import {MAX_KEPT, type MessageFeed, useMessageFeed} from './use-message-feed';
 import './chat.css';
 
@@ -59,6 +60,10 @@ type ListProps = {
   canModerate: boolean;
   canPin?: boolean;
   onReply?: (message: MessageT) => void;
+  /** Edit loads the message into this list's composer. */
+  onEdit?: (message: MessageT) => void;
+  /** The message loaded in the composer for editing. */
+  editingId?: string | null;
   /** Called when the person is looking at the newest messages (mark read). */
   onSeen?: (seq: number) => void;
   emptyTitle: string;
@@ -71,11 +76,32 @@ type ListProps = {
   holdTrim?: boolean;
   /** Shown above the first message once the start of the history is loaded (the main list, not a thread). */
   /** The start of the history: a heading (null = none, only the note when there are no messages yet). */
-  welcome?: {mark: ReactNode; title: string | null};
+  welcome?: {mark: ReactNode; title: string | null; intro: string};
 };
 
+/** Editing in the composer: Edit on a message loads it into the list's composer; saving patches the feed. */
+function useComposerEdit(feed: MessageFeed, peopleList: readonly PersonRef[], resetKey: unknown) {
+  const [editing, setEditing] = useState<MessageT | null>(null);
+  useEffect(() => setEditing(null), [resetKey]);
+  // Deleted (here or by someone else) while it was loaded in: end the edit.
+  const current = editing ? feed.items.find(m => m.id === editing.id) : undefined;
+  const live = editing && current && !current.deleted ? editing : null;
+  const onEdit = useCallback((message: MessageT) => setEditing(message), []);
+  const composer = {
+    editing: live ? {id: live.id, body: live.body} : undefined,
+    onCancelEdit: () => setEditing(null),
+    onSaveEdit: async (body: string, chosen: PersonRef[]) => {
+      if (!live) return;
+      const {message: next} = await saveMessageBody(live, body, [...chosen, ...peopleList]);
+      feed.patch(live.id, () => next);
+      setEditing(null);
+    },
+  };
+  return {editingId: live?.id ?? null, onEdit, composer};
+}
+
 /** The scrolling list: oldest first, "Load older" on top, stays at the bottom for new messages unless the reader scrolled up. */
-function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply, onSeen, emptyTitle, emptyBody, announceIn, cardTarget, holdTrim, welcome}: ListProps) {
+function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply, onEdit, editingId, onSeen, emptyTitle, emptyBody, announceIn, cardTarget, holdTrim, welcome}: ListProps) {
   const t = useT();
   const {errorMessage, formatDate} = useI18n();
   const box = useRef<HTMLDivElement>(null);
@@ -212,7 +238,7 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
           </div>
         )}
         <ul className="chat-msgs">
-          <MessageItem message={m} grouped={grouped} people={people} peopleList={peopleList} me={me} canWrite={feed.canWrite} canModerate={canModerate} canPin={canPin} onReply={onReply} onChange={feed.patch} cardTarget={cardTarget} />
+          <MessageItem message={m} grouped={grouped} people={people} peopleList={peopleList} me={me} canWrite={feed.canWrite} canModerate={canModerate} canPin={canPin} onReply={onReply} onEdit={onEdit} beingEdited={editingId === m.id} onChange={feed.patch} cardTarget={cardTarget} />
         </ul>
       </li>
     );
@@ -262,7 +288,7 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
             )}
           </div>
         )}
-        {welcome?.title && feed.nextBefore === null && (
+        {welcome?.title && feed.nextBefore === null && (feed.items.length > 0 || feed.pending.length > 0) && (
           <div className="chat-welcome">
             {welcome.mark}
             <h3>
@@ -272,7 +298,14 @@ function MessageList({feed, people, peopleList, me, canModerate, canPin, onReply
         )}
         {feed.items.length === 0 && feed.pending.length === 0 ? (
           welcome ? (
-            <p className="muted chat-welcome-note">{emptyBody}</p>
+            // A new conversation: its mark, whose start this is, and a nudge, centred in the empty list.
+            <div className="chat-start">
+              {welcome.mark}
+              <h3>
+                <bdi>{welcome.intro}</bdi>
+              </h3>
+              <p className="muted">{emptyBody}</p>
+            </div>
           ) : (
             <EmptyState icon="message" title={emptyTitle}>
               {emptyBody}
@@ -366,6 +399,7 @@ function ThreadPanel({workspaceId, boardId, conversationId, title, parent, pulse
   // the pulse (already running for the open chat) moved; edits in the thread come with its 20 s window refresh.
   const feed = useMessageFeed({conversationId, parentId: parent.id, pulseSeq, pulseEditRev, me});
   const cardTarget = useMemo(() => ({workspaceId, boardId}), [workspaceId, boardId]);
+  const edit = useComposerEdit(feed, peopleList, parent.id);
   return (
     <aside className="chat-thread" aria-label={t('chat.thread')}>
       <div className="chat-thread-head">
@@ -392,6 +426,8 @@ function ThreadPanel({workspaceId, boardId, conversationId, title, parent, pulse
         me={me}
         canModerate={canModerate || feed.canModerate}
         cardTarget={cardTarget}
+        onEdit={edit.onEdit}
+        editingId={edit.editingId}
         emptyTitle={t('chat.noRepliesTitle')}
         emptyBody={t('chat.noRepliesBody')}
       />
@@ -405,6 +441,7 @@ function ThreadPanel({workspaceId, boardId, conversationId, title, parent, pulse
           submitLabel={t('chat.replyLabel')}
           autoFocus
           conversationId={conversationId}
+          {...edit.composer}
           onSend={async (body, mentions, cardIds, files) => {
             const sent = await feed.send(body, mentions, cardIds, files);
             if (sent) onSent();
@@ -445,6 +482,7 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
   const pulseSeq = pulseItem?.lastSeq;
   const pulseEditRev = pulseItem?.editRev;
   const feed = useMessageFeed({conversationId: conversation.id, pulseSeq, pulseEditRev, me});
+  const edit = useComposerEdit(feed, peopleList, conversation.id);
   const [thread, setThread] = useState<string | null>(null);
   const [muted, setMuted] = useState(conversation.muted);
   const [muting, setMuting] = useState(false);
@@ -528,10 +566,10 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
       : [{label: t('chat.archiveChannel'), icon: 'archive', danger: true, onSelect: archiveChannel}];
 
   const parent = thread ? (feed.items.find(m => m.id === thread) ?? null) : null;
-  /** The conversation's mark: a DM's person in the header (a chat tile in the welcome line), or a tile with its kind's icon (the board's in the accent). */
+  /** The conversation's mark: initials for a DM (the person) or a group (its name), or a tile with its kind's icon (the board's in the accent). */
   const mark = (size: 'md' | 'lg') =>
-    conversation.kind === 'dm' && size === 'md' ? (
-      <Avatar name={title} size="sm" />
+    conversation.kind === 'dm' || conversation.kind === 'group' ? (
+      <Avatar name={title} size={size === 'lg' ? 'lg' : 'sm'} />
     ) : (
       <span className="chat-mark" data-size={size} data-kind={conversation.kind} aria-hidden="true">
         <Icon name={conversation.kind === 'channel' ? 'hash' : conversation.kind === 'board' ? 'layout-kanban' : conversation.kind === 'group' ? 'users' : 'message'} size={size === 'lg' ? 20 : 16} />
@@ -581,6 +619,8 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
             canModerate={canModerate}
             canPin={canPin}
             onReply={onReply}
+            onEdit={edit.onEdit}
+            editingId={edit.editingId}
             onSeen={onSeen}
             emptyTitle={t('chat.emptyConversationTitle')}
             emptyBody={t('chat.emptyConversationBody')}
@@ -588,11 +628,11 @@ export function ConversationView({conversation, workspaceId, role, embedded, onB
             cardTarget={cardTarget}
             holdTrim={thread !== null}
             // Channels, DMs and groups start without a heading; a board chat keeps its own.
-            welcome={embedded ? undefined : {mark: mark('lg'), title: conversation.kind === 'board' ? welcomeTitle : null}}
+            welcome={embedded ? undefined : {mark: mark('lg'), title: conversation.kind === 'board' ? welcomeTitle : null, intro: welcomeTitle}}
           />
           {feed.status === 'ready' &&
             (feed.canWrite ? (
-              <Composer people={peopleList} workspaceId={workspaceId} draft={{kind: 'chat', id: conversation.id}} label={t('chat.composerLabel')} placeholder={t('chat.composerPlaceholder', {name: title})} conversationId={conversation.id} onSend={(body, mentions, cardIds, files) => feed.send(body, mentions, cardIds, files)} />
+              <Composer {...edit.composer} people={peopleList} workspaceId={workspaceId} draft={{kind: 'chat', id: conversation.id}} label={t('chat.composerLabel')} placeholder={t('chat.composerPlaceholder', {name: title})} conversationId={conversation.id} onSend={(body, mentions, cardIds, files) => feed.send(body, mentions, cardIds, files)} />
             ) : (
               <Notice tone="info">{feed.archived ? t('chat.archivedNotice') : t('chat.readOnly')}</Notice>
             ))}

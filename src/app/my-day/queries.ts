@@ -15,6 +15,8 @@ export type DayCard = {
   boardId: number;
   boardName: string;
   laneName: string;
+  /** Done cards stay in the list (ticked, with Archive) until archived; the server sorts them last. */
+  completed: boolean;
 };
 export type MyDayData = {today: string; truncated: boolean; items: DayCard[]};
 

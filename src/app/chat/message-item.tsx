@@ -26,7 +26,7 @@ import {
   type MessageT,
   type ReactionT,
 } from "./api";
-import { MAX_BODY, mentionedIds, segments } from "./mentions";
+import { MAX_BODY, mentionedIds, type PersonRef, segments } from "./mentions";
 import type { PendingMessage } from "./use-message-feed";
 
 import { QUICK_EMOJI } from "../emoji";
@@ -89,6 +89,27 @@ export function Body({
   );
 }
 
+/** Saves a new text for a message. Mentions travel only when they changed; linked cards and files are never sent (the
+    server keeps them when absent). The people already named keep their mention even outside the loaded directory. */
+export function saveMessageBody(
+  message: MessageT,
+  body: string,
+  people: readonly PersonRef[],
+) {
+  const named = message.mentions.map((userId, i) => ({
+    userId,
+    name: message.mentionNames?.[i] || null,
+  }));
+  const ids = mentionedIds(body, [...named, ...people]);
+  const before = new Set(message.mentions);
+  const changed =
+    ids.length !== before.size || ids.some((id) => !before.has(id));
+  return call<{ message: MessageT }>("PATCH", `/messages/${message.id}`, {
+    body,
+    ...(changed ? { mentions: ids } : {}),
+  });
+}
+
 type ItemProps = {
   message: MessageT;
   /** Same sender as the message above, close in time: no name or avatar. */
@@ -103,6 +124,10 @@ type ItemProps = {
   /** Not offered inside a thread (one level only). */
   onReply?: (message: MessageT) => void;
   onChange: (id: string, change: (m: MessageT) => MessageT) => void;
+  /** With it, Edit loads the message into the conversation's composer (no inline box). */
+  onEdit?: (message: MessageT) => void;
+  /** This message is the one loaded in the composer for editing. */
+  beingEdited?: boolean;
   /** "Create card" is offered when set: the workspace, and the board of a board chat (the dialog's default). */
   cardTarget?: { workspaceId: number; boardId: number | null };
 };
@@ -119,6 +144,8 @@ function MessageItemInner({
   canPin,
   onReply,
   onChange,
+  onEdit,
+  beingEdited,
   cardTarget,
 }: ItemProps) {
   const t = useT();
@@ -187,22 +214,7 @@ function MessageItemInner({
     onError: (error) => toast.danger(errorMessage(error)),
   });
   const edit = useMutation({
-    mutationFn: (body: string) => {
-      // Mentions travel only when they changed; linked cards are never sent (the server keeps them when absent).
-      // The people already named keep their mention even when they are outside the loaded directory.
-      const named = message.mentions.map((userId, i) => ({
-        userId,
-        name: message.mentionNames?.[i] || null,
-      }));
-      const ids = mentionedIds(body, [...named, ...peopleList]);
-      const before = new Set(message.mentions);
-      const changed =
-        ids.length !== before.size || ids.some((id) => !before.has(id));
-      return call<{ message: MessageT }>("PATCH", `/messages/${message.id}`, {
-        body,
-        ...(changed ? { mentions: ids } : {}),
-      });
-    },
+    mutationFn: (body: string) => saveMessageBody(message, body, peopleList),
     onSuccess: ({ message: next }) => {
       onChange(message.id, () => next);
       setEditing(false);
@@ -231,6 +243,7 @@ function MessageItemInner({
     });
 
   const startEdit = () => {
+    if (onEdit) return onEdit(message);
     setDraft(message.body);
     setEditError("");
     setEditing(true);
@@ -304,6 +317,7 @@ function MessageItemInner({
       className="chat-msg"
       data-grouped={grouped ? "" : undefined}
       data-pinned={message.pinned ? "" : undefined}
+      data-editing={beingEdited ? "" : undefined}
     >
       <span className="chat-msg-gutter">
         {!grouped && <Avatar name={message.sender.name ?? ""} size="md" />}

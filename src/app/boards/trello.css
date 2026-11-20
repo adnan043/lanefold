@@ -571,12 +571,12 @@
   outline: 2px solid color-mix(in srgb, white 90%, transparent);
   outline-offset: 2px;
 }
-/* The new-card / new-lane box must not look like one more card: it is a FIELD, framed in the same blue as its submit
-   button, a touch lighter than the cards in dark mode, with an inset shadow instead of a card's drop shadow. */
+/* The new-card / new-lane box: a plain card-grey field with no frame at rest; focus draws one border in the same blue
+   as its submit button. */
 :root:not([data-theme='contrast']) .app-shell :is(.lf-composer textarea, .lf-lane-new input) {
-  background: color-mix(in oklab, var(--tl-card) 88%, var(--lf-commit));
-  border: 1.5px solid var(--lf-commit);
-  box-shadow: inset 0 1px 2px color-mix(in srgb, black 30%, transparent);
+  background: var(--tl-card);
+  border: 1.5px solid transparent;
+  box-shadow: none;
   /* The box's own ink: light on the dark field, dark where light mode turns the field light (the card composer). */
   color: var(--tl-ink);
 }
@@ -584,8 +584,9 @@
   color: var(--tl-muted);
 }
 :root:not([data-theme='contrast']) .app-shell :is(.lf-composer textarea, .lf-lane-new input):focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--lf-commit) 45%, transparent);
-  outline-offset: 1px;
+  /* One frame only: focus brightens the border instead of adding a second ring (transparent outline shows in forced-colors). */
+  outline: 2px solid transparent;
+  border-color: var(--lf-commit);
 }
 :root:not([data-theme='contrast']) .app-shell :is(.lf-composer textarea, .lf-lane-new input)[aria-invalid='true'] {
   border-color: var(--tl-danger);

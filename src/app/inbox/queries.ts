@@ -2,7 +2,7 @@ import {infiniteQueryOptions} from '@tanstack/react-query';
 
 import {call} from '../api';
 
-export type InboxCard = {id: number; title: string; priority: string; dueDate: string | null; createdAt: string};
+export type InboxCard = {id: number; title: string; priority: string; dueDate: string | null; createdAt: string; completed: boolean};
 export type InboxPage = {boardId: number | null; items: InboxCard[]; nextBefore: number | null};
 
 /** My quick-capture cards in one workspace, newest first, keyset paged (`before` = the last card id). */

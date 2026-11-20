@@ -13,16 +13,9 @@ import {ConversationView, conversationTitle} from './conversation-view';
 import {NewConversationModal} from './new-conversation';
 import './chat.css';
 
-/** The row's leading mark: a person's initials for a DM, a tile for a group, an icon for a channel or a board. */
+/** The row's leading mark: initials for a DM (the person) or a group (its name), an icon for a channel or a board. */
 function ConversationMark({c, title}: {c: ConversationT; title: string}) {
-  if (c.kind === 'dm') return <Avatar name={title} size="xs" />;
-  if (c.kind === 'group') {
-    return (
-      <span className="chat-conv-tile" aria-hidden="true">
-        <Icon name="users" size={14} />
-      </span>
-    );
-  }
+  if (c.kind === 'dm' || c.kind === 'group') return <Avatar name={title} size="xs" />;
   return (
     <span className="chat-conv-icon" aria-hidden="true">
       <Icon name={c.kind === 'channel' ? 'hash' : 'layout-kanban'} size={16} />

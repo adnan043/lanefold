@@ -6,19 +6,19 @@ import {formatBytes, PlanBadge, planLabel, TestModeBadge} from '../billing-share
 import {billingSettingsQuery, type MyWorkspace, myWorkspacesQuery, type PlanInfo, workspaceBillingQuery} from '../queries';
 import {when} from '../shared';
 import {
+  Avatar,
+  Badge,
   Button,
   Card,
-  type Column,
-  DataTable,
   Drawer,
   EmptyState,
   ErrorNote,
+  Icon,
   LoadingBlock,
   Notice,
   PageHeader,
   ProgressBar,
   RadioCards,
-  SettingRow,
   Switch,
   useConfirm,
   useToast,
@@ -41,7 +41,11 @@ export function Billing() {
 
   const setMode = useMutation({
     mutationFn: (billingMode: 'PAID' | 'FREE_FOR_ALL') =>
-      read(api.billing.settings.$put({json: {billingMode, graceDays: settings.data!.graceDays}})),
+      read(
+        api.billing.settings.$put({
+          json: {billingMode, graceDays: settings.data!.graceDays},
+        })
+      ),
     onSuccess: () => queryClient.invalidateQueries({queryKey: ['billing']}),
   });
   const paid = settings.data?.billingMode === 'PAID';
@@ -58,31 +62,10 @@ export function Billing() {
       action: () => setMode.mutateAsync(next ? 'PAID' : 'FREE_FOR_ALL'),
     }).then(ok => ok && toast.success(next ? 'Plans are on.' : 'Everything is free for all.'));
 
-  const columns: Column<MyWorkspace>[] = [
-    {key: 'name', header: 'Workspace', cell: row => <span className="cell-title">{row.name}</span>},
-    {key: 'plan', header: 'Plan', width: 'shrink', cell: row => <PlanBadge plan={row.plan} />},
-    {key: 'members', header: 'Members', width: 'shrink', hideOnMobile: true, cell: row => row.memberCount},
-    {key: 'storage', header: 'Storage used', width: 'shrink', hideOnMobile: true, cell: row => formatBytes(row.storageUsedBytes)},
-    {
-      key: 'grace',
-      header: 'Status',
-      width: 'shrink',
-      cell: row => (row.graceUntil ? <span className="muted">Over limit, until {when(row.graceUntil)}</span> : <span className="muted">Within limits</span>),
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      actions: true,
-      cell: row => (
-        <Button size="sm" variant="secondary" icon="zap" aria-label={`Change plan for ${row.name}`} disabled={!paid} title={paid ? undefined : 'Turn on paid plans to change a plan'} onClick={() => setUpgrading(row)}>
-          Change plan
-        </Button>
-      ),
-    },
-  ];
+  const workspaces = mine.data?.workspaces;
 
   return (
-    <div className="app-page">
+    <div className="app-page screen-billing">
       <PageHeader
         title="Billing"
         description="Plans per workspace. Payments are sandbox only until a live payment gateway is connected."
@@ -91,38 +74,97 @@ export function Billing() {
 
       {payments && !payments.ready && (
         <Notice tone="warning" title="Payments are not set up yet">
-          The payment account cannot take a payment. Create the sandbox prices <code>pro-monthly</code> and <code>team-monthly</code> from the
-          editor, then try again.
+          The payment account cannot take a payment. Create the sandbox prices <code>pro-monthly</code> and <code>team-monthly</code> from the editor,
+          then try again.
         </Notice>
       )}
       {settings.error && <ErrorNote error={settings.error} />}
       {setMode.error && <ErrorNote error={setMode.error} />}
 
-      <Card title="Billing mode" description="Applies to the whole site.">
+      <Card
+        title="Billing mode"
+        description="Applies to the whole site."
+        actions={settings.data && <Badge tone={paid ? 'success' : 'neutral'}>{paid ? 'Paid plans on' : 'Free for all'}</Badge>}>
         {settings.isPending ? (
           <LoadingBlock rows={2} />
         ) : settings.data ? (
-          <SettingRow title="Paid plans" description="Off: every feature is free for everyone and plan limits are not enforced.">
-            <Switch
-              label="Paid plans"
-              checked={paid}
-              pending={setMode.isPending}
-              onChange={askMode}
-            />
-          </SettingRow>
+          <Switch
+            label="Paid plans"
+            description={
+              paid
+                ? `Plan limits apply. Workspaces over their plan get ${settings.data.graceDays} days, then become read-only until they upgrade.`
+                : 'Every feature is free for everyone and plan limits are not enforced.'
+            }
+            checked={paid}
+            pending={setMode.isPending}
+            onChange={askMode}
+          />
         ) : null}
       </Card>
 
-      <Card title="Your workspaces" description="Workspaces you own or administer. Changing a plan opens a test checkout." flush>
-        <DataTable
-          caption="Your workspaces"
-          columns={columns}
-          rows={mine.data?.workspaces}
-          rowKey={row => row.id}
-          loading={mine.isPending}
-          error={mine.error}
-          empty={<EmptyState icon="layout-kanban" title="No workspaces yet">Workspaces you own or administer show here with their plan.</EmptyState>}
-        />
+      <Card
+        title="Your workspaces"
+        description="Workspaces you own or administer. Changing a plan opens a test checkout."
+        actions={workspaces && workspaces.length > 0 && <span className="muted billing-count">{workspaces.length} total</span>}
+        flush>
+        {mine.isPending ? (
+          <div className="billing-pad">
+            <LoadingBlock rows={3} />
+          </div>
+        ) : mine.error ? (
+          <div className="billing-pad">
+            <ErrorNote error={mine.error} />
+          </div>
+        ) : !workspaces?.length ? (
+          <EmptyState icon="layout-kanban" title="No workspaces yet">
+            Workspaces you own or administer show here with their plan.
+          </EmptyState>
+        ) : (
+          <ul className="billing-list" aria-label="Your workspaces">
+            {workspaces.map(row => (
+              <li key={row.id} className="billing-row">
+                <Avatar name={row.name} size="md" />
+                <div className="billing-row-main">
+                  <p className="billing-row-title">
+                    <span>{row.name}</span>
+                    <PlanBadge plan={row.plan} />
+                  </p>
+                  <p className="billing-row-meta">
+                    <span>
+                      <Icon name="users" size={14} />
+                      {row.memberCount} {row.memberCount === 1 ? 'member' : 'members'}
+                    </span>
+                    <span>
+                      <Icon name="database" size={14} />
+                      {formatBytes(row.storageUsedBytes)} used
+                    </span>
+                    {row.graceUntil ? (
+                      <span className="billing-row-over">
+                        <Icon name="warning" size={14} />
+                        Over limit until {when(row.graceUntil)}
+                      </span>
+                    ) : (
+                      <span className="billing-row-ok">
+                        <Icon name="check-circle" size={14} />
+                        Within limits
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="zap"
+                  aria-label={`Change plan for ${row.name}`}
+                  disabled={!paid}
+                  title={paid ? undefined : 'Turn on paid plans to change a plan'}
+                  onClick={() => setUpgrading(row)}>
+                  Change plan
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <PlanDrawer workspace={upgrading} onClose={() => setUpgrading(null)} />
@@ -132,7 +174,10 @@ export function Billing() {
 
 /** Pick a bigger plan and go to the (sandbox) checkout. */
 function PlanDrawer({workspace, onClose}: {workspace: MyWorkspace | null; onClose: () => void}) {
-  const billing = useQuery({...workspaceBillingQuery(workspace?.id ?? 0), enabled: workspace !== null});
+  const billing = useQuery({
+    ...workspaceBillingQuery(workspace?.id ?? 0),
+    enabled: workspace !== null,
+  });
   const [picked, setPicked] = useState<string>('');
   const [gateways, setGateways] = useState<{slug: string; name: string}[] | null>(null);
   const [gateway, setGateway] = useState('');
@@ -186,7 +231,11 @@ function PlanDrawer({workspace, onClose}: {workspace: MyWorkspace | null; onClos
           <Button variant="secondary" onClick={close} disabled={start.isPending}>
             Cancel
           </Button>
-          <Button type="submit" disabled={!selected || billing.isPending || cooldown.blocked} pending={start.isPending} pendingLabel="Opening checkout…">
+          <Button
+            type="submit"
+            disabled={!selected || billing.isPending || cooldown.blocked}
+            pending={start.isPending}
+            pendingLabel="Opening checkout…">
             {gateways ? 'Continue' : 'Go to checkout'}
           </Button>
         </>
@@ -208,7 +257,11 @@ function PlanDrawer({workspace, onClose}: {workspace: MyWorkspace | null; onClos
             columns={1}
             value={selected}
             onChange={setPicked}
-            options={options.map(plan => ({value: plan.plan, title: planLabel(plan.plan), description: planSummary(plan)}))}
+            options={options.map(plan => ({
+              value: plan.plan,
+              title: planLabel(plan.plan),
+              description: planSummary(plan),
+            }))}
           />
         )}
         {data && (
@@ -231,7 +284,10 @@ function PlanDrawer({workspace, onClose}: {workspace: MyWorkspace | null; onClos
             columns={1}
             value={gateway}
             onChange={setGateway}
-            options={gateways.map(way => ({value: way.slug, title: way.name}))}
+            options={gateways.map(way => ({
+              value: way.slug,
+              title: way.name,
+            }))}
           />
         )}
         {start.error && <ErrorNote error={start.error} title={fieldError ? undefined : 'Could not open checkout'} />}
