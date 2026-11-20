@@ -1040,10 +1040,12 @@
 }
 
 .home .home-cta h2 {
-  max-width: 14ch;
+  max-width: none;
   margin-top: 18px;
   color: var(--cta-text);
-  font-size: clamp(32px, 4.4vw, 52px);
+  /* Sized so the title sits on two balanced lines in the copy column. */
+  font-size: clamp(30px, 3.4vw, 42px);
+  text-wrap: balance;
   line-height: 1.05;
   letter-spacing: -0.03em;
 }
