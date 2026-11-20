@@ -3,6 +3,7 @@
  * Rules and recipes: docs/agent/auth.md and docs/agent/roles-and-permissions.md.
  */
 export {adminRoutes} from './admin';
+export {ADMIN_HOME, afterSignIn} from './after-sign-in';
 export {audit, type AuditInput} from './audit';
 export {canDelegate, CODENAME_RE, CORE, grants, SYSTEM_ROLES} from './codenames';
 export {normalizeEmail, safeNext} from './input';

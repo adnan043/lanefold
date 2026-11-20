@@ -12,7 +12,12 @@ how the site talks to the platform and how it signs people in, safely:
 | `request-scope.ts`   | per-request memo of the visitor, their access and the DB client      |
 | `db.ts`              | the Site Database client (one per request)                           |
 | `browser.ts`         | browser: `siteFetch`, session refresh, sign out, CSRF header         |
+| `payment-providers/` | the owner's own Ezypay, Stripe or PayPal, server side: prices, checkout, subscriptions, webhook checks, access (`docs/agent/payments-providers.md`) |
+| `video.ts`           | video on demand, server side: uploads, confirm, playback links, usage, `allowVideo` |
+| `video-browser.ts`   | video, browser side: `uploadVideo` (resumable), `attachVideo` (HLS), state words |
+| `player/`            | the video player (Video.js 10): HLS and embeds, captions, key moments, watermark, resume, link renewal; `player.css` |
 | `static-page.ts`     | browser: fills the visitor into prerendered pages                    |
+| `DemoLogin.astro`    | `<DemoLogin />` on the sign-in page: a store preview's read-only demo admin, nothing elsewhere |
 | `sanitize.ts`        | cleans platform HTML before a page renders it                        |
 | `types.ts`           | shared shapes (`Site`, `Viewer`, `Access`, admin rows)               |
 | `auth/`              | the site's own sign-in: see below                                    |

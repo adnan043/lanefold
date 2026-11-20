@@ -1,13 +1,14 @@
 import {Hono} from 'hono';
 
 import {problem, withAuthCore} from '../guards';
+import {afterSignIn} from './after-sign-in';
 import {audit} from './audit';
 import {sameHex} from './code-routes';
 import {cookieName, readCookie, serializeCookie, SIGN_UP_COOKIE} from './cookies';
 import {emailAccepted, EMAIL_NOT_REAL} from './email-check';
 import {sha256Hex, toBase64Url, toHex, utf8} from './encoding';
 import {claimUnconfirmed} from './end-access';
-import {normalizeEmail, safeNext} from './input';
+import {normalizeEmail} from './input';
 import {hmacKey} from './keys';
 import {
   attempt,
@@ -318,7 +319,7 @@ export function signUpRoutes(settings: AuthSettings) {
         await audit(db, {actorUserId: user.id, action: 'user_registered', target: ['user', user.id], ipHash});
         await startSession(c, user, ipHash);
         maybeSweep(c);
-        return c.json({ok: true, user: publicUser(user), next: safeNext(input.next, settings.afterSignInPath)}, 201);
+        return c.json({ok: true, user: publicUser(user), next: await afterSignIn(db, user.id, input.next, settings)}, 201);
       }
     );
 }

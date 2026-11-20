@@ -21,75 +21,120 @@ import {join} from 'node:path';
 const RULES = {
   "kit": {
     "template": "astro-app",
-    "version": "0.10.22",
-    "madeOn": "2026-11-12"
+    "version": "0.10.24",
+    "madeOn": "2026-11-16"
   },
   "versionsUrl": "https://ezystudio.com/api/public/templates/v1/versions",
   "templateFile": "template.json",
   "addOnManifest": "ZXp5c3R1ZGlvLWFwcC5qc29u",
   "managedCoreDir": "src/platform/",
   "seedFile": "prisma/seed.sql",
+  "demoLogin": {
+    "file": "prisma/demo-login.sql",
+    "required": true,
+    "exampleSha": "afbebdebe3abf7cc30b869c437d921051d04854d202cd938362fb967417baf06"
+  },
   "managedCore": {
     "src/platform/api.ts": "5fe4d612d2d45f226afd32c49f1f57c8e252e6ec4eaeb3ad6f4ad81e0ef2500f",
     "src/platform/auth/admin.ts": "e3afe19731ab8c4d4d7cee430b0eeb2ae1fbe2fc98124c3080cd5b3fae9a6a09",
+    "src/platform/auth/after-sign-in.ts": "47a2174798cf9009e8159a800961ee80d688bd942e54537306f7540ea1ce2f89",
     "src/platform/auth/audit.ts": "202130baba605935f23a859cb6e39ce5a6e360c387a926a86bba6c0d7ec8af29",
-    "src/platform/auth/code-routes.ts": "84eb3435157e84bc7e386273cbbe9c8f663b6fb6eb18652faa0c4f244c3093fe",
+    "src/platform/auth/code-routes.ts": "d56829dbfb6d2408b546b17b3a47bc6582f937fa832b4524a35d59c674fe99ce",
     "src/platform/auth/codenames.ts": "908fccea749600f53920ad93f8ed1970461f8139ef0b844f7c8a57d8434057dc",
     "src/platform/auth/cookies.ts": "37418ae425740d521ccfa19c19ba89eb7bfe5061aac9efa4302127a4cba7b430",
     "src/platform/auth/email-check.ts": "21f268ded28f9306e1f606e3bb028f2a26663bf286b5ea2f12cd9015ccf9e3c2",
     "src/platform/auth/email.ts": "60554e089e5d314c645932a34760d822fb797bdfb54b8d3ddfdd59ebc9ec992f",
     "src/platform/auth/encoding.ts": "90fed25c78ab54f38b3704c6db165814c4b35c15807183f527a200e19813fb35",
     "src/platform/auth/end-access.ts": "f51dc93d6d96bed587fbd0d9bb56a2fe3d6b994ecc74c65a05d256e1343d334d",
-    "src/platform/auth/index.ts": "9bb653b3007219d05794855e3ec0877ea7cf1d52f36ee67dc21d2e37cbb86f2e",
+    "src/platform/auth/index.ts": "8cdd9c9dab925a788255a985aa1c58419a5478d5cc5b471fe4e51a5be403e989",
     "src/platform/auth/input.ts": "72609de4e70849a91630e637aa2cb1f6401b5bf892ca4dd0b7ab3eafbbc00314",
     "src/platform/auth/jwt.ts": "4e133ec903424369aa23206f80cda3bb30452a5a0d322cac9b24d6ad26d62386",
     "src/platform/auth/keys.ts": "4363a680d9b7eeef2461698f828215a1985eb83476d0421a6cb2de7ea2fc9bdb",
     "src/platform/auth/kit.ts": "cfe1e16b14cf4e3c9fe12a8f47732d49d56821da74aee4472fa9dc175a0f2d91",
     "src/platform/auth/owner-seat.ts": "97da168c38b740f99c89bdf1f2a324ae803e52cfbdaaf22b71843af268e56691",
-    "src/platform/auth/owner.ts": "da60bac351aec3aacaf0730539de3cc40dd611eb4dbe55809fca474204a73510",
+    "src/platform/auth/owner.ts": "8a4c97376e08de489170c3f39d938b73db9fd03e73fa596c874f95e3a5157b51",
     "src/platform/auth/password.ts": "9d3c5d97105460da73a0537773e74a006b5948e8db933b869db3daac8c0ecc23",
     "src/platform/auth/preview-cookies.ts": "dfb0661818411cfc7540382b8a5aae98f9bc661ba63528da4e68b67ee39b463f",
     "src/platform/auth/rate-limit.ts": "a1e188c72cf2f77a445f1686e242482c8aad62b5d90d238f8d596d7e29c9111d",
     "src/platform/auth/refresh.ts": "165f05e872b763a0e85be22d3ef52245fa9be472cbee66648dce5b13b8b1f987",
-    "src/platform/auth/routes.ts": "2fb46276dfc3d89470ad9600bd3194831fcca327bf0fde7b55bb7ec86d79943c",
-    "src/platform/auth/security-routes.ts": "5e5a5e9d34a58598316531748fa2edbec99a9b047a4cf9321ead0e1fdf40949a",
+    "src/platform/auth/routes.ts": "fb7f0c054910b8fc22dcfe66d3ba22992a6fd15190248a3baa8d77b9ca3f3fc0",
+    "src/platform/auth/security-routes.ts": "3d082167d0612a212b7eb128ebacf0c8872e3d1150501db50362aa82a200149b",
     "src/platform/auth/session.ts": "c27fb4ed0f5cefe6f6ff2f9f3aae11ccd4d28e8c8079e3b3f7a501a90bcdab8d",
     "src/platform/auth/settings.ts": "782a9a2c91cef6e7af0935241d48d153b08caee67ee7e275e2aff27ce5b57a82",
-    "src/platform/auth/sign-up.ts": "d0320bd4a940f42f733b4b4dbfa920539ca21e1aa9abba134595d0cd0a1b44a9",
+    "src/platform/auth/sign-up.ts": "cd040c2b1395848aa33c9fdbeb780925f89614d74128d9d941d25908fe6bc3f3",
     "src/platform/auth/store.ts": "7222c676150fce3b41c0d9f406552531849a0241ee0c3d05f53fb12ae5492391",
     "src/platform/auth/two-factor.ts": "617ddd9d23e22b658d16c74e6ab80c3f8a4ee2237dfb75966ed6ee5c9076cd64",
     "src/platform/background.ts": "01875c284203c87f444fbd9e92ab6cbe881a107c7bebfeb668cba81eb5cbddbb",
     "src/platform/browser.ts": "47d0c0887db9ec37cd7a599aab53eb1f0c1c2df936aa773000ceaea90959ff5e",
     "src/platform/cache-guard.ts": "13a6e08cca4569d38c9dae87891af00899e1d02176d87cf22ffca58c1eb2f4ce",
     "src/platform/cache.ts": "d9d60732067ef3a244818585230812187d706dd048c7fab7a95b5d9de90bf591",
-    "src/platform/config.ts": "9d9bce2dc328251c764f487092b27720e446faae7f08958738de130da2596801",
+    "src/platform/config.ts": "071684b6262af7f5403f0f0fa6ffe86a10a18fd15655f8ac5e6df04148922c06",
     "src/platform/db-socket-conversion.ts": "7425997c4ad9e736526bb03b736cbad8e22baafeb9fd833acc62bf8877c56e1f",
     "src/platform/db-socket.ts": "10022694ebbaa35ba3a0a7e93d2750c495f31f97fd4253f5cff1483365f63e41",
     "src/platform/db.ts": "a42e931634f011943a68696dd1715a90eef9685525534fa3466f3223de4c5208",
+    "src/platform/DemoLogin.astro": "74f890eda0a51cbb426b723ec543cded65a5723245c04875c63764f2560885fe",
     "src/platform/files-browser.ts": "5ebd6a1f20d500b59efcf1f4fc268f0911823efedc68222f8484d2b59eaf1fad",
     "src/platform/files.ts": "45c9ca262dad2659418a5ed35a3c04ed2e8d411843981df1b4eba30c78aee25f",
     "src/platform/guards.ts": "dafd2c6be79e2b66ed9cdb7379444f41399cd4e303170a7cf06d11d066dc7b20",
     "src/platform/headers.ts": "ea01c0dbaf8b8e318c9a81ccd8f884c0875a579652e3a94a2e031db6f50546cb",
     "src/platform/idempotency.ts": "5c900d817bee2bbfeccda7b2ff7beb43d936ec92e50e7a0fb16a6a287e47f0ff",
     "src/platform/local-dev.ts": "f21f8865b927712c1618af844875c76343b4bfcf45248a6282a9d8a4d33efc05",
+    "src/platform/payment-providers/access.ts": "bb9836a3d70808820131984eff870ad5e2a6478e8ad772d268bdfdae91e64af3",
+    "src/platform/payment-providers/ezypay.ts": "4534568a9206fb86d4810da618530d80853056c0a04d292f2840cff44aa1cee8",
+    "src/platform/payment-providers/http.ts": "8ae45cb856829b6592768883dd1ff2975b20bee2110bf6786664ade5e29087f7",
+    "src/platform/payment-providers/index.ts": "1aef57ff11c71fadf20d7cf0daf068fc28d3adc3f2d70489ac7e863a0a280b03",
+    "src/platform/payment-providers/keys.ts": "15191944467962b9116c15744cb7d29c78aaaf66ddea29bc0db92a0df240e529",
+    "src/platform/payment-providers/money.ts": "4dc02d943ad6e062d2b40b03ea0eeea63382159ec5ddb60161f92d080ac2a9c0",
+    "src/platform/payment-providers/paypal.ts": "68b4be5f485b06c993a6d17e336b722f4405656e6e8c8a8a89008f740fd24afe",
+    "src/platform/payment-providers/signature.ts": "f8611c45f682b1fdc214fbb4be366c71800800c169b9d9a41896d6aeb6bd29ec",
+    "src/platform/payment-providers/stripe.ts": "defa816ec62d013a2aa4b1b87d23afb77aeceae0a44ab405356ae6bd61718aa0",
+    "src/platform/payment-providers/types.ts": "c517c1219a5e80f96c3bb6aba1b7160450debc35c03c14683527f68bdc52dc49",
+    "src/platform/payment-providers/webhook-limit.ts": "411b9a701c99897a4ed2c48c9c111ccaa303c8951257ad368988480f2517f794",
     "src/platform/payments.ts": "3babc001ddaf59640646cbab2cd6d88bd81fb815a46dc26e5f950c7dc86d5841",
     "src/platform/permission-sync.ts": "293ad73e0760a13da3a536c6b632eea24da3286f9c0b4758632e37258c1b8f06",
-    "src/platform/README.md": "410012a5134aa2d2b510318039bf0c61ac1694fd48deea4637ba10ec8c53acab",
+    "src/platform/player/audio-player-engine.tsx": "c78c42793031bfe17c4562fd990624ed51db913b3b7bad643cdc741d0943873f",
+    "src/platform/player/audio-player.tsx": "d22f9b824d1c3a3b2fb87c065a597ac9f697dfbfc1269c2d18939e19cb87c4e7",
+    "src/platform/player/background-video-media.tsx": "daecb69ceaf8756763052280d60a7b7501ee954cae81b03454603b67637fb5a6",
+    "src/platform/player/background-video.tsx": "c8aab3f158294410bd38ee4fe9fcd892b9a6bd824ab9a45417e90d0bce8b2743",
+    "src/platform/player/chapters-panel.tsx": "12772d2333901c287bf03db59574df9bdb04f4cfc16416d003b7bec3e884cb00",
+    "src/platform/player/chapters-track.ts": "4de0950c0789e0589baf3231ae63ec1d41e9dbd2e6fed3fbd98bcf0f2eff03df",
+    "src/platform/player/interaction-layer.tsx": "24cf5106fbc0cb3708ad6953a1361aa813edbeab43d28008c59aa4804fc52a60",
+    "src/platform/player/interactions.ts": "7a909c90ab7eba794e918651f9d2b9a8ce022be2d512fc399abdd6db85ced029",
+    "src/platform/player/labels.ts": "e9af1224d9ba88a0c6a261c083bed6f0ebdee779a9b2f7b6ca9f1a6b77f63dd2",
+    "src/platform/player/link-renewal.ts": "99e30ece6ffed56344e123130df8329dbad64e3f84cf88d0a6f8a9e57718933b",
+    "src/platform/player/media-watch.tsx": "be7a38cb35e9278f76fce247a90667dd5bc5696ecfa4443c17b578576f8c69bc",
+    "src/platform/player/player-classes.ts": "b101aa2c31673bb8615132e91ede45e7a904f1ebb913e57f96d7ceb8879a8a1e",
+    "src/platform/player/player-config.ts": "2694bc835dbc96b72e58ebf5d0fefa1e24b0fc1d2af23cfc5b7955a12fb4974d",
+    "src/platform/player/player-icons.tsx": "a0e9b9d08887091a94b0ffc315673ce6cac0dad062612135f6b31394233919c4",
+    "src/platform/player/player-overlays.tsx": "acc0b61a3a9630a25d906bd3f3600e09aa0f7564bfa4df92500f3f090839dd77",
+    "src/platform/player/player-ui.ts": "f243fc5756a03f62bd3f56f30292e5ddf3917dce3fe869c83323a233e3e65a1e",
+    "src/platform/player/player.css": "ecd2adf6cbe46c79ff4e6cd41ffd3f5889688957a3d852192c1edf88b2e91442",
+    "src/platform/player/seek-preview.ts": "0ecae69752dfc80bcd51d1d460cac97799fd2508c4205e6e95c35122d450523a",
+    "src/platform/player/use-effect-event.ts": "8d9c1b5efffbd48d8a781b656de92ef4bc5153c180c44881c8e0d5995523eb89",
+    "src/platform/player/video-player-engine.tsx": "e66697902ffabff2ac5053989db95aaa0972dedd0af6750bf13c4e70548dfa7f",
+    "src/platform/player/video-player-skin.tsx": "ed47486201ba4f272e3609eb6cad0a4450046a791d39315ce0c1a1b64ad4410a",
+    "src/platform/player/video-player.tsx": "30bd51f888a0007c09836c8aa3a358495fe7f6050138b8f65633de4b1b630bb9",
+    "src/platform/player/watched-ranges.ts": "026d60884c3b440007797557743d5469f665efc0692b0004ecd66d27cab60200",
+    "src/platform/player/wistia.ts": "3b0661adde7f33789d6eff3a915c08d1bab05454604dd244239d2515a69cf6d2",
+    "src/platform/README.md": "b1a4ab5d7802034e6533a09fc72857ff98b38c11a012a81f4a581b45d7d2270f",
     "src/platform/request-scope.ts": "a9d4a8bcfdf253939c7a1a41283b080133e6b7974f2868d0ca04644f5c1e72ab",
-    "src/platform/sanitize.ts": "565307bd8e4a42850a5a5cf9ab80ae26bdc31cc69468b9d5b0a21bc081e2dcb7",
+    "src/platform/sanitize.ts": "5ec91612b8c3187171ee1e39424d6e91458d58ea19d413b0eca76212a924af4f",
     "src/platform/static-page.ts": "489c544220e1992b72b03cec8198b3b90c188d2671d616b262d1b1c571f649b5",
-    "src/platform/types.ts": "8bb4f37febb760a29504819f6e2bdafdf89fe05c6ab463967b540912719c17e6"
+    "src/platform/types.ts": "8bb4f37febb760a29504819f6e2bdafdf89fe05c6ab463967b540912719c17e6",
+    "src/platform/video-browser.ts": "89682e85b7d812fd43b4a77d65bc81af5c748d75b661bce739c7a6992027137a",
+    "src/platform/video.ts": "e30c4285ec362e40ab5f94ebc36d1fada69100e22e7b89cf300bf51066fb81d7"
   },
   "agentInstructions": {
-    "AGENTS.md": "f09a11a4a46e2dc24734a47fa48c325cd94b1e85595f126e79c1a7e89cdb7c14",
+    "AGENTS.md": "29c9b7ff6277111006be98a510f69742502da9155237404361d0cac17bf1a278",
     "CLAUDE.md": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
-    "docs/agent/auth.md": "5ac439264673f9654f74ae9fd1d28da13af0ed3af5ac9485dc3afbc574724bd2",
+    "docs/agent/auth.md": "16121c98bbdf702a79405ee52b3ba87037a76b4e4c924a815980003f34f9cd71",
     "docs/agent/background-jobs.md": "468bff990103671ea4189769a46e8fd05275a851a74bdc203d1f3b2e6f7dbfda",
     "docs/agent/cache.md": "4316d3edb70bdae4900dd537179582aa5839780878dd36d6da451af4fd501871",
-    "docs/agent/database.md": "85f0b84fcc10c006b6b35890568a8ac4ab47d7d565c3033b7a6be3ff3bb9e48e",
-    "docs/agent/files.md": "2acb3d8f98504b4b3899d42228070dfbe00f62890268b86c356105954ca3fb06",
+    "docs/agent/database.md": "a78e91c82d2b79772e776839090a944215f844873bc66d54d37ee61305d02583",
+    "docs/agent/files.md": "153f642a9a76b202bf3e0d8b3766678b098ccca4fd54fc81ba828b4ab5bafcf7",
     "docs/agent/orders-and-stock.md": "a0587b32dc8568889c8091215ed167649d730c989a1ee3ffc2c2ee6389e6b0b1",
-    "docs/agent/payments.md": "678021ab00b846b1a40807486c6ba5aed9fedeffbf462d8f16c82eb00322577a",
+    "docs/agent/payments-providers.md": "fd85b9d18f0d98a788b8a6e411433e92f57d290bafd4b42f4c97e63f1cb4264e",
+    "docs/agent/payments.md": "888631bd0359b4961f12f26422c43c1a257cb5630d2d391230d20b8b47d9afbe",
     "docs/agent/performance.md": "eb331ba544cc60a097b0ce0ed5e90acf111489fac552acf36d7d2e041c12e318",
     "docs/agent/plans-catalogue.md": "338b30dd5103a46493e621deaffadb93f96279748f19c0cbd477a2fcaa7f6019",
     "docs/agent/publishing.md": "424f1529964881423a59473032014af994b24ee21ed7c9a2acfeb29eeb49c9f8",
@@ -98,15 +143,17 @@ const RULES = {
     "docs/agent/security.md": "007cb7dce5fa50cdd13bd7d1b5727743ce1e817c5ca36b7ef4ab5e3e389a239d",
     "docs/agent/seo.md": "ab4ca0d3658b2278a7f56ca8c6eb696d39e03ac28763de928c0373e181d7c4ae",
     "docs/agent/site-api.md": "75d3745e2d10bda8146a6d9ddb7893ab09be25a09b456aa5302a090459667bc4",
+    "docs/agent/store-apps.md": "5c4cb24ff47abace24ba772fb57ddd924a28e33e83da0fdc3b6e741e2a5f18cd",
     "docs/agent/ui.md": "11defaec817347938ee890e5077fa76a1bc1ef16bb1bc5905f54be52dd86103e",
-    "docs/agent/upgrade.md": "32524ee9f38b1d46d79a880d41c0d7e0b8f3557b8f0b2f18c18c34dc43460af7",
+    "docs/agent/upgrade.md": "c4b0e5c025b2f9a90854af540f9a9fc9895deb3271ffa8704c6baf25007a48aa",
+    "docs/agent/video.md": "ec0e2730eac7f2ba3683bf0528f245de5121367569f3a3a045d1e22934123c09",
     "GEMINI.md": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49"
   },
   "managedFiles": {
-    "CHANGELOG.md": "41a3aa947ff3b2774480ffb5d02b092c21e8d946750949656be26ebf1413fc33",
-    "scripts/managed-files.json": "b4e7108ce9235a0898e4d1adda6c13b1995b18ec04e5ffb04d72d06f21944320",
-    "scripts/platform.mjs": "edaab90e225a49ca4ce87cb0076995417f22abf88e877e94c4494d517e57fe74",
-    "template.json": "43949b6f4898296744d67c818f8d0ea4171d1e9e5206895a92d234cb4569de6f"
+    "CHANGELOG.md": "6fa98fe31328f06990ac8f7b7fa952bb0186c11c03e6c984df3c3afeda27922d",
+    "scripts/managed-files.json": "3667463482b96d8cd8cee82221de58b8b18594068a793b0a4a8705e7ec7d664d",
+    "scripts/platform.mjs": "1ca6f149beb3d1a0f0d28cc2e1b7e50e469ad79d9792bd175823ab194aec08d6",
+    "template.json": "08733748d3ee06cc726644f17b6087972dd1baf57552902f8dfd650fc53ababf"
   },
   "developerFiles": [
     "DEVELOPERS.md",
@@ -525,6 +572,297 @@ const RULES = {
     "pathLength": 240
   }
 };
+// The demo login file's scanner: the store's own (apps/api demo_login_sql_policy.ts), printed here.
+const demoLoginSqlProblems = function demoLoginSqlProblems(sql, max = 20) {
+    const problems = [];
+    const lineAt = (offset)=>{
+        let line = 1;
+        for(let k = 0; k < offset && k < sql.length; k++)if (sql[k] === '\n') line++;
+        return line;
+    };
+    // Tokens: w = word (upper case), q = quoted name, s = string, p = punctuation.
+    const tokens = [];
+    const n = sql.length;
+    let i = 0;
+    const fail = (at, what)=>{
+        problems.push({
+            line: lineAt(at),
+            what
+        });
+    };
+    while(i < n){
+        const c = sql[i];
+        if (c === '-' && sql[i + 1] === '-') {
+            while(i < n && sql[i] !== '\n')i++;
+            continue;
+        }
+        if (c === '/' && sql[i + 1] === '*') {
+            const start = i;
+            let depth = 1;
+            i += 2;
+            while(i < n && depth > 0){
+                if (sql[i] === '/' && sql[i + 1] === '*') {
+                    depth++;
+                    i += 2;
+                } else if (sql[i] === '*' && sql[i + 1] === '/') {
+                    depth--;
+                    i += 2;
+                } else i++;
+            }
+            if (depth > 0) {
+                fail(start, "can't be read as SQL (a comment never ends)");
+                return problems;
+            }
+            continue;
+        }
+        if (/\s/.test(c)) {
+            i++;
+            continue;
+        }
+        if (c === "'" || (c === 'E' || c === 'e') && sql[i + 1] === "'") {
+            const start = i;
+            const escapes = c !== "'";
+            let k = escapes ? i + 2 : i + 1;
+            let closed = false;
+            while(k < n){
+                if (escapes && sql[k] === '\\') {
+                    k += 2;
+                    continue;
+                }
+                if (sql[k] === "'") {
+                    if (sql[k + 1] === "'") {
+                        k += 2;
+                        continue;
+                    }
+                    closed = true;
+                    k++;
+                    break;
+                }
+                k++;
+            }
+            if (!closed) {
+                fail(start, "can't be read as SQL (a string never ends)");
+                return problems;
+            }
+            tokens.push({
+                k: 's',
+                v: '',
+                at: start
+            });
+            i = k;
+            continue;
+        }
+        if (c === '"') {
+            const start = i;
+            let k = i + 1;
+            let value = '';
+            let closed = false;
+            while(k < n){
+                if (sql[k] === '"') {
+                    if (sql[k + 1] === '"') {
+                        value += '"';
+                        k += 2;
+                        continue;
+                    }
+                    closed = true;
+                    k++;
+                    break;
+                }
+                value += sql[k];
+                k++;
+            }
+            if (!closed) {
+                fail(start, "can't be read as SQL (a quoted name never ends)");
+                return problems;
+            }
+            tokens.push({
+                k: 'q',
+                v: value.toUpperCase(),
+                at: start
+            });
+            i = k;
+            continue;
+        }
+        if (c === '$') {
+            fail(i, 'uses dollar quoting or a parameter ($): write plain quoted text');
+            return problems;
+        }
+        if (/[A-Za-z_\u0080-￿]/.test(c)) {
+            const start = i;
+            if ((c === 'U' || c === 'u') && sql[i + 1] === '&') {
+                fail(start, 'spells a name or text with escape codes (U&)');
+                return problems;
+            }
+            if (/[BbXxNn]/.test(c) && sql[i + 1] === "'") {
+                i++;
+                continue; // a B'…' / X'…' / N'…' string: the quote is read next
+            }
+            i++;
+            while(i < n && /[A-Za-z0-9_$\u0080-￿]/.test(sql[i]))i++;
+            tokens.push({
+                k: 'w',
+                v: sql.slice(start, i).toUpperCase(),
+                at: start
+            });
+            continue;
+        }
+        if (/[0-9]/.test(c) || c === '.' && /[0-9]/.test(sql[i + 1] ?? '')) {
+            i++;
+            while(i < n && /[0-9.]/.test(sql[i]))i++;
+            if (/[eE]/.test(sql[i] ?? '') && /[0-9+-]/.test(sql[i + 1] ?? '')) {
+                i += 2;
+                while(i < n && /[0-9]/.test(sql[i]))i++;
+            }
+            continue;
+        }
+        tokens.push({
+            k: 'p',
+            v: c,
+            at: i
+        });
+        i++;
+    }
+    // Statements, split on `;`.
+    const statements = [];
+    let current = [];
+    for (const t of tokens){
+        if (t.k === 'p' && t.v === ';') {
+            if (current.length) statements.push(current);
+            current = [];
+        } else current.push(t);
+    }
+    if (current.length) statements.push(current);
+    const REFUSED_WORDS = {
+        CREATE: 'creates something (CREATE)',
+        ALTER: 'changes the schema (ALTER)',
+        DROP: 'drops something (DROP)',
+        TRUNCATE: 'empties a table (TRUNCATE)',
+        DELETE: 'deletes rows (DELETE)',
+        GRANT: 'grants database rights (GRANT)',
+        REVOKE: 'takes away database rights (REVOKE)',
+        COPY: 'reads or writes files (COPY)',
+        EXECUTE: 'runs SQL built from text (EXECUTE)',
+        CALL: 'calls a procedure (CALL)',
+        WITH: 'uses WITH (write each statement on its own)',
+        STANDARD_CONFORMING_STRINGS: 'changes how text is read',
+        BACKSLASH_QUOTE: 'changes how text is read',
+        INFORMATION_SCHEMA: 'reads the database catalogue'
+    };
+    const FUNCTIONS = new Set([
+        'NOW',
+        'LOWER',
+        'UPPER',
+        'TRIM',
+        'COALESCE',
+        'NULLIF',
+        'CONCAT',
+        'GEN_RANDOM_UUID',
+        'CAST',
+        'JSONB_BUILD_OBJECT',
+        'JSON_BUILD_OBJECT',
+        'JSONB_BUILD_ARRAY',
+        'JSON_BUILD_ARRAY',
+        'ARRAY',
+        'ROW'
+    ]);
+    // Words that may come right before `(` without being a call.
+    const BEFORE_PAREN = new Set([
+        'VALUES',
+        'IN',
+        'ANY',
+        'ALL',
+        'EXISTS',
+        'CONFLICT',
+        'FROM',
+        'JOIN',
+        'SELECT',
+        'WHERE',
+        'AND',
+        'OR',
+        'NOT',
+        'ON',
+        'SET',
+        'BY',
+        'THEN',
+        'ELSE',
+        'WHEN',
+        'CASE',
+        'IS',
+        'AS',
+        'DISTINCT',
+        'USING',
+        'LATERAL'
+    ]);
+    for (const st of statements){
+        if (problems.length >= max) break;
+        const at = st[0].at;
+        const first = st[0];
+        const words = st.filter((t)=>t.k === 'w').map((t)=>t.v);
+        const head = first.k === 'w' ? first.v : '';
+        if (head === 'BEGIN' || head === 'COMMIT') {
+            const rest = words.slice(1).filter((w)=>w !== 'TRANSACTION' && w !== 'WORK');
+            if (rest.length || st.some((t)=>t.k !== 'w')) fail(at, `has a ${head} with more after it`);
+            continue;
+        }
+        if (head !== 'INSERT' && head !== 'UPDATE') {
+            fail(at, `starts with ${head || 'something'}: only INSERT … ON CONFLICT and UPDATE are allowed`);
+            continue;
+        }
+        let what = null;
+        for (const w of words){
+            if (REFUSED_WORDS[w]) {
+                what = REFUSED_WORDS[w];
+                break;
+            }
+            if (/^PG_/.test(w) || w === '_PRISMA_MIGRATIONS') {
+                what = `uses ${w.toLowerCase()}, a system table or function`;
+                break;
+            }
+        }
+        if (!what) {
+            for (const t of st){
+                if (t.k === 'q' && (/^PG_/.test(t.v) || t.v === '_PRISMA_MIGRATIONS' || t.v === 'INFORMATION_SCHEMA')) {
+                    what = `uses ${t.v.toLowerCase()}, a system table or function`;
+                    break;
+                }
+            }
+        }
+        if (!what && head === 'INSERT') {
+            if (words[1] !== 'INTO') what = 'is an INSERT without INTO';
+            else if (!/\bON CONFLICT\b/.test(words.join(' '))) what = 'is an INSERT without ON CONFLICT (it must be safe to run twice)';
+        }
+        if (!what) {
+            // The target table: plain, never schema-qualified.
+            const target = head === 'INSERT' ? 2 : 1;
+            let k = target;
+            if (head === 'UPDATE' && st[k]?.k === 'w' && st[k].v === 'ONLY') k++;
+            const table = st[k];
+            if (!table || table.k !== 'w' && table.k !== 'q') what = 'names no table';
+            else if (st[k + 1]?.k === 'p' && st[k + 1].v === '.') what = "names a table in another schema: use this app's own tables";
+        }
+        if (!what) {
+            // Every `(` after a word or a quoted name: a keyword, a table / alias column list, or an allowed function.
+            for(let k = 1; k < st.length && !what; k++){
+                const t = st[k];
+                if (t.k !== 'p' || t.v !== '(') continue;
+                const before = st[k - 1];
+                const twoBefore = st[k - 2];
+                if (before.k === 'p' || before.k === 's') continue;
+                const listAfter = twoBefore && twoBefore.k === 'w' && (twoBefore.v === 'INTO' || twoBefore.v === 'AS');
+                if (listAfter) continue;
+                if (before.k === 'w' && (BEFORE_PAREN.has(before.v) || FUNCTIONS.has(before.v))) continue;
+                what = `calls ${before.v.toLowerCase() || 'a function'}(): only now(), lower(), coalesce() and other plain functions are allowed`;
+            }
+        }
+        if (!what && head === 'INSERT') {
+            // `INSERT INTO t (…) SELECT … INTO x`: SELECT INTO makes a table.
+            const intos = words.filter((w)=>w === 'INTO').length;
+            if (intos > 1) what = 'uses SELECT … INTO (it makes a table)';
+        }
+        if (what) fail(at, what);
+    }
+    return problems.slice(0, max);
+};
 
 const re = rule => new RegExp(rule.source, rule.flags);
 const DEPLOY_CONFIG = re(RULES.deployConfig);
@@ -806,7 +1144,7 @@ function run() {
     const content = readFileSync(full);
     if (path.startsWith(RULES.managedCoreDir)) hashes.set(path, sha(content));
     if (isInstruction(path)) instructionHashes.set(path, sha(content));
-    if ((RULES.managedFiles && path in RULES.managedFiles) || path === RULES.seedFile) contents.set(path, content);
+    if ((RULES.managedFiles && path in RULES.managedFiles) || path === RULES.seedFile || path === RULES.demoLogin.file) contents.set(path, content);
     if (path.startsWith(RULES.managedCoreDir) || isInstruction(path)) contents.set(path, content);
     if (!content.subarray(0, 8000).includes(0)) {
       const text = content.toString('utf8');
@@ -899,6 +1237,20 @@ function run() {
     else if (RULES.seed.exampleSha && sha(seed) === RULES.seed.exampleSha)
       warn(RULES.seedFile, 'still the template\'s example (its job board\'s sample jobs). Replace it with sample data for your app: it loads into review and your public preview, and fails there if your schema has no "jobs" table.');
     else pass(RULES.seedFile, 'your sample data. The review checks what it may do; load it twice on your machine (npm run db:seed) to be sure it is safe to run twice.');
+  }
+
+  // The read-only demo admin (web apps): required and data only (submit: demo_login_missing, demo_login_unsafe).
+  if (RULES.demoLogin.required) {
+    const file = contents.get(RULES.demoLogin.file);
+    const sql = file ? file.toString('utf8') : '';
+    const problems = sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ').trim() ? demoLoginSqlProblems(sql, 5) : null;
+    if (!problems)
+      fail(RULES.demoLogin.file + ' (demo_login_missing)', 'Add the read-only demo admin for the store\'s previews: npm run platform -- demo-login --email <email> --password <password> (docs/agent/store-apps.md).');
+    else if (problems.length)
+      fail(RULES.demoLogin.file + ' (demo_login_unsafe)', 'It may only INSERT … ON CONFLICT and UPDATE your app\'s own tables (docs/agent/store-apps.md).', problems.map(p => 'line ' + p.line + ' ' + p.what));
+    else if (RULES.demoLogin.exampleSha && sha(file) === RULES.demoLogin.exampleSha)
+      warn(RULES.demoLogin.file, 'still the template\'s example (demo@example.com). Make your own: npm run platform -- demo-login --email <email> --password <password>, and give the same on the submission form.');
+    else pass(RULES.demoLogin.file, 'data only. Give the same email and password on the submission form, and keep <DemoLogin /> on your sign-in page.');
   }
 
   if (credentials.length)

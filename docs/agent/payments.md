@@ -228,7 +228,9 @@ POST {{SITE_API_PREFIX}}/payments/memberships/:id/cancel  {atPeriodEnd}
 
 ## Your own provider instead
 The built-in payments are recommended: nothing to secure, sandbox and live switch by themselves,
-and orders reach your database. A site MAY instead integrate a provider itself: the owner adds
+and orders reach your database. **An app for the store that sells, or an owner who asks for their own
+Ezypay, Stripe or PayPal account: `payments-providers.md`** (the helpers in `src/platform/payment-providers/`,
+and the owner picks the provider in the app's admin). A site MAY instead integrate a provider itself: the owner adds
 the provider's keys as site secrets in the dashboard (the TEST key in the `staging` environment,
 the LIVE key in `production`, so the live site switches by itself), and the site's server code
 calls the provider's API like any other public API (`security.md` › Calling other services).

@@ -3,12 +3,13 @@ import {renderSVG} from 'uqr';
 
 import {cache, userKey} from '../cache';
 import {problem, requireAuth, withAuthCore, withViewer} from '../guards';
+import {afterSignIn} from './after-sign-in';
 import {audit} from './audit';
 import {ACCESS_COOKIE, cookieName, readCookie} from './cookies';
 import {emailAccepted, EMAIL_NOT_REAL} from './email-check';
 import {sha256Hex, toHex, utf8} from './encoding';
 import {endAccess} from './end-access';
-import {normalizeEmail, safeNext} from './input';
+import {normalizeEmail} from './input';
 import {verifyAccessToken} from './jwt';
 import {hmacKey} from './keys';
 import {
@@ -205,7 +206,7 @@ export function securityRoutes(settings: AuthSettings) {
           await settle(c, attemptId, true);
           await db.user.update({where: {id: user.id}, data: {lastLoginAt: new Date()}, select: {id: true}});
           await startSession(c, user, keys.ipHash);
-          return c.json({ok: true, user: publicUser(user), next: safeNext(next, settings.afterSignInPath)});
+          return c.json({ok: true, user: publicUser(user), next: await afterSignIn(db, user.id, next, settings)});
         }
       )
 

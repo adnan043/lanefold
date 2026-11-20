@@ -1,0 +1,215 @@
+---
+/**
+ * <DemoLogin />: the store preview's read-only demo admin, on the sign-in page (docs/agent/store-apps.md).
+ *
+ * The platform sets `SITE_DEMO_LOGIN` ONLY on its previews of a store listing (the review copy and the
+ * public "Try it"). There this shows "Try the admin" with the email and password, a copy button for
+ * each, and "Fill in", which fills this page's password sign-in form. Everywhere else (a real install,
+ * the editor Preview, your own computer) the variable is unset and nothing shows: the box stays hidden
+ * and empty.
+ *
+ * The values come from the server (`GET /site-api/auth/demo-login`, which reads `config.demoLogin`),
+ * so the page itself can stay prerendered. Put it on your sign-in page, above or below the form:
+ *
+ *   import DemoLogin from '../../platform/DemoLogin.astro';
+ *   <DemoLogin />
+ *
+ * "Fill in" looks for a form with a password field on the page (and first presses a
+ * `#use-password` / `[data-use-password]` button that reveals it, when there is one).
+ */
+interface Props {
+  /** Extra class names for the box. */
+  class?: string;
+}
+const {class: className} = Astro.props;
+---
+
+<section class:list={['demo-login', className]} data-demo-login hidden aria-labelledby="demo-login-title">
+  <h2 id="demo-login-title" class="demo-login-title">Try the admin</h2>
+  <p class="demo-login-lead">This is a demo. Sign in with these to look around: the demo can't change anything.</p>
+  <dl class="demo-login-list">
+    <div class="demo-login-row">
+      <dt>Email</dt>
+      <dd>
+        <code data-demo-value="email"></code>
+        <button type="button" class="demo-login-copy" data-demo-copy="email" aria-label="Copy the email">Copy</button>
+      </dd>
+    </div>
+    <div class="demo-login-row">
+      <dt>Password</dt>
+      <dd>
+        <code data-demo-value="password"></code>
+        <button type="button" class="demo-login-copy" data-demo-copy="password" aria-label="Copy the password">Copy</button>
+      </dd>
+    </div>
+  </dl>
+  <button type="button" class="demo-login-fill" data-demo-fill hidden>Fill in</button>
+  <p class="demo-login-status" data-demo-status role="status" aria-live="polite"></p>
+</section>
+
+<style>
+  .demo-login {
+    border: 1px solid currentColor;
+    border-color: color-mix(in srgb, currentColor 22%, transparent);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin: 0 0 18px;
+    background: color-mix(in srgb, currentColor 4%, transparent);
+    max-width: 100%;
+  }
+  .demo-login[hidden] {
+    display: none;
+  }
+  .demo-login-title {
+    font-size: 1rem;
+    margin: 0 0 4px;
+  }
+  .demo-login-lead {
+    margin: 0 0 10px;
+    font-size: 0.875rem;
+    opacity: 0.8;
+  }
+  .demo-login-list {
+    margin: 0;
+    display: grid;
+    gap: 8px;
+  }
+  .demo-login-row {
+    display: grid;
+    grid-template-columns: 5.5rem 1fr;
+    align-items: center;
+    gap: 8px;
+  }
+  .demo-login-row dt {
+    font-size: 0.8125rem;
+    opacity: 0.8;
+  }
+  .demo-login-row dd {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .demo-login-row code {
+    overflow-wrap: anywhere;
+    min-width: 0;
+    flex: 1;
+    font-size: 0.875rem;
+  }
+  .demo-login-copy,
+  .demo-login-fill {
+    font: inherit;
+    font-size: 0.8125rem;
+    min-height: 36px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    flex: none;
+  }
+  .demo-login-fill {
+    margin-top: 12px;
+  }
+  .demo-login-copy:focus-visible,
+  .demo-login-fill:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+  .demo-login-status {
+    margin: 8px 0 0;
+    font-size: 0.8125rem;
+    min-height: 1em;
+  }
+  .demo-login-status:empty {
+    display: none;
+  }
+  @media (max-width: 420px) {
+    .demo-login-row {
+      grid-template-columns: 1fr;
+      gap: 2px;
+    }
+  }
+</style>
+
+<script>
+  import {siteFetch} from './browser';
+
+  type Demo = {email: string; password: string};
+  let demo: Promise<Demo | null> | null = null;
+
+  /** Asked once per page load: the server answers only on a store preview. */
+  function loadDemo(): Promise<Demo | null> {
+    demo ??= siteFetch('/site-api/auth/demo-login')
+      .then(async res => {
+        if (!res.ok) return null;
+        const data = (await res.json()) as Partial<Demo>;
+        return typeof data.email === 'string' && typeof data.password === 'string' ? {email: data.email, password: data.password} : null;
+      })
+      .catch(() => null);
+    return demo;
+  }
+
+  const visible = (el: HTMLElement | null): el is HTMLElement => !!el && !el.closest('[hidden]');
+
+  /** The page's password sign-in form: revealed first when a button does that. */
+  function passwordForm(): HTMLFormElement | null {
+    const reveal = document.querySelector<HTMLElement>('[data-use-password], #use-password');
+    if (visible(reveal) && !visible(document.querySelector<HTMLInputElement>('form input[type="password"]'))) reveal.click();
+    return document.querySelector<HTMLInputElement>('form input[type="password"]')?.form ?? null;
+  }
+
+  function setValue(input: HTMLInputElement, value: string) {
+    input.value = value;
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+    input.dispatchEvent(new Event('change', {bubbles: true}));
+  }
+
+  function bind(box: HTMLElement, value: Demo) {
+    box.querySelector<HTMLElement>('[data-demo-value="email"]')!.textContent = value.email;
+    box.querySelector<HTMLElement>('[data-demo-value="password"]')!.textContent = value.password;
+    const status = box.querySelector<HTMLElement>('[data-demo-status]')!;
+    const say = (text: string) => {
+      status.textContent = text;
+    };
+    box.querySelectorAll<HTMLButtonElement>('[data-demo-copy]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const which = button.dataset.demoCopy === 'password' ? 'password' : 'email';
+        try {
+          await navigator.clipboard.writeText(value[which]);
+          say(which === 'password' ? 'Password copied.' : 'Email copied.');
+        } catch {
+          say('Copying did not work here. Select the text and copy it instead.');
+        }
+      });
+    });
+    const fill = box.querySelector<HTMLButtonElement>('[data-demo-fill]')!;
+    fill.hidden = !document.querySelector('form input[type="password"]');
+    fill.addEventListener('click', () => {
+      const form = passwordForm();
+      const password = form?.querySelector<HTMLInputElement>('input[type="password"]');
+      const email = form?.querySelector<HTMLInputElement>('input[type="email"], input[autocomplete="username"], input[name="email"]');
+      if (!form || !password || !email) {
+        say('Copy the email and password into the form instead.');
+        return;
+      }
+      setValue(email, value.email);
+      setValue(password, value.password);
+      say('Filled in. Press Sign in.');
+      form.querySelector<HTMLElement>('button[type="submit"], input[type="submit"]')?.focus();
+    });
+    box.hidden = false;
+  }
+
+  // Client navigation (ClientRouter) runs page scripts once: look again on every page load.
+  document.addEventListener('astro:page-load', () => {
+    const box = document.querySelector<HTMLElement>('[data-demo-login]');
+    if (!box || box.dataset.demoBound) return;
+    box.dataset.demoBound = '1';
+    void loadDemo().then(value => {
+      if (value) bind(box, value);
+    });
+  });
+</script>

@@ -305,7 +305,8 @@ Add an integration test for every new route that guards data (who may, who may n
   runs it on a developer's own computer (run it twice: both must pass). Every seed: wrapped in `BEGIN;` … `COMMIT;` (all or nothing); starts with a `DO $$ … $$`
   block that stops with `RAISE EXCEPTION` when real data is there (the database is in use); safe to run
   twice (`ON CONFLICT DO NOTHING` on a unique key, or `WHERE NOT EXISTS`); `@example.com` addresses, no
-  users or passwords, only this site's tables. No roles, functions, `EXECUTE`, `COPY` or extensions: the
+  users or passwords, only this site's tables (a store listing's demo admin is `prisma/demo-login.sql`, never here:
+  `store-apps.md`). No roles, functions, `EXECUTE`, `COPY` or extensions: the
   platform refuses a seed that has them. The template's own `prisma/seed.sql` is the example to copy.
   A web app built for the store MUST have one, with at least one `INSERT` of sample data for its own tables
   (a store submission without it is refused): when you change the schema, update the seed in the same task

@@ -3,10 +3,10 @@ import {Hono} from 'hono';
 import type {PrismaClient} from '../../generated/prisma/client';
 import {SiteKeyMissing, siteKeyPostData} from '../api';
 import {problem, withAuthCore} from '../guards';
+import {afterSignIn} from './after-sign-in';
 import {audit} from './audit';
 import {SYSTEM_ROLES} from './codenames';
 import {fromBase64Url} from './encoding';
-import {safeNext} from './input';
 import {endAccess} from './end-access';
 import {attempt, type Ctx, type Env, keysFor, maybeSweep, NO_PASSWORD, settle, startSession} from './kit';
 import {removeAdminRights} from './owner-seat';
@@ -143,7 +143,7 @@ async function redeemOwnerTicket(c: Ctx, settings: AuthSettings, ticket: string,
   await startSession(c, user, keys.ipHash);
   await audit(db, {actorUserId: user.id, action: 'owner_signed_in', target: ['user', user.id], ipHash: keys.ipHash});
   maybeSweep(c);
-  return {ok: true, next: safeNext(next, settings.afterSignInPath)};
+  return {ok: true, next: await afterSignIn(db, user.id, next, settings)};
 }
 
 /**
