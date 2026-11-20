@@ -1178,15 +1178,18 @@ export const chatRoutes = new Hono()
       const fileRows = fileIds.length
         ? Prisma.sql`, fl AS (UPDATE attachments SET message_id = m.id FROM m
             WHERE attachments.id = ANY(${fileIds}::int[]) AND attachments.uploaded_by = ${me} AND attachments.workspace_id = ${a.workspaceId}
-              AND attachments.ready AND attachments.card_id IS NULL AND attachments.message_id IS NULL)`
+              AND attachments.ready AND attachments.card_id IS NULL AND attachments.message_id IS NULL
+            RETURNING attachments.id)`
         : Prisma.empty;
+      // Which files THIS send linked (a racing send with the same files may have taken some): the answer lists only those.
+      const linkedCol = fileIds.length ? Prisma.sql`, ARRAY(SELECT id FROM fl) AS linked` : Prisma.sql`, ARRAY[]::int[] AS linked`;
       const replyRow =
         input.parentId !== null
           ? Prisma.sql`, rp AS (UPDATE messages SET reply_count = reply_count + 1
               WHERE id = ${input.parentId} AND conversation_id = ${a.conversationId} AND workspace_id = ${a.workspaceId}
                 AND EXISTS (SELECT 1 FROM m))`
           : Prisma.empty;
-      const [made] = await db.$queryRaw<{id: bigint; seq: bigint; created_at: Date}[]>`
+      const [made] = await db.$queryRaw<{id: bigint; seq: bigint; created_at: Date; linked: number[]}[]>`
         WITH s AS (
           UPDATE conversations SET last_seq = last_seq + 1, updated_at = CURRENT_TIMESTAMP${input.parentId !== null ? Prisma.sql`, edit_rev = edit_rev + 1` : Prisma.empty}
           WHERE id = ${a.conversationId} AND workspace_id = ${a.workspaceId}
@@ -1204,8 +1207,9 @@ export const chatRoutes = new Hono()
           ON CONFLICT (conversation_id, user_id) DO UPDATE SET last_read_seq = EXCLUDED.last_read_seq
           WHERE conversation_members.workspace_id = EXCLUDED.workspace_id AND conversation_members.last_read_seq < EXCLUDED.last_read_seq
         )
-        SELECT id, seq, created_at FROM m`;
+        SELECT id, seq, created_at${linkedCol} FROM m`;
       if (!made) return notFound(c, 'conversation');
+      const linked = new Set(made.linked);
       const row: MessageRow = {
         id: made.id,
         seq: made.seq,
@@ -1220,7 +1224,7 @@ export const chatRoutes = new Hono()
         createdAt: made.created_at,
         mentions: mentions.map(userId => ({userId})),
         cardRefs: cardIds.map(cardId => ({cardId})),
-        attachments: files,
+        attachments: files.filter(f => linked.has(f.id)),
       };
       // Mentions go through notify() AFTER the commit, so its per-sender cap (20 an hour from one person) stops
       // mention spam. Muted members still get the mention; they asked to silence the chat, not people who name them.
@@ -1380,7 +1384,10 @@ export const chatRoutes = new Hono()
         data: {bodyMd: input.body, editedAt: new Date()},
       });
       if (count === 0) return null;
+      let added: number[] = [];
       if (mentions !== undefined) {
+        const had = await tx.messageMention.findMany({where: {messageId: row.id}, select: {userId: true}});
+        added = mentions.filter(id => id !== me && !had.some(h => h.userId === id));
         await tx.messageMention.deleteMany({where: {messageId: row.id}});
         await tx.messageMention.createMany({data: mentions.map(userId => ({messageId: row.id, userId}))});
       }
@@ -1389,10 +1396,19 @@ export const chatRoutes = new Hono()
         await tx.messageCardRef.createMany({data: cardIds.map(cardId => ({messageId: row.id, cardId}))});
       }
       await bumpEditRev(tx, a);
-      return tx.message.findFirst({where: {id: row.id, conversationId: a.conversationId}, select: messageCols});
+      const message = await tx.message.findFirst({where: {id: row.id, conversationId: a.conversationId}, select: messageCols});
+      return message && {message, added};
     });
     if (!updated) return notFound(c, 'message');
-    const {items} = await shapeMessages(db, [updated], a, me);
+    // Someone named only by the edit is told, as by a new message (the per-sender cap holds); those named before are not
+    // told again.
+    const added = updated.added;
+    if (added.length) {
+      await afterResponse(c, 'chat mentions', () =>
+        notify(db, added, {kind: 'message_mention', workspaceId: a.workspaceId, actorId: me, boardId: a.boardId, conversationId: a.conversationId}),
+      );
+    }
+    const {items} = await shapeMessages(db, [updated.message], a, me);
     return c.json({message: items[0]});
   })
 

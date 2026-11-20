@@ -6,7 +6,7 @@ import {audit, normalizeEmail} from '../../platform/auth';
 import {config} from '../../platform/config';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {bgImageUrl} from '../bg-image';
-import {canInvite, guestCapReached, seatRoleFor} from '../board-seats';
+import {canInvite, guestCapReached, seatDemotes, seatRoleFor} from '../board-seats';
 import {getEntitlements} from '../entitlements';
 import {enqueueInviteEmails, sealInviteItem} from '../jobs/invite-email';
 import {mailConfigured} from '../mail/send';
@@ -231,8 +231,10 @@ export const boardMemberRoutes = new Hono()
     const {role} = c.req.valid('json');
     const {workspaceId} = ctx.access;
     const admin = ctx.access.canAdmin;
-    // A member who may add people adds as member or viewer only, and never changes an existing seat.
+    // A member who may add people adds as member or viewer only, and never changes an existing seat or lowers what
+    // someone already has (a viewer seat for a member of a workspace-visible board would make them read-only).
     if (!admin && role === 'admin') return c.json(FORBIDDEN().body, 403);
+    const lowersMember = !admin && seatDemotes('member', ctx.access.visibility, role);
 
     // ONE statement decides and writes: the person must be an active member or viewer of THIS workspace (a viewer only
     // as a board viewer) and the board a shared board of it. A concurrent role change or removal writes nothing.
@@ -244,7 +246,7 @@ export const boardMemberRoutes = new Hono()
       JOIN workspace_members m ON m.workspace_id = b.workspace_id AND m.user_id = ${targetId}
       JOIN users u ON u.id = m.user_id AND u.status = 'active'
       WHERE b.id = ${ctx.boardId} AND b.workspace_id = ${workspaceId} AND b.inbox_of IS NULL
-        AND (m.role = 'member' OR (m.role = 'viewer' AND ${role}::text = 'viewer'))
+        AND ((m.role = 'member' AND NOT ${lowersMember}::boolean) OR (m.role = 'viewer' AND ${role}::text = 'viewer'))
       ON CONFLICT (board_id, user_id) DO UPDATE SET role = EXCLUDED.role WHERE ${admin}::boolean
       RETURNING (xmax = 0) AS inserted, (SELECT role FROM old) AS before`;
 
@@ -263,6 +265,9 @@ export const boardMemberRoutes = new Hono()
         return c.json({userId: targetId, role, added: false});
       }
       if (p.seat && !admin) return c.json({userId: targetId, role: asSeat(p.seat), added: false});
+      if (p.wsRole === 'member' && lowersMember) {
+        return c.json(problem('would_lower_role', 'Only a board admin can make a workspace member a viewer on this board.'), 403);
+      }
       if (p.wsRole === 'owner' || p.wsRole === 'admin') {
         return c.json(problem('workspace_admin', 'Workspace owners and admins already manage every board.'), 409);
       }
@@ -445,7 +450,8 @@ export const boardMemberRoutes = new Hono()
       const p = user;
       if (p.wsRole !== null) {
         const seatRole = seatRoleFor(p.wsRole, role);
-        if (seatRole === null || p.seat !== null) return c.json({result: 'already'});
+        // An invite never lowers what a workspace member already has on this board (a board admin uses the role menu).
+        if (seatRole === null || p.seat !== null || seatDemotes(p.wsRole, ctx.access.visibility, seatRole)) return c.json({result: 'already'});
         const n = await db.$executeRaw`
           INSERT INTO board_members (board_id, user_id, workspace_id, role)
           SELECT ${ctx.boardId}, m.user_id, m.workspace_id, ${seatRole}::varchar FROM workspace_members m

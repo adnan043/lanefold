@@ -69,9 +69,24 @@ async function loadBoard(db: PrismaClient, boardId: number, workspaceId: number)
   return b;
 }
 
-async function mayRun(db: PrismaClient, workspaceId: number): Promise<boolean> {
+/**
+ * The highest flow id of a workspace that is within its plan's flow count (its OLDEST `maxFlows` flows, by id), or null
+ * when every flow is. After a downgrade the newer flows over the count stop running (and can't be edited or switched
+ * on) until some are deleted or the plan grows; the count is otherwise checked only on create. One read on
+ * flows(workspace_id, id).
+ */
+export async function lastFlowInPlan(db: Pick<PrismaClient, '$queryRaw'>, workspaceId: number, maxFlows: number): Promise<number | null> {
+  if (maxFlows <= 0) return 0;
+  const [row] = await db.$queryRaw<{id: number}[]>`
+    SELECT id FROM flows WHERE workspace_id = ${workspaceId} ORDER BY id OFFSET ${maxFlows - 1} LIMIT 1`;
+  return row ? row.id : null;
+}
+
+/** null = flows may not run here; otherwise the flow-id cutoff of lastFlowInPlan (null inside = no cutoff). */
+async function mayRun(db: PrismaClient, workspaceId: number): Promise<{upTo: number | null} | null> {
   const ent = await getEntitlements(db, workspaceId);
-  return !!ent && ent.features.flows && !ent.readOnly;
+  if (!ent || !ent.features.flows || ent.readOnly) return null;
+  return {upTo: await lastFlowInPlan(db, workspaceId, ent.limits.maxFlows)};
 }
 
 /** Of `ids`, the active workspace members who can see this board. */
@@ -318,7 +333,7 @@ export async function runFlows(db: PrismaClient, events: readonly FlowEvent[], r
   try {
     const first = events[0];
     if (!first || run.depth >= MAX_DEPTH || run.budget.left <= 0) return;
-    const [flows, allowed, board] = await Promise.all([
+    const [found, allowed, board] = await Promise.all([
       db.flow.findMany({
         where: {boardId: first.boardId, workspaceId: first.workspaceId, triggerKind: first.kind, enabled: true},
         select: {id: true, name: true, config: true},
@@ -328,7 +343,9 @@ export async function runFlows(db: PrismaClient, events: readonly FlowEvent[], r
       mayRun(db, first.workspaceId),
       loadBoard(db, first.boardId, first.workspaceId),
     ]);
-    if (flows.length === 0 || !allowed || !board) return;
+    if (found.length === 0 || !allowed || !board) return;
+    const flows = allowed.upTo === null ? found : found.filter(f => f.id <= allowed.upTo!);
+    if (flows.length === 0) return;
     const next = {...run, depth: run.depth + 1};
     let skipped = 0;
     for (let at = 0; at < events.length; at += MAX_EVENT_CARDS) {

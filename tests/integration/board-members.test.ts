@@ -39,6 +39,22 @@ describe.skipIf(!DATABASE_URL)('board members (integration, real Postgres)', () 
   const del = (who: Browser, userId: number, b = board) => who.delete(`/site-api/boards/${b}/members/${userId}`);
   const members = (who: Browser, b = board) => who.get(`/site-api/boards/${b}/members`);
 
+  it('a member who may add people never lowers another member to viewer on a workspace board; a board admin can', async () => {
+    const open = (await ann.post(`/site-api/workspaces/${wsA}/boards`, {name: 'Open', lanes: ['To do']})).json.board.id;
+    await ann.request('PATCH', `/site-api/boards/${open}/sharing`, {memberInvites: 'members'});
+    await signedIn(app, 'dee@example.test', undefined, '203.0.113.105');
+    const deeId = (await db.user.findUniqueOrThrow({where: {email: 'dee@example.test'}, select: {id: true}})).id;
+    await db.workspaceMember.create({data: {workspaceId: wsA, userId: deeId, role: 'member'}});
+    const refused = await put(ben, deeId, 'viewer', open);
+    expect(refused.status).toBe(403);
+    expect(refused.json.error).toBe('would_lower_role');
+    // Nor by email invite: nothing is seated.
+    expect((await ben.post(`/site-api/boards/${open}/invites`, {email: 'dee@example.test', role: 'viewer'})).json.result).toBe('already');
+    expect(await db.boardMember.count({where: {boardId: open, userId: deeId}})).toBe(0);
+    // A board admin may make them a viewer on purpose.
+    expect((await put(ann, deeId, 'viewer', open)).json).toMatchObject({role: 'viewer', added: true});
+  });
+
   it('a private board is a 404 until someone adds you; then you see it with that role', async () => {
     expect((await ben.get(`/site-api/boards/${board}`)).status).toBe(404);
     const res = await put(ann, benId, 'member');

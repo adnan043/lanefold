@@ -293,6 +293,7 @@ const brandHref = Astro.isPrerendered ? BRAND_CSS_PATH : await brandCssHref();
 
     <script>
       import {logout, refreshSession, siteFetch} from '../platform/browser';
+      import {browserStorage, clearAllDrafts} from '../app/draft-store';
       import {hydrateStaticPage} from '../platform/static-page';
       import {notifyPaymentOpener} from '../lib/checkout-session';
       import {stopSmoothScroll, syncSmoothScroll} from '../platform/smooth-scroll';
@@ -339,6 +340,8 @@ const brandHref = Astro.isPrerendered ? BRAND_CSS_PATH : await brandCssHref();
         document.querySelectorAll<HTMLButtonElement>('[data-logout]').forEach(button =>
           button.addEventListener('click', () => {
             busy(button, 'Signing out…');
+            // Unsent text typed in the app goes with the session, as from the app's own menu.
+            clearAllDrafts(browserStorage());
             void logout();
           })
         );

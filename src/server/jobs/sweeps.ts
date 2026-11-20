@@ -6,8 +6,13 @@ import {cutoff, DEFAULT_RETENTION, DELETE_BATCH, keepDays, MAX_DELETE_BATCHES, M
 
 const UPLOAD_BATCH = 25;
 const UPLOAD_BATCHES = 4;
+/** Rows per delete for sign-in housekeeping (small rows on their own time index). */
+const SESSION_BATCH = 5000;
 
-/** Daily: workspaces whose paid membership ended go back to the free plan. Idempotent, keyset-paged. */
+/**
+ * Daily: workspaces whose paid membership ended go back to the highest plan still paid for, else to free.
+ * Idempotent, keyset-paged.
+ */
 export async function sweepEndedMemberships(db: PrismaClient): Promise<{moved: number}> {
   const free = await db.planLimit.findUnique({where: {plan: 'free'}, select: {maxMembers: true}});
   if (!free) return {moved: 0};
@@ -32,11 +37,22 @@ export async function sweepEndedMemberships(db: PrismaClient): Promise<{moved: n
       ORDER BY w.id LIMIT ${PAGE_SIZE}`;
     if (rows.length) {
       // ONE statement for the page. Conditional on the plan we read: a repeat or a concurrent upgrade changes nothing.
-      const moves = await db.$queryRaw<{id: number; from_plan: string}[]>`
-        UPDATE workspaces w SET plan = 'free', member_limit = ${free.maxMembers}
-        FROM unnest(${rows.map(r => r.id)}::int[], ${rows.map(r => r.plan)}::text[]) AS r(id, plan)
-        WHERE w.id = r.id AND w.plan = r.plan
-        RETURNING w.id, r.plan AS from_plan`;
+      // The plan falls to the HIGHEST plan another membership still grants (an older, lower subscription cancelled at
+      // period end still has paid days left), as in applyWorkspacePlan (payments-hooks.ts); to free only with none.
+      const moves = await db.$queryRaw<{id: number; from_plan: string; to_plan: string}[]>`
+        UPDATE workspaces w SET plan = t.to_plan, member_limit = pl.max_members
+        FROM (
+          SELECT r.id, r.plan AS from_plan, COALESCE((
+            SELECT p.plan FROM memberships m JOIN plan_limits p ON p.price_key_monthly = m.price_key AND p.price_key_monthly <> ''
+            WHERE m.workspace_id = r.id
+              AND (m.status IN ('active', 'trialing', 'past_due') OR m.access_ends_at > now())
+              AND (${!config.production}::boolean OR m.mode = 'live')
+            ORDER BY p.storage_quota_bytes DESC LIMIT 1), 'free') AS to_plan
+          FROM unnest(${rows.map(r => r.id)}::int[], ${rows.map(r => r.plan)}::text[]) AS r(id, plan)
+        ) t
+        JOIN plan_limits pl ON pl.plan = t.to_plan
+        WHERE w.id = t.id AND w.plan = t.from_plan AND t.to_plan <> t.from_plan
+        RETURNING w.id, t.from_plan, t.to_plan`;
       if (moves.length) {
         moved += moves.length;
         // A plan change: a clock that ran out on the old plan starts again (a new over-limit event).
@@ -50,7 +66,7 @@ export async function sweepEndedMemberships(db: PrismaClient): Promise<{moved: n
               action: 'workspace.plan_changed',
               targetType: 'workspace',
               targetId: String(m.id),
-              meta: {from: m.from_plan, to: 'free', by: 'sweep'},
+              meta: {from: m.from_plan, to: m.to_plan, by: 'sweep'},
             })),
           });
         } catch (err) {
@@ -96,7 +112,11 @@ export async function sweepGrace(db: PrismaClient): Promise<{checked: number}> {
 }
 
 /** Daily: delete old expired/used invites, expired/revoked join links, old read and very old unread notifications and abandoned uploads, in bounded batches. */
-export async function cleanupOld(db: PrismaClient, data: unknown, now = Date.now()): Promise<{invites: number; joinLinks: number; notifications: number; uploads: number}> {
+export async function cleanupOld(
+  db: PrismaClient,
+  data: unknown,
+  now = Date.now(),
+): Promise<{invites: number; joinLinks: number; notifications: number; uploads: number; sessions: number}> {
   const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
   const inviteBefore = cutoff(now, keepDays(d.inviteDays, DEFAULT_RETENTION.inviteDays));
   const notifBefore = cutoff(now, keepDays(d.notificationDays, DEFAULT_RETENTION.notificationDays));
@@ -215,5 +235,25 @@ export async function cleanupOld(db: PrismaClient, data: unknown, now = Date.now
     uploads += deleted.length;
     if (deleted.length < UPLOAD_BATCH) break;
   }
-  return {invites, joinLinks, notifications, uploads};
+  // Sign-in rows. The auth core sweeps these only now and then from sign-in routes (500 rows at a time), while every
+  // token refresh adds a row: without this daily pass the table and its indexes grow without end. Same retention as
+  // the core's own sweep (src/platform/auth/store.ts): refresh tokens a week past expiry, login attempts after a day.
+  // Used rows of a LIVE family are kept (they expire later), so reuse detection still sees them.
+  let sessions = 0;
+  const tokenBefore = new Date(now - 7 * 86_400_000);
+  for (let i = 0; i < MAX_DELETE_BATCHES; i++) {
+    const n = await db.$executeRaw`
+      DELETE FROM refresh_tokens WHERE id IN (
+        SELECT id FROM refresh_tokens WHERE expires_at < ${tokenBefore} ORDER BY expires_at LIMIT ${SESSION_BATCH})`;
+    sessions += n;
+    if (n < SESSION_BATCH) break;
+  }
+  const attemptBefore = new Date(now - 86_400_000);
+  for (let i = 0; i < MAX_DELETE_BATCHES; i++) {
+    const n = await db.$executeRaw`
+      DELETE FROM login_attempts WHERE id IN (
+        SELECT id FROM login_attempts WHERE created_at < ${attemptBefore} ORDER BY created_at LIMIT ${SESSION_BATCH})`;
+    if (n < SESSION_BATCH) break;
+  }
+  return {invites, joinLinks, notifications, uploads, sessions};
 }

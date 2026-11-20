@@ -1,7 +1,7 @@
 import type {PrismaClient} from '../../generated/prisma/client';
 import {getEntitlements} from '../entitlements';
 import {readConfig} from '../flows/config';
-import {applyFlow, type FlowEvent, MAX_ACTIONS_PER_RUN, newRun, runFlows} from '../flows/engine';
+import {applyFlow, type FlowEvent, lastFlowInPlan, MAX_ACTIONS_PER_RUN, newRun, runFlows} from '../flows/engine';
 
 /**
  * The daily Flows job: `daily_due` flows ("a card is due in N days"). Scheduled hourly in background.json; every
@@ -72,6 +72,9 @@ export async function runDailyFlows(
           }),
         ]);
         if (!ent || !ent.features.flows || ent.readOnly || !board) continue;
+        // Over the plan's flow count (after a downgrade): only the oldest flows within it run.
+        const upTo = await lastFlowInPlan(db, flow.workspaceId, ent.limits.maxFlows);
+        if (upTo !== null && flow.id > upTo) continue;
         const rows = await db.card.findMany({
           where: {
             workspaceId: flow.workspaceId,

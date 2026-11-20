@@ -17,7 +17,7 @@ describe.skipIf(!DATABASE_URL)('scheduled sweeps (integration, real Postgres)', 
     expect(await sweepEndedMemberships(db)).toEqual({moved: 0});
     expect(await sweepGrace(db)).toEqual({checked: 0});
     const a = await cleanupOld(db, {});
-    expect(a).toEqual({invites: 0, joinLinks: 0, notifications: 0, uploads: 0});
+    expect(a).toEqual({invites: 0, joinLinks: 0, notifications: 0, uploads: 0, sessions: 0});
     expect(await cleanupOld(db, null)).toEqual(a);
   });
 
@@ -75,6 +75,40 @@ describe.skipIf(!DATABASE_URL)('scheduled sweeps (integration, real Postgres)', 
     expect(await sweepEndedMemberships(db)).toEqual({moved: 1});
     expect((await db.workspace.findUniqueOrThrow({where: {id: w1.id}, select: {plan: true}})).plan).toBe('free');
     expect((await db.workspace.findUniqueOrThrow({where: {id: w2.id}, select: {plan: true}})).plan).toBe('pro');
+  });
+
+  it('falls back to the highest plan still paid for, not to free', async () => {
+    await resetDatabase();
+    await buyer();
+    const w = await db.workspace.create({data: {name: 'up', slug: 'up', plan: 'team', memberLimit: 500, createdBy: null}, select: {id: true}});
+    const ref = `1:${w.id}`;
+    // Upgraded pro -> team: pro was cancelled at period end with paid days left; team then ended.
+    await recordMembership(sub('sub_pro', 'canceled', ref, new Date(Date.now() + 5 * 86_400_000).toISOString()), 'test');
+    await recordMembership({...sub('sub_team', 'canceled', ref, '2020-01-01T00:00:00Z'), price: 'team-monthly'}, 'test');
+    expect(await sweepEndedMemberships(db)).toEqual({moved: 1});
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w.id}, select: {plan: true}})).plan).toBe('pro');
+    // Nothing more to do on a second run.
+    expect(await sweepEndedMemberships(db)).toEqual({moved: 0});
+  });
+
+  it('deletes refresh tokens a week past expiry, and keeps the rest', async () => {
+    await resetDatabase();
+    const user = await buyer();
+    const token = (n: number, expiresDaysAgo: number) =>
+      db.refreshToken.create({
+        data: {
+          familyId: '00000000-0000-4000-8000-00000000000' + n,
+          userId: user.id,
+          tokenHash: String(n).repeat(64).slice(0, 64),
+          expiresAt: new Date(Date.now() - expiresDaysAgo * 86_400_000),
+          absoluteExpiresAt: new Date(Date.now() + 86_400_000),
+        },
+      });
+    await token(1, 30);
+    await token(2, 3);
+    await token(3, -20);
+    expect((await cleanupOld(db, {})).sessions).toBe(1);
+    expect(await db.refreshToken.count()).toBe(2);
   });
 
   it('never downgrades through an old membership without a workspace', async () => {

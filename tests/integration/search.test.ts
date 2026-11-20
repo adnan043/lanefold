@@ -95,7 +95,10 @@ describe.skipIf(!DATABASE_URL)('search, my day and inbox (integration, real Post
     expect((await bob.get('/site-api/my-day')).json.items).toEqual([]);
     expect((await ann.get('/site-api/my-day?today=nope')).status).toBe(422);
     expect((await ann.get('/site-api/my-day?today=1999-01-01')).status).toBe(422);
-    // Done cards stay in My Day, marked done and in place (by due date), until they are archived.
+    // A card done more than a day ago (left in a Done lane, never archived) does not come back.
+    await db.card.update({where: {id: open[2].id}, data: {completedAt: new Date(Date.now() - 2 * 86_400_000)}});
+    expect(((await ann.get('/site-api/my-day')).json.items as J[]).map(i => i.title)).not.toContain('Whenever');
+    // Cards just done stay in My Day, marked done and in place (by due date), until they are archived.
     await ann.request('PATCH', `/site-api/cards/${open[0].id}`, {completed: true});
     const after = (await ann.get('/site-api/my-day')).json.items as J[];
     expect(after.find(i => i.title === 'Late')?.completed).toBe(true);
