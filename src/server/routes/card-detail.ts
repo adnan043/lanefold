@@ -19,6 +19,7 @@ import {afterResponse, type WithExecutionCtx} from '../after-response';
 import {cardWithAccess, workspaceReadOnly} from '../board-access-via';
 import {softLimited, softTake} from '../soft-limit';
 import {CARD_ESTIMATE} from '../../lib/rules';
+import {FILE_CEILING_BYTES, FILE_CEILING_LABEL} from '../../lib/file-limits';
 
 /**
  * Phase 2: everything inside a card. Mounted ONCE at `/` in `app.ts`.
@@ -472,8 +473,8 @@ const uploadBody = body(v => {
   if (BLOCKED_TYPES.has(type) || !(ALLOWED_FILE_TYPES as readonly string[]).includes(type)) {
     return errAt('file', {code: 'E_FILE_TYPE', message: 'That kind of file cannot be attached. Pick an image, PDF or document.'});
   }
-  const size = intField(v.size, 1, 100 * 1024 * 1024);
-  if (!size.ok) return errAt('file', {code: 'E_FILE_TOO_LARGE', message: 'Pick a file from 1 byte up to 100 MB.'});
+  const size = intField(v.size, 1, FILE_CEILING_BYTES);
+  if (!size.ok) return errAt('file', {code: 'E_FILE_TOO_LARGE', message: `Pick a file from 1 byte up to ${FILE_CEILING_LABEL}.`});
   return {ok: true, value: {name: name.value.replace(/[\\/"\u0000-\u001f\u007f]/g, '_'), contentType: type, size: size.value}};
 });
 

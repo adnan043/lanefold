@@ -31,8 +31,9 @@ export type AppSettingsValue = {billingMode: BillingMode; graceDays: number; mai
 /** What FREE_FOR_ALL still caps, so nothing runs away (never shown as a plan limit). */
 export const SAFETY_CAPS = {
   maxMembers: 500,
-  /** The platform's own per-file maximum (docs/agent/files.md). */
+  /** Per-file cap in FREE_FOR_ALL mode only. Plans may go up to FILE_CEILING_BYTES (src/lib/file-limits.ts). */
   maxFileBytes: 100 * 1024 * 1024,
+  /** Storage in FREE_FOR_ALL mode only. Plans may go up to STORAGE_CEILING_GB (src/lib/file-limits.ts). */
   storageQuotaBytes: 200 * 1024 * 1024 * 1024,
   maxFlows: 200,
 } as const;

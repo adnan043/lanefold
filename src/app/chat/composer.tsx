@@ -6,6 +6,7 @@ import {Popover} from '../../portal/ui/popover';
 
 import {useI18n, useT} from '../../i18n';
 import {CHAT_FILE_ACCEPT, CHAT_FILE_MAX_BYTES, CHAT_FILE_TYPES, CHAT_FILES_PER_MESSAGE, type ChatFileT, chatFileType} from '../../lib/chat-files';
+import {FILE_CEILING_LABEL} from '../../lib/file-limits';
 import {bytesLabel} from '../cards/parts';
 import {type DraftKind} from '../draft-store';
 import {useDraft} from '../use-draft';
@@ -100,7 +101,7 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
         return false;
       }
       if (file.size < 1 || file.size > CHAT_FILE_MAX_BYTES) {
-        setFileError(t('chat.fileTooBig', {name: file.name, max: '100 MB'}));
+        setFileError(t('chat.fileTooBig', {name: file.name, max: FILE_CEILING_LABEL}));
         return false;
       }
       return true;

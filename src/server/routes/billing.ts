@@ -18,6 +18,7 @@ import {clearPublicPlans, getPublicPricing} from '../pricing';
 import {softLimited} from '../soft-limit';
 import {PERMISSIONS} from '../permissions';
 import {idOf, intField, invalid, objectOf} from '../validation';
+import {FILE_CEILING_MB, STORAGE_CEILING_GB} from '../../lib/file-limits';
 import {notFound, requireWorkspaceRole} from '../workspaces';
 
 /**
@@ -101,8 +102,8 @@ const settingsBody = validator('json', (value, c) => {
 const planBody = validator('json', (value, c) => {
   const body = objectOf(value);
   const members = intField(body?.maxMembers, 1, SAFETY_CAPS.maxMembers);
-  const fileMb = intField(body?.maxFileMb, 1, SAFETY_CAPS.maxFileBytes / MB);
-  const storageGb = intField(body?.storageGb, 1, SAFETY_CAPS.storageQuotaBytes / GB);
+  const fileMb = intField(body?.maxFileMb, 1, FILE_CEILING_MB);
+  const storageGb = intField(body?.storageGb, 1, STORAGE_CEILING_GB);
   const flows = intField(body?.maxFlows, 0, SAFETY_CAPS.maxFlows);
   const errors: Record<string, {code: string; message: string}> = {};
   if (!members.ok) errors.maxMembers = members.error;

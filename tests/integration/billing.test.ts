@@ -146,7 +146,11 @@ describe.skipIf(!DATABASE_URL)('billing (integration, real Postgres)', () => {
 
     const body = {maxMembers: 1, maxFileMb: 50, storageGb: 5, maxFlows: 3, auditLog: true};
     expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxMembers: 0})).status).toBe(422);
-    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 101})).status).toBe(422);
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 5121})).status).toBe(422);
+    // An admin may go past the old 100 MB, up to the platform's 5 GB per file.
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 5120})).status).toBe(200);
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, storageGb: 10240})).status).toBe(200);
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, storageGb: 10241})).status).toBe(422);
     expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, auditLog: 'yes'})).status).toBe(422);
     expect((await staff.request('PATCH', '/site-api/billing/plans/ghost', body)).status).toBe(404);
 
