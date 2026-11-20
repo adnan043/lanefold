@@ -7,7 +7,6 @@ import {Badge, Button, buttonClass, Card, EmptyState, ErrorNote, IconButton, Loa
 import {todayISO} from '../../portal/ui/date';
 import {call} from '../api';
 import {useWriteCooldown} from '../write-cooldown';
-import {SetupChecklist} from '../setup-checklist';
 import {type DayCard, type DayGroup, type MyDayData, myDayQuery} from './queries';
 import '../phase3.css';
 
@@ -104,7 +103,6 @@ export function MyDay() {
   return (
     <div className="app-page lf-my-day">
       {header}
-      <SetupChecklist />
       {items.length === 0 ? (
         <EmptyState
           icon="calendar"
