@@ -5,6 +5,7 @@ import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {audit} from '../../platform/auth';
 import {problem, requireAuth, requirePermission, withDb, withViewer} from '../../platform/guards';
 import {getEntitlements} from '../entitlements';
+import {lastFlowInPlan} from '../flows/engine';
 import {
   type Errors,
   type FlowAction,
@@ -231,6 +232,11 @@ export const flowRoutes = new Hono()
     if (touchesConfig || input.enabled === true) {
       const ent = await getEntitlements(db, ctx.workspaceId);
       if (!ent?.features.flows) return planBlocked(c);
+      // A flow over the plan's count (left from a bigger plan) stays off until flows are deleted or the plan grows.
+      const upTo = await lastFlowInPlan(db, ctx.workspaceId, ent.limits.maxFlows);
+      if (upTo !== null && found.id > upTo) {
+        return c.json(problem('limit_reached', 'This workspace has more flows than its plan allows. Delete a flow or upgrade the plan to turn this one on or change it.'), 409);
+      }
     }
     if (touchesConfig) {
       const errors = await checkConfig(db, ctx, config);

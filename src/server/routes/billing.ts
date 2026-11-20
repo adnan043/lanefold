@@ -3,6 +3,7 @@ import {validator} from 'hono/validator';
 
 import {audit} from '../../platform/auth';
 import {cache} from '../../platform/cache';
+import {config} from '../../platform/config';
 import {problem, requireAuth, requirePermission, withDb, withViewer} from '../../platform/guards';
 import {createCheckout, listGateways, listPrices} from '../../platform/payments';
 import {
@@ -169,6 +170,17 @@ export const billingRoutes = new Hono()
     if (!target || target.priceKeyMonthly === '') return c.json(problem('not_found', 'That plan cannot be bought.'), 404);
     if (target.plan === entitlements.plan || (current && target.storageQuotaBytes <= current.storageQuotaBytes)) {
       return c.json(problem('not_an_upgrade', 'Choose a plan bigger than the current one.'), 409);
+    }
+    // A subscription for this plan or a bigger one is already running (a second tab, another admin, or one paid but not
+    // yet applied): a second checkout would bill twice, and the hook cancels only LOWER plans.
+    const [running] = await db.$queryRaw<{plan: string}[]>`
+      SELECT p.plan FROM memberships m JOIN plan_limits p ON p.price_key_monthly = m.price_key AND p.price_key_monthly <> ''
+      WHERE m.workspace_id = ${workspaceId} AND m.status IN ('active', 'trialing', 'past_due') AND m.access_ends_at IS NULL
+        AND p.storage_quota_bytes >= ${target.storageQuotaBytes}
+        AND (${!config.production}::boolean OR m.mode = 'live')
+      LIMIT 1`;
+    if (running) {
+      return c.json(problem('already_subscribed', 'This workspace already has a subscription for this plan or a bigger one. Refresh the page to see it.'), 409);
     }
     // The price is named by KEY, from our own table: never an amount, never the browser's choice.
     const price = target.priceKeyMonthly;

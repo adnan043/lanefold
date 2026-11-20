@@ -274,8 +274,9 @@ export const searchRoutes = new Hono()
     const weekEnd = addDays(today, 7);
     // ONE query: my assignments, in workspaces I am still in, on boards I may see (the visibility rule of
     // boardAccess() in SQL), never another user's Inbox. Index: card_members(user_id, workspace_id, card_id).
-    // Done cards stay (shown ticked, with an Archive button) until archived; they sort last so open cards always fit
-    // the cap. Archiving the card, its lane or its board drops it.
+    // A card done in the last day stays (shown ticked, with an Archive button) so ticking it leaves it in place;
+    // older done cards (a board's Done lane is rarely archived) stay out, or every card ever finished would come back.
+    // Done cards sort last so open cards always fit the cap. Archiving the card, its lane or its board drops it.
     const rows = await c.var.db.$queryRaw<DayRow[]>`
       SELECT c.id, c.number, c.title, c.priority, c.due_date, c.workspace_id, w.name AS workspace_name,
              c.board_id, b.name AS board_name, l.name AS lane_name, (c.completed_at IS NOT NULL) AS completed
@@ -286,6 +287,7 @@ export const searchRoutes = new Hono()
       JOIN boards b ON b.id = c.board_id AND b.workspace_id = c.workspace_id
       JOIN lanes l ON l.id = c.lane_id
       WHERE cm.user_id = ${userId} AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.archived_at IS NULL
+        AND (c.completed_at IS NULL OR c.completed_at > now() - interval '1 day')
         AND (b.inbox_of IS NULL OR b.inbox_of = ${userId})
         AND (wm.role IN ('owner', 'admin') OR b.visibility <> 'private' OR b.inbox_of = ${userId}
              OR EXISTS (SELECT 1 FROM board_members bm WHERE bm.board_id = b.id AND bm.user_id = ${userId}))
@@ -297,7 +299,8 @@ export const searchRoutes = new Hono()
     const page = rows.slice(0, MY_DAY_CAP).sort((a, b) => time(a.due_date) - time(b.due_date) || b.id - a.id);
     return c.json({
       today,
-      truncated: rows.length > MY_DAY_CAP,
+      // Only an OPEN card left out counts (done ones sort last, so the first one cut tells).
+      truncated: rows.length > MY_DAY_CAP && !rows[MY_DAY_CAP].completed,
       items: page.map(r => {
         const due = dayOf(r.due_date);
         return {
@@ -451,6 +454,11 @@ export const searchRoutes = new Hono()
       if (!count) throw new LaneFull('stale');
       // Labels belong to a board: the ones of the old board mean nothing on the new one.
       await tx.cardLabel.deleteMany({where: {cardId: card.id}});
+      // So do custom field values and a repeat rule (as on a move to another board, card-move-board.ts); the card's
+      // notifications (only mine: an Inbox is private) follow it to its new board.
+      await tx.cardFieldValue.deleteMany({where: {cardId: card.id, workspaceId: card.workspaceId}});
+      await tx.cardRecurrence.deleteMany({where: {cardId: card.id, workspaceId: card.workspaceId}});
+      await tx.notification.updateMany({where: {cardId: card.id, workspaceId: card.workspaceId}, data: {boardId: target.boardId}});
       // The Inbox lane's counter and the exit record in ONE statement: the Inbox board's delta (another tab of mine)
       // learns the card left only from `card_board_exits` (GET /boards/:id/changes `removed`).
       const srcRev = revs.get(card.boardId)!;

@@ -1,7 +1,7 @@
 import type {Prisma, PrismaClient} from '../generated/prisma/client';
 import {audit} from '../platform/auth';
 import {getEntitlements} from './entitlements';
-import {boardAccess, guestRole, type BoardAccess, type BoardRole} from './workspaces';
+import {boardAccess, guestRole, resolveBoardRole, type BoardAccess, type BoardRole, type WorkspaceRole} from './workspaces';
 
 /**
  * Seats on a board, shared by the "Share" routes (board-members.ts) and the invite accept route (members.ts).
@@ -24,6 +24,18 @@ export function seatRoleFor(wsRole: string | null, asked: BoardRole): BoardRole 
   if (wsRole === 'viewer') return 'viewer';
   if (wsRole === null) return guestRole(asked);
   return asked;
+}
+
+const SEAT_RANK: Record<BoardRole, number> = {viewer: 0, member: 1, admin: 2};
+
+/**
+ * True when seating a workspace member with `seat` would LOWER what they already have on the board without a seat
+ * (a `member` on a workspace-visible board made a viewer). A seat on a private board is always a grant.
+ */
+export function seatDemotes(wsRole: string | null, visibility: string, seat: BoardRole): boolean {
+  if (wsRole === null) return false;
+  const without = resolveBoardRole(wsRole as WorkspaceRole, visibility, null);
+  return without !== null && SEAT_RANK[seat] < SEAT_RANK[without];
 }
 
 /** True when the workspace already has as many guests as its plan allows members (one bounded query). */
@@ -76,8 +88,8 @@ export async function acceptSeat(
 ): Promise<SeatResult> {
   const {boardId, workspaceId, userId} = input;
   // The board must be a live shared board of a live workspace; the person's workspace role and seat in the same read.
-  const [row] = await db.$queryRaw<{wsRole: string | null; seat: string | null; removedAt: Date | null; boardRemovedAt: Date | null}[]>`
-    SELECT (SELECT role FROM workspace_members WHERE workspace_id = b.workspace_id AND user_id = ${userId}) AS "wsRole",
+  const [row] = await db.$queryRaw<{wsRole: string | null; seat: string | null; removedAt: Date | null; boardRemovedAt: Date | null; visibility: string}[]>`
+    SELECT b.visibility, (SELECT role FROM workspace_members WHERE workspace_id = b.workspace_id AND user_id = ${userId}) AS "wsRole",
            (SELECT role FROM board_members WHERE board_id = b.id AND user_id = ${userId}) AS seat,
            (SELECT removed_at FROM workspace_removals WHERE workspace_id = b.workspace_id AND user_id = ${userId}) AS "removedAt",
            (SELECT removed_at FROM board_removals WHERE board_id = b.id AND user_id = ${userId}) AS "boardRemovedAt"
@@ -86,8 +98,9 @@ export async function acceptSeat(
   if (!row) return INVALID;
   const done = (alreadyMember: boolean, role: BoardRole | null): SeatResult => ({ok: true, boardId, workspaceId, alreadyMember, guest: row.wsRole === null, role});
   const role = seatRoleFor(row.wsRole, input.role);
-  // Already in (a workspace owner/admin, or a seat): nothing changes, nobody is promoted or demoted by a link.
-  if (role === null || row.seat !== null) {
+  // Already in (a workspace owner/admin, a seat, or a member whose access the seat would lower): nothing changes,
+  // nobody is promoted or demoted by a link.
+  if (role === null || row.seat !== null || seatDemotes(row.wsRole, row.visibility, role)) {
     await db.$transaction(async tx => void (await consume(tx)));
     return done(true, (row.seat as BoardRole | null) ?? null);
   }

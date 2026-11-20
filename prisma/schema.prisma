@@ -820,6 +820,8 @@ model Card {
   @@index([workspaceId, laneId, position, id])
   @@index([boardId, updatedRev])
   @@index([workspaceId, dueDate, id])
+  // Workspace search: newest-first keyset over one workspace's cards (20261120100000).
+  @@index([workspaceId, id])
   @@index([dueDate, id])
   @@index([boardId, laneEnteredAt])
   @@index([createdBy])
@@ -946,6 +948,8 @@ model ChecklistItem {
   reminders ItemDueReminder[]
 
   @@index([workspaceId, checklistId, position, id])
+  // The ON DELETE CASCADE from a deleted checklist (checklist_id is not the leading column above) (20261120100100).
+  @@index([checklistId])
   @@index([assigneeId])
   /// The reminder sweep: timed items whose reminder may be due (jobs/due-reminders.ts).
   @@index([dueAt])

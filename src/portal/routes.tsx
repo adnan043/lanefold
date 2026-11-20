@@ -13,6 +13,7 @@ import {
 } from '@tanstack/react-router';
 import {useEffect, useRef, useState} from 'react';
 
+import {browserStorage, clearAllDrafts} from '../app/draft-store';
 import type {Abilities} from '../lib/types';
 import {logout} from '../platform/browser';
 import {
@@ -354,6 +355,8 @@ function Shell() {
                     icon: 'log-out',
                     onSelect: () => {
                       setSigningOut(true);
+                      // Unsent text typed in the app goes with the session, as from the app's own menu.
+                      clearAllDrafts(browserStorage());
                       void logout();
                     },
                   },

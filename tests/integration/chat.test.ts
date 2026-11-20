@@ -267,6 +267,17 @@ describe.skipIf(!DATABASE_URL)('chat (integration, real Postgres)', () => {
     expect(await db.notification.count({where: {userId: ids.ann, kind: 'message_mention'}})).toBe(1);
   });
 
+  it('a person named only by an edit is told once', async () => {
+    const msg = (await send(mia, channel, 'hello')).json.message;
+    const count = () => db.notification.count({where: {userId: ids.ann, kind: 'message_mention'}});
+    expect(await count()).toBe(0);
+    expect((await mia.request('PATCH', `/site-api/messages/${msg.id}`, {body: 'hello @ann', mentions: [ids.ann]})).status).toBe(200);
+    expect(await count()).toBe(1);
+    // Edited again with the same mention: not told twice.
+    await mia.request('PATCH', `/site-api/messages/${msg.id}`, {body: 'hello again @ann', mentions: [ids.ann]});
+    expect(await count()).toBe(1);
+  });
+
   it('someone removed and added back gets their old DM again (not a 404)', async () => {
     const dm = await ann.post(`/site-api/workspaces/${wsA}/conversations`, {kind: 'dm', userIds: [ids.mia]});
     const conv = dm.json.conversation.id as number;
