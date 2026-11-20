@@ -503,15 +503,18 @@ async function namesOf(db: PrismaClient, ids: Iterable<number | null>): Promise<
   return new Map(rows.map(r => [r.id, r.name]));
 }
 
-/** Workspace members who may see this board (private boards: board members and workspace owners/admins). */
-export const seatFilter = (board: {visibility: string; boardId: number; inboxOf: number | null}) =>
+/**
+ * Workspace members who may see this board (private boards: board members and workspace owners/admins). `guest`: the
+ * CALLER is a guest (a board seat, no workspace membership), who may only reach people seated on this board and the
+ * workspace's owners/admins (as board-people), so an assign or a mention can't be used to list the whole workspace.
+ */
+export const seatFilter = (board: {visibility: string; boardId: number; inboxOf: number | null; guest?: boolean}) => {
+  const seatedOrAdmin = Prisma.sql`(m.role IN ('owner', 'admin') OR EXISTS (SELECT 1 FROM board_members b WHERE b.board_id = ${board.boardId} AND b.user_id = m.user_id))`;
   // A personal Inbox is visible to its owner only (boardAccess), whatever the others' workspace role.
-  board.inboxOf !== null
-    ? Prisma.sql`AND m.user_id = ${board.inboxOf}`
-    : board.visibility === 'private'
-      ? Prisma.sql`AND (m.role IN ('owner', 'admin') OR EXISTS (SELECT 1 FROM board_members b WHERE b.board_id = ${board.boardId} AND b.user_id = m.user_id))`
-      : Prisma.empty;
-const seats = (ctx: Ctx) => seatFilter({visibility: ctx.access.visibility, boardId: ctx.boardId, inboxOf: ctx.inboxOf});
+  if (board.inboxOf !== null) return Prisma.sql`AND m.user_id = ${board.inboxOf}`;
+  return board.visibility === 'private' || board.guest ? Prisma.sql`AND ${seatedOrAdmin}` : Prisma.empty;
+};
+const seats = (ctx: Ctx) => seatFilter({visibility: ctx.access.visibility, boardId: ctx.boardId, inboxOf: ctx.inboxOf, guest: ctx.access.guest});
 
 /** Of `ids`, the ones that are active members who can see the board: the only people a card may name. */
 async function eligible(db: PrismaClient, ctx: Ctx, ids: number[], cap: number = LIMITS.mentions + 1): Promise<number[]> {

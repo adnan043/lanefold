@@ -17,6 +17,18 @@ describe('seatFilter', () => {
   });
   it('a workspace board adds no filter', () => {
     expect(seatFilter({visibility: 'workspace', boardId: 5, inboxOf: null}).sql.trim()).toBe('');
+    expect(seatFilter({visibility: 'workspace', boardId: 5, inboxOf: null, guest: false}).sql.trim()).toBe('');
+  });
+  it('a GUEST caller on a workspace board reaches only seated people and owners/admins (no workspace-wide name probe)', () => {
+    const f = seatFilter({visibility: 'workspace', boardId: 5, inboxOf: null, guest: true});
+    expect(f.sql).toContain("'owner', 'admin'");
+    expect(f.sql).toContain('board_members');
+    expect(f.values).toEqual([5]);
+  });
+  it('the card assign/mention check and bulk assign pass the caller’s guest flag', async () => {
+    const {readFileSync} = await import('node:fs');
+    expect(readFileSync('src/server/routes/card-detail.ts', 'utf8')).toMatch(/const seats = \(ctx: Ctx\) => seatFilter\(\{[^}]*guest: ctx\.access\.guest\}\)/);
+    expect(readFileSync('src/server/routes/card-bulk.ts', 'utf8')).toMatch(/seatFilter\(\{[^}]*guest: access\.guest\}\)/);
   });
 });
 

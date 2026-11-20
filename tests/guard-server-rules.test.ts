@@ -116,7 +116,10 @@ describe('server guard: queries', () => {
 
   it('no offset paging (skip:/offset:/OFFSET)', () => {
     const hits = scan(/\bskip\s*:|\boffset\s*:|\bOFFSET\s+\$\{|\bOFFSET\s+\d/);
-    expect(unlisted(hits, {'src/server/mail/templates.ts': 'a String.replace callback parameter named offset, not paging'})).toEqual([]);
+    expect(unlisted(hits, {
+      'src/server/mail/templates.ts': 'a String.replace callback parameter named offset, not paging',
+      'src/server/flows/engine.ts': 'lastFlowInPlan: one row at the plan\'s flow count (OFFSET maxFlows - 1 LIMIT 1) on flows(workspace_id, id), not paging',
+    })).toEqual([]);
   });
 
   /** Prisma .count( in a list/overview route: file:line -> why it is bounded. */

@@ -1279,21 +1279,30 @@ export const memberRoutes = new Hono()
         });
       }
 
+      // The reads below don't depend on each other: one round trip, then the checks in the same order as before.
+      const [live, maker, existing, removal, ent] = await Promise.all([
+        db.workspace.findFirst({
+          where: { id: workspaceId, archivedAt: null },
+          select: { id: true },
+        }),
+        createdBy ? membership(db, workspaceId, createdBy) : Promise.resolve(null),
+        membership(db, workspaceId, viewer.id!),
+        db.workspaceRemoval.findUnique({
+          where: { workspaceId_userId: { workspaceId, userId: viewer.id! } },
+          select: { removedAt: true },
+        }),
+        getEntitlements(db, workspaceId),
+      ]);
+
       // An archived workspace is closed to everyone: the same generic answer as any other dead link.
-      const live = await db.workspace.findFirst({
-        where: { id: workspaceId, archivedAt: null },
-        select: { id: true },
-      });
       if (!live) return invalidInvite();
 
       // 1b. A link or invite works only while its maker may still invite people here (an admin or the owner) NOW,
       // whatever role it grants: one made by someone since demoted or removed is dead. Otherwise a removed admin
       // could keep letting people in (themselves too, under a second address) with a link they kept.
-      const maker = createdBy ? await membership(db, workspaceId, createdBy) : null;
       if (!maker || maker.rank < ROLE_RANK.admin) return invalidInvite();
 
       // 2. Already in: nothing is consumed, nobody is demoted or promoted by a link.
-      const existing = await membership(db, workspaceId, viewer.id!);
       if (existing)
         return c.json({
           workspaceId,
@@ -1303,14 +1312,9 @@ export const memberRoutes = new Hono()
 
       // 2b. Removed (or left) after this link or invite was made: it cannot bring them back. The same generic answer;
       // a link made after the removal (a deliberate re-invite) works.
-      const removal = await db.workspaceRemoval.findUnique({
-        where: { workspaceId_userId: { workspaceId, userId: viewer.id! } },
-        select: { removedAt: true },
-      });
       if (removal && removal.removedAt > createdAt) return invalidInvite();
 
       // 3. Plan rules.
-      const ent = await getEntitlements(db, workspaceId);
       if (!ent) return invalidInvite();
       if (ent.readOnly)
         return c.json(

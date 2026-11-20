@@ -11,11 +11,11 @@ beforeEach(() => Object.values(m).forEach(f => f.mockClear()));
 
 describe('sweepEndedMemberships', () => {
   // Per page: the SELECT answer, then the batch UPDATE ... RETURNING answer (rows actually moved).
-  const mk = (free: unknown, pages: {id: number; plan: string}[][], moved?: ({id: number; from_plan: string}[] | null)[]) => {
+  const mk = (free: unknown, pages: {id: number; plan: string}[][], moved?: ({id: number; from_plan: string; to_plan: string}[] | null)[]) => {
     const q = vi.fn();
     pages.forEach((p, i) => {
       q.mockResolvedValueOnce(p);
-      if (p.length) q.mockResolvedValueOnce(moved?.[i] ?? p.map(r => ({id: r.id, from_plan: r.plan})));
+      if (p.length) q.mockResolvedValueOnce(moved?.[i] ?? p.map(r => ({id: r.id, from_plan: r.plan, to_plan: 'free'})));
     });
     const createMany = vi.fn(async () => ({count: 0}));
     return {planLimit: {findUnique: vi.fn(async () => free)}, $queryRaw: q, auditEvent: {createMany}, createMany};

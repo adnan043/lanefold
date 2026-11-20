@@ -1988,5 +1988,7 @@
   "chat.messageFiles": "File",
   "chat.downloadFile": "Scarica {name}",
   "chat.openFile": "Apri {name}",
-  "chat.morePictures": "Altre {n} immagini"
+  "chat.morePictures": "Altre {n} immagini",
+  "errors.already_subscribed": "Questo spazio di lavoro ha già questo piano o uno superiore. Aggiorna la pagina per vederlo.",
+  "errors.would_lower_role": "Solo un amministratore della bacheca può rendere un membro dello spazio di lavoro spettatore su questa bacheca."
 }

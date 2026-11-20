@@ -249,7 +249,7 @@ export const cardBulkRoutes = new Hono()
   const {cardIds} = input;
   // The seat rule of this board from the access already read (visibility; a personal Inbox is only its owner's, and
   // boardFor let us in, so its owner is us): no second board read.
-  const seat = seatFilter({visibility: access.visibility, boardId, inboxOf: access.inbox ? userId : null});
+  const seat = seatFilter({visibility: access.visibility, boardId, inboxOf: access.inbox ? userId : null, guest: access.guest});
 
   const pre = await precheck(db, input, boardId, workspaceId, seat);
   if (pre instanceof Stop) return answerStop(c, pre.why, cardIds.length);

@@ -1975,5 +1975,7 @@
   "chat.messageFiles": "Faili",
   "chat.downloadFile": "Pakua {name}",
   "chat.openFile": "Fungua {name}",
-  "chat.morePictures": "Picha {n} zaidi"
+  "chat.morePictures": "Picha {n} zaidi",
+  "errors.already_subscribed": "Eneo hili la kazi tayari lina mpango huu au mkubwa zaidi. Onyesha upya ukurasa ili kuuona.",
+  "errors.would_lower_role": "Ni msimamizi wa ubao pekee anayeweza kumfanya mwanachama wa eneo la kazi kuwa mtazamaji kwenye ubao huu."
 }

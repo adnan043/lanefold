@@ -1975,5 +1975,7 @@
   "chat.messageFiles": "Files",
   "chat.downloadFile": "Download {name}",
   "chat.openFile": "Open {name}",
-  "chat.morePictures": "{n} more pictures"
+  "chat.morePictures": "{n} more pictures",
+  "errors.already_subscribed": "This workspace already has this plan or a bigger one. Refresh the page to see it.",
+  "errors.would_lower_role": "Only a board admin can make a workspace member a viewer on this board."
 }

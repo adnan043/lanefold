@@ -1962,5 +1962,7 @@
   "chat.messageFiles": "ファイル",
   "chat.downloadFile": "{name} をダウンロード",
   "chat.openFile": "{name} を開く",
-  "chat.morePictures": "ほか {n} 枚の画像"
+  "chat.morePictures": "ほか {n} 枚の画像",
+  "errors.already_subscribed": "このワークスペースには既にこのプランまたはそれ以上のプランがあります。ページを再読み込みして確認してください。",
+  "errors.would_lower_role": "このボードでワークスペースのメンバーを閲覧者にできるのはボード管理者だけです。"
 }
