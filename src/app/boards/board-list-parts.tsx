@@ -3,7 +3,7 @@ import {useNavigate} from '../nav';
 import {useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
-import {Button, Icon, useToast} from '../../portal/ui';
+import {Icon, useToast} from '../../portal/ui';
 import {createBoardFromTemplate, TEMPLATES, type TemplateId} from '../templates';
 import {ArchivedBoards} from './archive-panel';
 import './settings.css';
@@ -47,20 +47,15 @@ export function TemplatesStrip({workspaceId}: {workspaceId: number}) {
   );
 }
 
-/** A "Archived boards" disclosure under the list; the list loads only when opened. */
+/** The "Archived boards" section under the list, always shown. */
 export function ArchivedBoardsSection({workspaceId}: {workspaceId: number}) {
   const t = useT();
-  const [open, setOpen] = useState(false);
   return (
     <section className="lf-list-section" aria-labelledby="lf-arch-title">
-      <h2 id="lf-arch-title">
-        <Button variant="ghost" size="sm" aria-expanded={open} aria-controls="lf-arch-panel" onClick={() => setOpen(v => !v)}>
-          <Icon name="archive" size={16} /> {t('bx.archive.boards')}
-        </Button>
+      <h2 id="lf-arch-title" className="lf-arch-title">
+        <Icon name="archive" size={16} /> {t('bx.archive.boards')}
       </h2>
-      <div id="lf-arch-panel">
-        <ArchivedBoards workspaceId={workspaceId} open={open} />
-      </div>
+      <ArchivedBoards workspaceId={workspaceId} open />
     </section>
   );
 }
