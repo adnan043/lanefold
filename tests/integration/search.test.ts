@@ -95,8 +95,13 @@ describe.skipIf(!DATABASE_URL)('search, my day and inbox (integration, real Post
     expect((await bob.get('/site-api/my-day')).json.items).toEqual([]);
     expect((await ann.get('/site-api/my-day?today=nope')).status).toBe(422);
     expect((await ann.get('/site-api/my-day?today=1999-01-01')).status).toBe(422);
-    // Done cards leave My Day.
+    // Done cards stay in My Day, marked done and in place (by due date), until they are archived.
     await ann.request('PATCH', `/site-api/cards/${open[0].id}`, {completed: true});
+    const after = (await ann.get('/site-api/my-day')).json.items as J[];
+    expect(after.find(i => i.title === 'Late')?.completed).toBe(true);
+    expect(after.find(i => i.title === 'Soon')?.completed).toBe(false);
+    expect(after[0]?.title).toBe('Late');
+    await ann.request('POST', `/site-api/cards/${open[0].id}/archive`, {});
     expect(((await ann.get('/site-api/my-day')).json.items as J[]).map(i => i.title)).not.toContain('Late');
   });
 

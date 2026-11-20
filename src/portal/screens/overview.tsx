@@ -2,7 +2,6 @@ import {useQuery} from '@tanstack/react-query';
 import {Link} from '@tanstack/react-router';
 
 import {
-  firstAuditQuery,
   firstUsersQuery,
   healthQuery,
   myWorkspacesQuery,
@@ -14,7 +13,7 @@ import {
   twoFactorQuery,
   unreadCountQuery,
 } from '../queries';
-import {ago, pageCount, useMe, when} from '../shared';
+import {pageCount, useMe} from '../shared';
 import {todayISO} from '../ui/date';
 import {
   Avatar,
@@ -35,7 +34,7 @@ import {
 
 /**
  * `/` of the dashboard: what is on YOUR plate in Lanefold first (cards due,
- * unread notifications, your workspaces), then your account and, for admins, the site's numbers and recent activity.
+ * unread notifications, your workspaces), then your account and, for admins, the site's numbers.
  * Every number is cheap (one bounded read, never a count per request):
  * docs/agent/performance.md.
  */
@@ -86,12 +85,10 @@ export function Overview() {
   const unread = useQuery(unreadCountQuery);
   // Under the screens' own query keys, so a save there refreshes these too.
   const users = useQuery({...firstUsersQuery, enabled: Boolean(abilities?.manageUsers)});
-  const activity = useQuery({...firstAuditQuery, enabled: Boolean(abilities?.readAudit)});
   const billed = useQuery({...myWorkspacesQuery, enabled: Boolean(abilities?.manageBilling)});
-  const recent = activity.data?.events.slice(0, 6) ?? [];
   const firstName = viewer?.name?.split(/\s+/)[0];
 
-  const cards = myDay.data?.items ?? [];
+  const cards = (myDay.data?.items ?? []).filter(c => !c.completed);
   const more = myDay.data?.truncated ? '+' : '';
   const overdue = cards.filter(card => card.group === 'overdue').length;
   const dueToday = cards.filter(card => card.group === 'today').length;
@@ -271,77 +268,6 @@ export function Overview() {
               </EmptyState>
             )}
           </Card>
-
-          {abilities?.readAudit && (
-            <Card
-              title="Recent activity"
-              description="Sign-ups, sign-ins and changes, newest first."
-              flush
-              actions={
-                <Link className={buttonClass({variant: 'ghost', size: 'sm'})} to="/activity">
-                  View all
-                  <Icon name="arrow-right" size={16} />
-                </Link>
-              }>
-              {activity.error ? (
-                <div className="card-body">
-                  <ErrorNote error={activity.error} />
-                </div>
-              ) : activity.isPending ? (
-                <div className="card-body">
-                  <LoadingBlock rows={3} />
-                </div>
-              ) : recent.length ? (
-                <ul className="list">
-                  {recent.map(event => (
-                    <li key={event.id} className="list-row">
-                      <span className="list-row-icon">
-                        <Icon name="activity" size={16} />
-                      </span>
-                      <div className="list-row-text">
-                        <p className="list-row-title">
-                          {event.actor?.name ?? 'System'} <span className="muted">· {event.action.replaceAll('_', ' ')}</span>
-                        </p>
-                        {event.targetName && event.targetName !== event.actor?.name && <p className="list-row-sub">{event.targetName}</p>}
-                      </div>
-                      <time className="list-row-end" dateTime={event.createdAt} title={when(event.createdAt)}>
-                        {ago(event.createdAt)}
-                      </time>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <EmptyState icon="activity" title="Nothing yet">
-                  Sign-ups and changes will show here as they happen.
-                </EmptyState>
-              )}
-            </Card>
-          )}
-
-          {(abilities?.managePlans || abilities?.manageBilling || abilities?.readWorkspaces) && (
-            <Card title="Plans and billing" description="Limits per plan, billing mode and every workspace.">
-              <div className="row-actions">
-                {abilities?.managePlans && (
-                  <Link className={buttonClass({variant: 'secondary'})} to="/plans">
-                    <Icon name="settings" size={18} />
-                    Plan limits
-                  </Link>
-                )}
-                {abilities?.manageBilling && (
-                  <Link className={buttonClass({variant: 'secondary'})} to="/billing">
-                    <Icon name="credit-card" size={18} />
-                    Billing
-                  </Link>
-                )}
-                {abilities?.readWorkspaces && (
-                  <Link className={buttonClass({variant: 'secondary'})} to="/workspaces">
-                    <Icon name="layout-kanban" size={18} />
-                    Workspaces
-                  </Link>
-                )}
-              </div>
-            </Card>
-          )}
         </div>
 
         <div className="overview-column">

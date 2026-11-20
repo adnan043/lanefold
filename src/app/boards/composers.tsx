@@ -108,7 +108,7 @@ export function CardComposer({onAdd, disabled, openRequest = 0}: {onAdd: (titles
           }
         }}
       />
-      <p className="field-hint" id={`${id}-hint`}>
+      <p className="visually-hidden" id={`${id}-hint`}>
         {t('card.addHint')}
       </p>
       {error && (

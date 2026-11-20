@@ -194,6 +194,8 @@ export type OverviewCard = {
   boardId: number;
   boardName: string;
   laneName: string;
+  /** Done cards stay in My Day until archived; the overview counts only open ones. */
+  completed?: boolean;
 };
 
 /** The workspaces I belong to (at most 50), with my role in each. */
@@ -203,7 +205,7 @@ export const overviewWorkspacesQuery = queryOptions({
   staleTime: 60_000,
 });
 
-/** My open, assigned cards grouped by due date; `today` is the visitor's own calendar day. */
+/** My assigned cards (open, then done ones not yet archived) grouped by due date; `today` is the visitor's own calendar day. */
 export const overviewMyDayQuery = (today: string) =>
   queryOptions({
     queryKey: ['my-day', today],

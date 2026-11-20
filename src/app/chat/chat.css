@@ -160,19 +160,15 @@
   color: var(--ink);
   font-weight: 600;
 }
+/* A DM's or group's initials: a solid accent circle, so it still reads on the selected row's accent-soft fill. */
+.chat-conv .avatar {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.6875rem;
+}
 .chat-conv-icon {
   display: flex;
   flex: none;
-}
-.chat-conv-tile {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  background: var(--surface);
-  color: var(--muted);
 }
 .chat-conv-name {
   flex: 1;
@@ -343,9 +339,35 @@
   letter-spacing: -0.02em;
   color: var(--ink);
 }
-.chat-welcome-note {
+/* An empty conversation: centred in the list, the mark over a heading and a quiet nudge. */
+.chat-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-block-size: 100%;
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+.chat-start .chat-mark {
+  width: 3.5rem;
+  height: 3.5rem;
+  margin-block-end: 0.5rem;
+  border-radius: 16px;
+}
+.chat-start h3 {
   margin: 0;
-  padding: 0 1.5rem;
+  max-inline-size: 28rem;
+  overflow-wrap: anywhere;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.chat-start p {
+  margin: 0;
+  max-inline-size: 28rem;
   font-size: 0.875rem;
 }
 .chat-rows,
@@ -367,7 +389,8 @@
 .chat-day::after {
   content: "";
   flex: 1;
-  border-block-start: 1px solid var(--line);
+  /* A softer rule than the app's lines: clearly there, but the date pill leads. */
+  border-block-start: 1px solid color-mix(in srgb, #e4e7ecbf 60%, transparent);
 }
 .chat-day > span {
   padding: 0.25rem 0.75rem;
@@ -728,6 +751,23 @@
 /* ---- composer ---- */
 .chat-composer {
   padding: 0 1.5rem 1rem;
+}
+/* Editing a message in the composer: a strip above the box names it, Cancel (or Esc) brings the typed text back. */
+.chat-composer-editing {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.chat-composer-editing > span {
+  font-weight: 600;
+  color: var(--ink);
+}
+.chat-msg[data-editing] {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .chat-composer-box {
   position: relative;
@@ -1304,12 +1344,20 @@ a.chat-file-name:focus-visible,
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
-  cursor: zoom-in;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  cursor: pointer;
+  transition:
+    border-color 200ms ease,
+    box-shadow 250ms ease,
+    transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .chat-file-image:hover {
   border-color: var(--line-strong);
   box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+.chat-file-image:active {
+  transform: translateY(0) scale(0.98);
+  transition-duration: 100ms;
 }
 
 /* The picture viewer: a wider, rounder dialog than a form's, the picture on a soft panel with its own rounding. */
@@ -1354,6 +1402,7 @@ a.chat-file-name:focus-visible,
 }
 .chat-file-image img {
   display: block;
+  transition: transform 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
   max-inline-size: min(18rem, 70vw);
   max-block-size: 14rem;
   inline-size: auto;
@@ -1406,6 +1455,22 @@ a.chat-file-name:focus-visible,
 .chat-file-image:hover .chat-file-more {
   background: color-mix(in srgb, black 65%, transparent);
 }
+/* Hover: the picture eases in a little inside its tile (the tile clips it). */
+.chat-file-image:hover img {
+  transform: scale(1.05);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-file-image,
+  .chat-file-image img,
+  .chat-file-more {
+    transition: none;
+  }
+  .chat-file-image:hover,
+  .chat-file-image:active,
+  .chat-file-image:hover img {
+    transform: none;
+  }
+}
 
 /* The viewer's round arrows on either side of the picture (mirrored in RTL with the chevrons). */
 .chat-viewer-arrow {
@@ -1440,20 +1505,37 @@ a.chat-file-name:focus-visible,
   outline-offset: 2px;
 }
 
-/* Moving to another picture slides it in from the side it came from. */
+/* The picture waits, invisible, until it has loaded; then opening fades and grows it in, and moving slides it in
+   from the side it came from. (Remounted per picture, so each one animates.) */
+.chat-viewer img:not([data-loaded]) {
+  opacity: 0;
+}
+/* Its own layer for the whole time it is shown: a layer dropped when the animation ended snapped the picture to
+   whole pixels, a visible little jump at the end. */
+.chat-viewer img {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+@keyframes chat-viewer-open {
+  from { opacity: 0; transform: translate3d(0, 0, 0) scale(0.94); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
 @keyframes chat-slide-from-end {
-  from { opacity: 0; transform: translateX(3rem); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; transform: translate3d(4rem, 0, 0) scale(0.98); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 @keyframes chat-slide-from-start {
-  from { opacity: 0; transform: translateX(-3rem); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; transform: translate3d(-4rem, 0, 0) scale(0.98); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
-.chat-viewer img[data-slide='next'] {
-  animation: chat-slide-from-end 220ms ease-out;
+.chat-viewer img[data-loaded][data-slide='open'] {
+  animation: chat-viewer-open 600ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
 }
-.chat-viewer img[data-slide='prev'] {
-  animation: chat-slide-from-start 220ms ease-out;
+.chat-viewer img[data-loaded][data-slide='next'] {
+  animation: chat-slide-from-end 550ms cubic-bezier(0.22, 1, 0.36, 1) 60ms both;
+}
+.chat-viewer img[data-loaded][data-slide='prev'] {
+  animation: chat-slide-from-start 550ms cubic-bezier(0.22, 1, 0.36, 1) 60ms both;
 }
 .chat-viewer:dir(rtl) img[data-slide='next'] {
   animation-name: chat-slide-from-start;
@@ -1464,5 +1546,8 @@ a.chat-file-name:focus-visible,
 @media (prefers-reduced-motion: reduce) {
   .chat-viewer img[data-slide] {
     animation: none;
+  }
+  .chat-viewer img:not([data-loaded]) {
+    opacity: 1;
   }
 }

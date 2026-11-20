@@ -4,7 +4,7 @@ import {useEffect, useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
 import {rules} from '../../lib/rules';
-import {Button, Card, EmptyState, ErrorNote, Field, Icon, IconButton, LoadingBlock, Modal, PageHeader, Select, useForm, useToast} from '../../portal/ui';
+import {Button, EmptyState, ErrorNote, Field, Icon, IconButton, LoadingBlock, Modal, PageHeader, Select, useForm, useToast} from '../../portal/ui';
 import {call} from '../api';
 import {useDraft} from '../use-draft';
 import {boardQuery, boardsQuery, workspacesQuery} from '../queries';
@@ -112,48 +112,6 @@ function MoveModal({card, workspaceId, onClose}: {card: InboxCard | null; worksp
   );
 }
 
-const GUIDE_STEPS = [
-  {icon: 'plus', title: 'inbox.stepCaptureTitle', body: 'inbox.stepCaptureBody'},
-  {icon: 'arrow-right', title: 'inbox.move', body: 'inbox.stepMoveBody'},
-  {icon: 'check-circle', title: 'inbox.stepDoneTitle', body: 'inbox.stepDoneBody'},
-] as const;
-
-/** The side panel: what the Inbox is for, the three ways to sort a card, and the shortcut that opens it. */
-function InboxGuide() {
-  const t = useT();
-  return (
-    <aside className="lf-inbox-guide" aria-labelledby="inbox-guide-title">
-      <Card>
-        <h2 id="inbox-guide-title" className="lf-inbox-guide-title">
-          {t('inbox.guideTitle')}
-        </h2>
-        <p className="lf-inbox-guide-goal">{t('inbox.guideGoal')}</p>
-        <ol className="lf-inbox-steps">
-          {GUIDE_STEPS.map(step => (
-            <li key={step.body} className="lf-inbox-step">
-              <span className="lf-inbox-step-icon" aria-hidden="true">
-                <Icon name={step.icon} size={16} />
-              </span>
-              <span className="lf-inbox-step-text">
-                <span className="lf-inbox-step-title">{t(step.title)}</span>
-                <span className="lf-inbox-step-body">{t(step.body)}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-        <p className="lf-inbox-tip">
-          <span>{t('inbox.tipShortcut')}</span>
-          <span className="lf-inbox-keys" aria-hidden="true">
-            <kbd className="lf-kbd" dir="ltr">G</kbd>
-            <kbd className="lf-kbd" dir="ltr">I</kbd>
-          </span>
-          <span className="visually-hidden">G, I</span>
-        </p>
-      </Card>
-    </aside>
-  );
-}
-
 /** Cards captured today first, then everything older, newest first as the server sends them. */
 function groupByDay(items: InboxCard[]): {key: 'today' | 'earlier'; items: InboxCard[]}[] {
   const startOfToday = new Date();
@@ -207,13 +165,23 @@ export function Inbox() {
       setStatus(errorMessage(error));
     },
   });
+  // Done toggles: a done card stays in the list, ticked (as on My Day); ticking it again reopens it. Archive removes it.
   const act = useMutation({
     mutationFn: ({card, kind}: {card: InboxCard; kind: 'done' | 'archive'}) =>
-      kind === 'done' ? call('PATCH', `/cards/${card.id}`, {completed: true}) : call('POST', `/cards/${card.id}/archive`, {}),
+      kind === 'done' ? call('PATCH', `/cards/${card.id}`, {completed: !card.completed}) : call('POST', `/cards/${card.id}/archive`, {}),
     onMutate: ({card}) => setBusyId(card.id),
-    onSuccess: async (_data, {kind}) => {
+    onSuccess: async (_data, {card, kind}) => {
       await refresh();
-      toast.success(t(kind === 'done' ? 'myDay.done' : 'inbox.archived'));
+      if (kind === 'done') {
+        if (!card.completed) toast.success(t('myDay.done'));
+        return;
+      }
+      // An archived card leaves the Inbox list (it stays on the Inbox board): offer the way back right here.
+      const undo = () =>
+        void call('POST', `/cards/${card.id}/restore`, {})
+          .then(refresh)
+          .catch((error: unknown) => toast.danger(errorMessage(error)));
+      toast.success(t('inbox.archived'), {action: {label: t('card.undo'), onSelect: undo}});
     },
     onError: error => toast.danger(errorMessage(error)),
     onSettled: () => setBusyId(null),
@@ -221,124 +189,134 @@ export function Inbox() {
 
   const items = query.data?.pages.flatMap(page => page.items) ?? [];
   const inboxBoardId = query.data?.pages[0]?.boardId ?? null;
+  const count = `${items.filter(item => !item.completed).length}${query.hasNextPage ? '+' : ''}`;
+  const listReady = !(workspacePending || (workspaceId > 0 && query.isPending)) && !workspaceError && !query.isError;
   return (
     <div className="app-page">
-      <PageHeader title={t('inbox.title')} description={t('inbox.subtitle', {workspace: current?.name ?? ''})} />
-      <div className="lf-inbox-layout">
-        <div className="lf-inbox-col">
-          {canWrite && (
-            <form className="lf-inbox-capture" noValidate onSubmit={form.submit(values => capture.mutate(values.title.trim()))}>
-              <label className="lf-inbox-capture-label" htmlFor="f-title">
-                {t('inbox.captureLabel')}
-              </label>
-              <div className="lf-inbox-bar" data-invalid={form.error('title') ? '' : undefined}>
-                <Icon name="plus" size={18} />
-                <input {...form.field('title')} autoComplete="off" maxLength={400} placeholder={t('inbox.capturePlaceholder')} disabled={capture.isPending} />
-                <Button type="submit" size="sm" pending={capture.isPending} pendingLabel={t('inbox.adding')} disabled={form.blocked}>
-                  {t('inbox.add')}
-                </Button>
-              </div>
-              {form.error('title') && (
-                <p className="field-error" id="f-title-error" role="alert">
-                  {form.error('title')}
-                </p>
-              )}
-            </form>
-          )}
-          {status && (
-            <p className="field-error" role="alert">
-              {status}
-            </p>
-          )}
-          {workspacePending || (workspaceId > 0 && query.isPending) ? (
-            <LoadingBlock rows={3} />
-          ) : workspaceError ? (
-            <>
-              <ErrorNote error={new Error(errorMessage(workspaceError))} />
-              <Button variant="secondary" icon="refresh" onClick={() => void queryClient.invalidateQueries({queryKey: workspacesQuery.queryKey})}>
-                {t('common.retry')}
+      <div className="lf-inbox">
+        <PageHeader
+          title={t('inbox.title')}
+          description={t('inbox.subtitle', {workspace: current?.name ?? ''})}
+          actions={
+            listReady && items.length > 0 ? (
+              <span className="lf-inbox-pill">
+                <strong>{count}</strong> {t('inbox.toSort').toLowerCase()}
+              </span>
+            ) : undefined
+          }
+        />
+        {canWrite && (
+          <form className="lf-inbox-capture" noValidate onSubmit={form.submit(values => capture.mutate(values.title.trim()))}>
+            <label className="visually-hidden" htmlFor="f-title">
+              {t('inbox.captureLabel')}
+            </label>
+            <div className="lf-inbox-bar" data-invalid={form.error('title') ? '' : undefined}>
+              <Icon name="plus" size={18} />
+              <input {...form.field('title')} autoComplete="off" maxLength={400} placeholder={t('inbox.capturePlaceholder')} disabled={capture.isPending} />
+              <Button type="submit" size="sm" pending={capture.isPending} pendingLabel={t('inbox.adding')} disabled={form.blocked}>
+                {t('inbox.add')}
               </Button>
-            </>
-          ) : query.isError ? (
-            <>
-              <ErrorNote error={new Error(errorMessage(query.error))} />
-              <Button variant="secondary" icon="refresh" onClick={() => void query.refetch()}>
-                {t('common.retry')}
-              </Button>
-            </>
-          ) : items.length === 0 ? (
-            <EmptyState
-              icon="inbox"
-              title={t('inbox.emptyTitle')}
-              action={
-                canWrite ? (
-                  <Button variant="secondary" icon="plus" onClick={() => document.getElementById('f-title')?.focus()}>
-                    {t('inbox.captureLabel')}
-                  </Button>
-                ) : undefined
-              }>
-              {t('inbox.emptyCapture')}
-            </EmptyState>
-          ) : (
-            <section className="lf-inbox-list" aria-labelledby="inbox-list-title">
-              <div className="lf-inbox-list-head">
-                <h2 id="inbox-list-title">{t('inbox.toSort')}</h2>
-                <span className="lf-inbox-count">{items.length}{query.hasNextPage ? '+' : ''}</span>
-              </div>
-              {groupByDay(items).map(group => (
-                <div key={group.key} className="lf-inbox-group">
-                  <h3 className="lf-inbox-group-title" id={`inbox-group-${group.key}`}>{group.key === 'today' ? t('myDay.today') : t('inbox.earlier')}</h3>
-                  <ul className="lf-inbox-rows" aria-labelledby={`inbox-group-${group.key}`}>
-                    {group.items.map(card => (
-                      <li key={card.id} className="lf-inbox-row" data-busy={busyId === card.id ? '' : undefined}>
-                        <IconButton
-                          className="lf-inbox-check"
-                          icon="check-circle"
-                          size="sm"
-                          label={t('inbox.markDone', {title: card.title})}
-                          pending={busyId === card.id && act.variables?.kind === 'done'}
-                          disabled={busyId !== null && busyId !== card.id}
-                          onClick={() => act.mutate({card, kind: 'done'})}
-                        />
+            </div>
+            {form.error('title') && (
+              <p className="field-error" id="f-title-error" role="alert">
+                {form.error('title')}
+              </p>
+            )}
+            {status && (
+              <p className="field-error" role="alert">
+                {status}
+              </p>
+            )}
+          </form>
+        )}
+        {workspacePending || (workspaceId > 0 && query.isPending) ? (
+          <LoadingBlock rows={3} />
+        ) : workspaceError ? (
+          <div className="lf-inbox-pad">
+            <ErrorNote error={new Error(errorMessage(workspaceError))} />
+            <Button variant="secondary" icon="refresh" onClick={() => void queryClient.invalidateQueries({queryKey: workspacesQuery.queryKey})}>
+              {t('common.retry')}
+            </Button>
+          </div>
+        ) : query.isError ? (
+          <div className="lf-inbox-pad">
+            <ErrorNote error={new Error(errorMessage(query.error))} />
+            <Button variant="secondary" icon="refresh" onClick={() => void query.refetch()}>
+              {t('common.retry')}
+            </Button>
+          </div>
+        ) : items.length === 0 ? (
+          <EmptyState icon="inbox" title={t('inbox.emptyTitle')}>
+            <span className="lf-inbox-empty-body">{t('inbox.emptyCapture')}</span>
+            <span className="lf-inbox-tip">
+              <span>{t('inbox.tipShortcut')}</span>
+              <span className="lf-inbox-keys" aria-hidden="true">
+                <kbd className="lf-kbd" dir="ltr">G</kbd>
+                <kbd className="lf-kbd" dir="ltr">I</kbd>
+              </span>
+              <span className="visually-hidden">G, I</span>
+            </span>
+          </EmptyState>
+        ) : (
+          <section className="lf-inbox-list" aria-label={t('inbox.listLabel')}>
+            {groupByDay(items).map(group => (
+              <div key={group.key} className="lf-inbox-group">
+                <h2 className="lf-inbox-group-title" id={`inbox-group-${group.key}`}>
+                  {group.key === 'today' ? t('myDay.today') : t('inbox.earlier')}
+                </h2>
+                <ul className="lf-inbox-rows" aria-labelledby={`inbox-group-${group.key}`}>
+                  {group.items.map(card => {
+                    const body = (
+                      <>
+                        <span className="lf-inbox-title">{card.title}</span>
+                        <time className="lf-inbox-time" dateTime={card.createdAt}>
+                          {formatRelative(card.createdAt)}
+                        </time>
+                      </>
+                    );
+                    return (
+                      <li key={card.id} className="lf-inbox-row" data-busy={busyId === card.id ? '' : undefined} data-done={card.completed ? '' : undefined}>
+                        {canWrite && (
+                          <IconButton
+                            className="lf-inbox-tick"
+                            icon="check"
+                            size="sm"
+                            label={card.completed ? t('card.markNotDone', {title: card.title}) : t('inbox.markDone', {title: card.title})}
+                            pending={busyId === card.id && act.variables?.kind === 'done'}
+                            disabled={busyId !== null && busyId !== card.id}
+                            onClick={() => act.mutate({card, kind: 'done'})}
+                          />
+                        )}
                         {inboxBoardId ? (
                           <Link to="/b/$boardId/c/$cardId" params={{boardId: String(inboxBoardId), cardId: String(card.id)}} className="lf-inbox-main">
-                            <span className="lf-inbox-title">{card.title}</span>
-                            <span className="lf-inbox-meta">
-                              <Icon name="clock" size={14} />
-                              {formatRelative(card.createdAt)}
-                            </span>
+                            {body}
                           </Link>
                         ) : (
-                          <span className="lf-inbox-main">
-                            <span className="lf-inbox-title">{card.title}</span>
-                            <span className="lf-inbox-meta">
-                              <Icon name="clock" size={14} />
-                              {formatRelative(card.createdAt)}
-                            </span>
-                          </span>
+                          <span className="lf-inbox-main">{body}</span>
                         )}
-                        <div className="lf-inbox-actions">
-                          <Button variant="secondary" size="sm" icon="arrow-right" disabled={busyId !== null} onClick={() => setMoving(card)}>
-                            {t('inbox.move')}
-                          </Button>
-                          <IconButton icon="archive" size="sm" label={t('inbox.archive', {title: card.title})} pending={busyId === card.id && act.variables?.kind === 'archive'} disabled={busyId !== null && busyId !== card.id} onClick={() => act.mutate({card, kind: 'archive'})} />
-                        </div>
+                        {canWrite && (
+                          <div className="lf-inbox-actions">
+                            <Button variant="secondary" size="sm" icon="arrow-right" disabled={busyId !== null} onClick={() => setMoving(card)}>
+                              {t('inbox.move')}
+                            </Button>
+                            <IconButton icon="archive" size="sm" label={t('inbox.archive', {title: card.title})} pending={busyId === card.id && act.variables?.kind === 'archive'} disabled={busyId !== null && busyId !== card.id} onClick={() => act.mutate({card, kind: 'archive'})} />
+                          </div>
+                        )}
                       </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-              {query.hasNextPage && (
-                <div className="lf-day-more">
-                  <Button variant="secondary" pending={query.isFetchingNextPage} pendingLabel={t('common.loading')} onClick={() => void query.fetchNextPage()}>
-                    {t('inbox.loadMore')}
-                  </Button>
-                </div>
-              )}
-            </section>
-          )}
-        </div>
-        <InboxGuide />
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+            {query.hasNextPage && (
+              <div className="lf-inbox-more">
+                <Button variant="secondary" size="sm" pending={query.isFetchingNextPage} pendingLabel={t('common.loading')} onClick={() => void query.fetchNextPage()}>
+                  {t('inbox.loadMore')}
+                </Button>
+              </div>
+            )}
+          </section>
+        )}
       </div>
       <MoveModal card={moving} workspaceId={workspaceId} onClose={() => setMoving(null)} />
     </div>

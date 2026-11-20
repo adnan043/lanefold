@@ -37,19 +37,25 @@ type Props = {
   submitLabel?: string;
   /** Keeps the unsent text across a forced sign-in: `chat` + conversation id, or `reply` + parent message id. */
   draft?: {kind: Extract<DraftKind, 'chat' | 'reply'>; id: number};
+  /** A message being edited in this box (its text is loaded in; files and cards can't change). */
+  editing?: {id: string; body: string};
+  /** Saves the edit; a thrown error shows under the box and keeps the text. `chosen` = people picked from the @ list. */
+  onSaveEdit?: (body: string, chosen: PersonRef[]) => Promise<unknown>;
+  onCancelEdit?: () => void;
 };
 
 /**
  * The message box: Enter sends, Shift+Enter is a new line, `@` opens the people list (arrows, Enter or Tab to
  * pick, Esc closes). Same 4000-character limit as the server; the over-limit message says how many to remove.
  */
-export function Composer({people, workspaceId, conversationId, onSend, label, placeholder, autoFocus, submitLabel, draft}: Props) {
+export function Composer({people, workspaceId, conversationId, onSend, label, placeholder, autoFocus, submitLabel, draft, editing, onSaveEdit, onCancelEdit}: Props) {
   const t = useT();
   const {errorMessage, formatNumber} = useI18n();
   const id = useId();
   const area = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState('');
-  useDraft(draft?.kind ?? 'chat', draft?.id ?? 0, text, setText, '', !!draft);
+  // An edit's text is never kept as the unsent draft.
+  useDraft(draft?.kind ?? 'chat', draft?.id ?? 0, text, setText, '', !!draft && !editing);
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState(false);
@@ -198,7 +204,63 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
   const [emojiOpen, setEmojiOpen] = useState(false);
   const emojiButton = useRef<HTMLButtonElement>(null);
 
+  // Editing: the message's text replaces what was typed; the typed text comes back when the edit ends.
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+  const stash = useRef<string | null>(null);
+  const editingId = editing?.id;
+  const textRef = useRef(text);
+  textRef.current = text;
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  useEffect(() => {
+    if (!editingId) return;
+    if (stash.current === null) stash.current = textRef.current;
+    const body = editingRef.current?.body ?? '';
+    setText(body);
+    setCaret(body.length);
+    setDismissed(true);
+    setTried(false);
+    setEditError('');
+    window.requestAnimationFrame(() => {
+      area.current?.focus();
+      area.current?.setSelectionRange(body.length, body.length);
+    });
+    return () => {
+      // Switching straight to another message keeps the typed text stashed; only ending the edit brings it back.
+      if (editingRef.current) return;
+      const kept = stash.current ?? '';
+      stash.current = null;
+      setText(kept);
+      setCaret(kept.length);
+      setEditError('');
+    };
+  }, [editingId]);
+  const cancelEdit = () => {
+    if (saving) return;
+    onCancelEdit?.();
+    window.requestAnimationFrame(() => area.current?.focus());
+  };
+  const saveEdit = async () => {
+    setTried(true);
+    const body = text.trim();
+    if (!body || over > 0 || !onSaveEdit) return;
+    setSaving(true);
+    setEditError('');
+    try {
+      await onSaveEdit(body, chosen);
+      setChosen([]);
+      setTried(false);
+      window.requestAnimationFrame(() => area.current?.focus());
+    } catch (e) {
+      setEditError(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const submit = () => {
+    if (editing) return void saveEdit();
     setTried(true);
     const body = text.trim();
     if (uploading) return setFileError(t('chat.waitForUploads'));
@@ -213,7 +275,7 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
     setTried(false);
   };
 
-  const error = over > 0 ? t('chat.tooLong', {n: over}) : fileError || (tried && !text.trim() && readyFiles.length === 0 ? t('chat.writeSomething') : '');
+  const error = over > 0 ? t('chat.tooLong', {n: over}) : editError || fileError || (tried && !text.trim() && readyFiles.length === 0 ? t('chat.writeSomething') : '');
 
   return (
     <form
@@ -231,7 +293,16 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
         event.preventDefault();
         addFiles([...event.dataTransfer.files]);
       }}>
-      {tray.length > 0 && (
+      {editing && (
+        <div className="chat-composer-editing">
+          <Icon name="pencil" size={14} />
+          <span>{t('chat.editLabel')}</span>
+          <Button variant="link" size="sm" disabled={saving} onClick={cancelEdit}>
+            {t('common.cancel')}
+          </Button>
+        </div>
+      )}
+      {!editing && tray.length > 0 && (
         <ul className="chat-card-chips chat-card-tray chat-file-tray" id={`${id}-files`} aria-label={t('chat.filesToSend')}>
           {tray.map(f => (
             <li key={f.key} className="chat-card-chip chat-file-chip" data-failed={f.status === 'failed' ? '' : undefined} aria-busy={f.status === 'uploading' || undefined}>
@@ -245,7 +316,7 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
           ))}
         </ul>
       )}
-      {cards.length > 0 && (
+      {!editing && cards.length > 0 && (
         <ul className="chat-card-chips chat-card-tray" id={`${id}-cards`} aria-label={t('chat.attachedCards')}>
           {cards.map(card => (
             <li key={card.id} className="chat-card-chip">
@@ -263,7 +334,7 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
           </p>
         )}
         <label className="visually-hidden" htmlFor={`${id}-text`}>
-          {label}
+          {editing ? t('chat.editLabel') : label}
         </label>
         <textarea
           id={`${id}-text`}
@@ -272,6 +343,7 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
           rows={1}
           value={text}
           placeholder={placeholder}
+          readOnly={saving}
           aria-controls={listOpen ? listId : undefined}
           aria-describedby={[error ? `${id}-error` : cards.length ? `${id}-cards` : '', tray.length ? `${id}-files` : '', listOpen ? `${id}-hint` : ''].filter(Boolean).join(' ') || undefined}
           aria-activedescendant={listOpen ? `${id}-p${current}` : undefined}
@@ -312,6 +384,11 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
                 return;
               }
             }
+            if (event.key === 'Escape' && editing) {
+              event.preventDefault();
+              cancelEdit();
+              return;
+            }
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               submit();
@@ -319,7 +396,7 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
           }}
         />
         <div className="chat-composer-tools">
-          {conversationId !== undefined && (
+          {conversationId !== undefined && !editing && (
             <>
               <IconButton icon="paperclip" size="sm" label={t('chat.attachFile')} disabled={tray.filter(f => f.status !== 'failed').length >= CHAT_FILES_PER_MESSAGE} onClick={() => picker.current?.click()} />
               <input
@@ -337,8 +414,12 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
               <span className="chat-composer-sep" aria-hidden="true" />
             </>
           )}
-          <IconButton icon="hash" size="sm" label={t('chat.attachCard')} disabled={cards.length >= MAX_CARDS || !workspaceId} onClick={startCardTag} />
-          <span className="chat-composer-sep" aria-hidden="true" />
+          {!editing && (
+            <>
+              <IconButton icon="hash" size="sm" label={t('chat.attachCard')} disabled={cards.length >= MAX_CARDS || !workspaceId} onClick={startCardTag} />
+              <span className="chat-composer-sep" aria-hidden="true" />
+            </>
+          )}
           <IconButton icon="at-sign" size="sm" label={t('chat.mentionSomeone')} onClick={startMention} />
           <span className="chat-composer-sep" aria-hidden="true" />
           <IconButton ref={emojiButton} icon="smile" size="sm" label={t('chat.insertEmoji')} aria-haspopup="dialog" aria-expanded={emojiOpen} onClick={() => setEmojiOpen(open => !open)} />
@@ -359,9 +440,15 @@ export function Composer({people, workspaceId, conversationId, onSend, label, pl
               ))}
             </div>
           </Popover>
-          <Button type="submit" size="sm" icon="send" disabled={(!text.trim() && readyFiles.length === 0) || uploading} aria-label={submitLabel ?? t('chat.send')}>
-            <span className="chat-send-label">{submitLabel ?? t('chat.send')}</span>
-          </Button>
+          {editing ? (
+            <Button type="submit" size="sm" icon="check" pending={saving} disabled={!text.trim()} aria-label={t('common.save')}>
+              <span className="chat-send-label">{t('common.save')}</span>
+            </Button>
+          ) : (
+            <Button type="submit" size="sm" icon="send" disabled={(!text.trim() && readyFiles.length === 0) || uploading} aria-label={submitLabel ?? t('chat.send')}>
+              <span className="chat-send-label">{submitLabel ?? t('chat.send')}</span>
+            </Button>
+          )}
         </div>
         {cardHits.length > 0 && (
           <ul className="chat-mention-list" role="listbox" id={`${id}-cardlist`} aria-label={t('chat.cardList')}>

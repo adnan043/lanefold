@@ -104,6 +104,7 @@ type DayRow = {
   board_id: number;
   board_name: string;
   lane_name: string;
+  completed: boolean;
 };
 
 const addDays = (day: string, n: number) => new Date(new Date(`${day}T00:00:00.000Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
@@ -147,14 +148,15 @@ async function bumpRev(tx: Tx, boardId: number, workspaceId: number): Promise<bi
   return rows[0].rev;
 }
 
-const inboxCardCols = {id: true, number: true, title: true, priority: true, dueDate: true, createdAt: true} as const;
-const inboxShape = (r: {id: number; number: number | null; title: string; priority: string; dueDate: Date | null; createdAt: Date}) => ({
+const inboxCardCols = {id: true, number: true, title: true, priority: true, dueDate: true, createdAt: true, completedAt: true} as const;
+const inboxShape = (r: {id: number; number: number | null; title: string; priority: string; dueDate: Date | null; createdAt: Date; completedAt: Date | null}) => ({
   id: r.id,
   number: r.number,
   title: r.title,
   priority: r.priority,
   dueDate: dayOf(r.dueDate),
   createdAt: r.createdAt.toISOString(),
+  completed: r.completedAt !== null,
 });
 
 export const searchRoutes = new Hono()
@@ -272,22 +274,27 @@ export const searchRoutes = new Hono()
     const weekEnd = addDays(today, 7);
     // ONE query: my assignments, in workspaces I am still in, on boards I may see (the visibility rule of
     // boardAccess() in SQL), never another user's Inbox. Index: card_members(user_id, workspace_id, card_id).
+    // Done cards stay (shown ticked, with an Archive button) until archived; they sort last so open cards always fit
+    // the cap. Archiving the card, its lane or its board drops it.
     const rows = await c.var.db.$queryRaw<DayRow[]>`
       SELECT c.id, c.number, c.title, c.priority, c.due_date, c.workspace_id, w.name AS workspace_name,
-             c.board_id, b.name AS board_name, l.name AS lane_name
+             c.board_id, b.name AS board_name, l.name AS lane_name, (c.completed_at IS NOT NULL) AS completed
       FROM card_members cm
       JOIN cards c ON c.id = cm.card_id AND c.workspace_id = cm.workspace_id
       JOIN workspace_members wm ON wm.workspace_id = c.workspace_id AND wm.user_id = ${userId}
       JOIN workspaces w ON w.id = c.workspace_id AND w.archived_at IS NULL
       JOIN boards b ON b.id = c.board_id AND b.workspace_id = c.workspace_id
       JOIN lanes l ON l.id = c.lane_id
-      WHERE cm.user_id = ${userId} AND c.archived_at IS NULL AND l.archived_at IS NULL AND c.completed_at IS NULL AND b.archived_at IS NULL
+      WHERE cm.user_id = ${userId} AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.archived_at IS NULL
         AND (b.inbox_of IS NULL OR b.inbox_of = ${userId})
         AND (wm.role IN ('owner', 'admin') OR b.visibility <> 'private' OR b.inbox_of = ${userId}
              OR EXISTS (SELECT 1 FROM board_members bm WHERE bm.board_id = b.id AND bm.user_id = ${userId}))
-      ORDER BY c.due_date ASC NULLS LAST, c.id DESC
+      ORDER BY (c.completed_at IS NOT NULL), c.due_date ASC NULLS LAST, c.id DESC
       LIMIT ${MY_DAY_CAP + 1}`;
-    const page = rows.slice(0, MY_DAY_CAP);
+    // Done-last only decides which cards fit the cap; the list itself is by due date, so ticking a card leaves it in
+    // place instead of dropping it to the bottom of its group.
+    const time = (d: Date | null) => (d ? d.getTime() : Infinity);
+    const page = rows.slice(0, MY_DAY_CAP).sort((a, b) => time(a.due_date) - time(b.due_date) || b.id - a.id);
     return c.json({
       today,
       truncated: rows.length > MY_DAY_CAP,
@@ -305,6 +312,7 @@ export const searchRoutes = new Hono()
           boardId: r.board_id,
           boardName: r.board_name,
           laneName: r.lane_name,
+          completed: r.completed,
         };
       }),
     });
@@ -318,7 +326,8 @@ export const searchRoutes = new Hono()
     if (!workspaceId) return notFound(c);
     const before = idOf(c.req.valid('query').before);
     // The membership check and, beside it, the board with its cards in ONE query (nested select); my Inbox only
-    // (`inboxOf: userId`). Nothing is answered unless the membership check passes.
+    // (`inboxOf: userId`). Nothing is answered unless the membership check passes. Done cards stay (shown ticked)
+    // until archived or moved, as on My Day.
     const [member, board] = await Promise.all([
       membership(db, workspaceId, userId),
       db.board.findFirst({
@@ -327,7 +336,7 @@ export const searchRoutes = new Hono()
       select: {
         id: true,
         cards: {
-          where: {workspaceId, archivedAt: null, completedAt: null, ...(before ? {id: {lt: before}} : {})},
+          where: {workspaceId, archivedAt: null, ...(before ? {id: {lt: before}} : {})},
           orderBy: {id: 'desc'},
           take: INBOX_PAGE + 1,
           select: inboxCardCols,

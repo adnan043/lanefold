@@ -6,7 +6,7 @@
  *                     header on writes, and ONE shared refresh on `401 token_expired`
  * - `refreshSession`  rotates the refresh cookie (once, shared by every caller
  *                     and, through `navigator.locks`, by every tab)
- * - `logout`          signs this device out, then reloads
+ * - `logout`          signs this device out, then reloads (or, from the app or dashboard, opens sign-in)
  * - `csrfHeader`      `{'x-csrf-token': …}` for a hand-built request
  *
  * The session cookies are HttpOnly: page code can never read them, and must
@@ -162,8 +162,14 @@ export async function siteFetch(input: RequestInfo | URL, init: RequestInit = {}
   return (await refreshSession()) ? send() : res;
 }
 
-/** Signs this device out, then reloads so every page renders signed out. */
+/**
+ * Signs this device out, then reloads so every page renders signed out. From a signed-in-only area
+ * (the app, the dashboard) it goes to the sign-in page WITHOUT `?next=` instead: a reload there
+ * would bounce to `/account/login/?next=<this page>`, and whoever signs in next on this device
+ * (another account, without access to that page) would land on it.
+ */
 export async function logout(): Promise<void> {
   await siteFetch('/site-api/auth/logout', {method: 'POST'}).catch(() => null);
-  window.location.reload();
+  if (/^\/(app|dashboard|portal)(\/|$)/.test(window.location.pathname)) window.location.replace('/account/login/');
+  else window.location.reload();
 }

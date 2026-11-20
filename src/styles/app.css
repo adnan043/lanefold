@@ -3275,6 +3275,15 @@
 
 /* ------------------------------------------------------- overview -- */
 
+.app-page.screen-overview {
+  gap: 1.75rem;
+}
+
+.screen-overview .grid-main-side {
+  column-gap: 1.75rem;
+  margin-top: 0.75rem;
+}
+
 .screen-overview .overview-section {
   display: grid;
   gap: 0.625rem;
@@ -3398,5 +3407,96 @@
   /* On a phone the date badge stays; the priority badge would squeeze the title. */
   .screen-overview .overview-row-end .badge {
     display: none;
+  }
+}
+
+/* ------------------------------------------------------------ billing -- */
+
+.app-page.screen-billing {
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
+}
+
+.screen-billing .billing-count {
+  font-size: 0.8rem;
+}
+
+.screen-billing .billing-pad {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.screen-billing .billing-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.screen-billing .billing-row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.9rem 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.screen-billing .billing-row:first-child {
+  border-top: 0;
+}
+
+.screen-billing .billing-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.screen-billing .billing-row-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-weight: 600;
+}
+
+.screen-billing .billing-row-title > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-billing .billing-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.screen-billing .billing-row-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.screen-billing .billing-row-ok svg {
+  color: var(--success);
+}
+
+.screen-billing .billing-row-over {
+  color: var(--warning);
+  font-weight: 500;
+}
+
+@media (max-width: 560px) {
+  .screen-billing .billing-row {
+    flex-wrap: wrap;
+  }
+
+  .screen-billing .billing-row > .avatar {
+    display: none;
+  }
+
+  .screen-billing .billing-row > button {
+    width: 100%;
   }
 }
