@@ -94,16 +94,6 @@ describe.skipIf(!DATABASE_URL)('card numbers (integration, real Postgres)', () =
     expect(z!.number).toBe(1);
   });
 
-  it('inbox capture is numbered on the inbox and triage gives the card a new number on its board', async () => {
-    await add(laneA, 'A1', 'A2');
-    const made = await ann.post(`/site-api/workspaces/${ws}/inbox/cards`, {title: 'Captured'});
-    const id = made.json.card.id as number;
-    const triage = await ann.post(`/site-api/inbox/cards/${id}/triage`, {laneId: laneA});
-    expect(triage.status).toBe(200);
-    expect(await numberOf(id)).toBe(3);
-    expect(await next(boardA)).toBe(4);
-  });
-
   it('the recurring job and a Trello import chunk allocate from the same counter', async () => {
     const [card] = await add(laneA, 'Weekly');
     await ann.request('PUT', `/site-api/cards/${card!.id}/recurrence`, {frequency: 'daily', interval: 1, startOn: plusDays(0), endsOn: null});

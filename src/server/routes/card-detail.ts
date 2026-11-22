@@ -133,8 +133,8 @@ class Abort extends Error {
     super(why);
   }
 }
-/** Thrown when the storage reservation fails at `complete`: rolls the ready flag back. */
-class OutOfSpace extends Error {}
+/** The workspace went (archived or deleted) while the file was uploading. */
+class WorkspaceGone extends Error {}
 
 const cardCols = {
   id: true,
@@ -1237,7 +1237,7 @@ export const cardDetailRoutes = new Hono()
     return c.json({card: out.card, rev: out.rev, attachment: attachmentShape(out.row, new Map([[userId, '']]), null, userId)}, 201);
   })
 
-  // Step 1: checks (type, plan file size, space, caps), asks the platform for a one-time URL, records an unfinished row.
+  // Step 1: checks (type, plan file size, caps), asks the platform for a one-time URL, records an unfinished row.
   .post('/cards/:id/attachments/upload', uploadBody, withViewer, requireAuth, withDb, noStore, async c => {
     const db = c.var.db;
     const userId = c.var.viewer.id!;
@@ -1248,9 +1248,6 @@ export const cardDetailRoutes = new Hono()
     if (!ent) return notFound(c, 'workspace');
     if (input.size > ent.limits.maxFileBytes) {
       return c.json(problem('file_too_large', "That file is over your plan's file size limit."), 413);
-    }
-    if (ent.usage.storageUsedBytes + input.size > ent.limits.storageQuotaBytes) {
-      return c.json(problem('storage_quota', "This workspace is out of file space. Remove files or upgrade the plan."), 402);
     }
     const [onCard, unfinished] = await Promise.all([
       db.attachment.count({where: {workspaceId: ctx.workspaceId, cardId: ctx.cardId, ready: true}}),
@@ -1280,7 +1277,7 @@ export const cardDetailRoutes = new Hono()
     return c.json({attachmentId: row.id, upload: grant.data.upload}, 201);
   })
 
-  // Step 3: the bytes are stored; confirm, reserve the space with one conditional UPDATE, bump counters.
+  // Step 3: the bytes are stored; confirm, count the bytes used (no storage limit on any plan), bump counters.
   .post('/attachments/:id/complete', withViewer, requireAuth, withDb, noStore, async c => {
     const db = c.var.db;
     const userId = c.var.viewer.id!;
@@ -1298,8 +1295,6 @@ export const cardDetailRoutes = new Hono()
       }
       return c.json(problem(done.code, done.message), done.status === 402 ? 402 : 400);
     }
-    const ent = await getEntitlements(db, ctx.workspaceId);
-    const quota = ent?.limits.storageQuotaBytes ?? 0;
     try {
       const out = await atomically(db, async tx => {
         const rev = await bumpRev(tx, ctx.boardId, ctx.workspaceId);
@@ -1307,8 +1302,8 @@ export const cardDetailRoutes = new Hono()
         if (flipped.count === 0) return 'again' as const; // a second confirm: already counted
         const reserved = await tx.$executeRaw`
           UPDATE workspaces SET storage_used_bytes = storage_used_bytes + ${row.size}
-          WHERE id = ${ctx.workspaceId} AND storage_used_bytes + ${row.size} <= ${quota}`;
-        if (reserved === 0) throw new OutOfSpace();
+          WHERE id = ${ctx.workspaceId}`;
+        if (reserved === 0) throw new WorkspaceGone();
         const fresh = await finish(tx, ctx, userId, rev, 'attachment.added', {attachmentId: row.id, kind: 'file'}, {attachmentCount: {increment: 1}});
         // Like Trello: the first image on a card becomes its cover (one conditional UPDATE, so two uploads never race).
         let coverAttachmentId: number | null = null;
@@ -1324,9 +1319,9 @@ export const cardDetailRoutes = new Hono()
       if (!out?.saved) return notFound(c, 'file');
       return c.json({card: out.card, rev: out.rev, coverAttachmentId: out.coverAttachmentId, attachment: attachmentShape(out.saved, new Map([[userId, '']]), null, userId)});
     } catch (error) {
-      if (!(error instanceof OutOfSpace)) throw error;
+      if (!(error instanceof WorkspaceGone)) throw error;
       await Promise.all([deleteFile(c.req.url, row.fileId), db.attachment.deleteMany({where: {id: row.id, workspaceId: ctx.workspaceId, ready: false}})]);
-      return c.json(problem('storage_quota', 'This workspace is out of file space. Remove files or upgrade the plan.'), 402);
+      return c.json(problem('not_found', 'That workspace is no longer available.'), 404);
     }
   })
 

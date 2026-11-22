@@ -17,7 +17,6 @@ export const SHORTCUT_GROUPS: {title: MessageKey; items: {keys: string[]; label:
     items: [
       {keys: ['g', 'b'], label: 'shortcuts.goBoards'},
       {keys: ['g', 'm'], label: 'shortcuts.goMyDay'},
-      {keys: ['g', 'i'], label: 'shortcuts.goInbox'},
       {keys: ['g', 'c'], label: 'shortcuts.goChat'},
     ],
   },

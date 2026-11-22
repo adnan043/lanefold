@@ -168,15 +168,6 @@ describe.skipIf(!DATABASE_URL)('card move / copy to another board (integration, 
     expect((await db.card.findUniqueOrThrow({where: {id: card}})).boardId).toBe(boardA);
   });
 
-  it('never targets a personal Inbox', async () => {
-    const made = await ann.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'In my inbox'});
-    expect(made.status).toBe(201);
-    const inboxLane = (await db.lane.findFirstOrThrow({where: {boardId: made.json.boardId}})).id;
-    expect((await moveTo(ann, card, made.json.boardId, inboxLane)).status).toBe(404);
-    expect((await copyTo(ann, card, made.json.boardId, inboxLane)).status).toBe(404);
-    expect((await db.card.findUniqueOrThrow({where: {id: card}})).boardId).toBe(boardA);
-  });
-
   it('a refused copy (full lane) leaves the target board rev and lane unchanged', async () => {
     await db.lane.update({where: {id: laneB}, data: {cardCount: 500}});
     const before = await rev(boardB);

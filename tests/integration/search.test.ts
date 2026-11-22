@@ -63,8 +63,6 @@ describe.skipIf(!DATABASE_URL)('search, my day and inbox (integration, real Post
 
   it("another workspace's user gets 404", async () => {
     expect((await search(bob, 'roadmap')).status).toBe(404);
-    expect((await bob.get(`/site-api/workspaces/${wsA}/inbox`)).status).toBe(404);
-    expect((await bob.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'x'})).status).toBe(404);
   });
 
   it('keeps private boards and their cards out of results for members without a seat', async () => {
@@ -108,57 +106,9 @@ describe.skipIf(!DATABASE_URL)('search, my day and inbox (integration, real Post
     expect(((await ann.get('/site-api/my-day')).json.items as J[]).map(i => i.title)).not.toContain('Late');
   });
 
-  it('captures into a personal Inbox board, one per user, and nobody else can reach it', async () => {
-    expect((await ann.get(`/site-api/workspaces/${wsA}/inbox`)).json.boardId).toBeNull();
-    const first = await ann.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'Buy stamps'});
-    expect(first.status).toBe(201);
-    const [a, b] = await Promise.all([
-      ann.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'Two'}),
-      ann.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'Three'}),
-    ]);
-    expect([a.status, b.status]).toEqual([201, 201]);
-    const inboxBoards = await db.board.findMany({where: {inboxOf: await userId('ann@example.test')}, select: {id: true, visibility: true}});
-    expect(inboxBoards).toHaveLength(1);
-    const mine = await ann.get(`/site-api/workspaces/${wsA}/inbox`);
-    expect((mine.json.items as J[]).map(i => i.title).sort()).toEqual(['Buy stamps', 'Three', 'Two']);
-    // Not in the boards list, not for others: not even for an owner of the workspace.
-    const list = await ann.get(`/site-api/workspaces/${wsA}/boards`);
-    expect((list.json.items as J[]).map(x => x.name).sort()).toEqual(['Roadmap', 'Roadmap secret']);
-    expect((await mia.get(`/site-api/workspaces/${wsA}/inbox`)).json.items).toEqual([]);
-    expect((await mia.get(`/site-api/boards/${inboxBoards[0]!.id}`)).status).toBe(404);
-    expect((await search(mia, 'stamps')).json.cards).toHaveLength(0);
-    expect((await search(ann, 'stamps')).json.cards).toHaveLength(1);
-    // A viewer may not capture; validation answers 422.
-    expect((await vic.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'x'})).status).toBe(403);
-    expect((await ann.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: '  '})).status).toBe(422);
-  });
-
-  it('triages an Inbox card into a board lane the visitor may write; others get 404', async () => {
-    const card = (await ann.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'Sort me'})).json.card.id as number;
-    const miaCard = (await mia.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'Mia private'})).json.card.id as number;
-    // Someone else's Inbox card, and another workspace's user: 404.
-    expect((await mia.post(`/site-api/inbox/cards/${card}/triage`, {laneId: openLane})).status).toBe(404);
-    expect((await bob.post(`/site-api/inbox/cards/${card}/triage`, {laneId: openLane})).status).toBe(404);
-    // A lane of a board Mia has no seat on: 404, and the card stays in her Inbox.
-    expect((await mia.post(`/site-api/inbox/cards/${miaCard}/triage`, {laneId: privLane})).status).toBe(404);
-    // A viewer-only board role: 403 (Mia is made a viewer on the open board).
-    await db.boardMember.create({data: {boardId: openBoard, userId: await userId('mia@example.test'), workspaceId: wsA, role: 'viewer'}});
-    expect((await mia.post(`/site-api/inbox/cards/${miaCard}/triage`, {laneId: openLane})).status).toBe(403);
-    expect((await mia.get(`/site-api/workspaces/${wsA}/inbox`)).json.items).toHaveLength(1);
-    // The owner: moves it, counters and the Inbox follow.
-    const ok = await ann.post(`/site-api/inbox/cards/${card}/triage`, {laneId: openLane});
-    expect(ok.status).toBe(200);
-    expect((await ann.get(`/site-api/workspaces/${wsA}/inbox`)).json.items).toEqual([]);
-    const board = await ann.get(`/site-api/boards/${openBoard}`);
-    expect(board.json.lanes[0].cards.map((c: J) => c.title)).toEqual(['Sort me']);
-    expect(board.json.lanes[0].cardCount).toBe(1);
-    // The Inbox board's delta (another tab) reports the card as gone.
-    const inbox = await db.board.findFirstOrThrow({where: {workspaceId: wsA, inboxOf: await userId('ann@example.test')}, select: {id: true}});
-    const delta = (await ann.get(`/site-api/boards/${inbox.id}/changes?since=0`)).json;
-    expect(delta.removed).toEqual([card]);
-    expect(delta.cards).toEqual([]);
-    // A card already on a board is not an Inbox card any more.
-    expect((await ann.post(`/site-api/inbox/cards/${card}/triage`, {laneId: openLane})).status).toBe(404);
-    expect((await ann.post(`/site-api/inbox/cards/${card}/triage`, {laneId: 'x'})).status).toBe(422);
+  it('the personal Inbox is gone: its routes are 404 for everyone', async () => {
+    expect((await ann.get(`/site-api/workspaces/${wsA}/inbox`)).status).toBe(404);
+    expect((await ann.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'x'})).status).toBe(404);
+    expect((await ann.post(`/site-api/inbox/cards/1/triage`, {laneId: openLane})).status).toBe(404);
   });
 });

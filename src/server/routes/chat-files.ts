@@ -33,7 +33,8 @@ const UNSENT_MAX = 20;
 /** A platform refusal that can never succeed: the unfinished row goes at once. */
 const TERMINAL_UPLOAD_CODES = new Set(['E_FILE_TYPE', 'E_FILE_EMPTY', 'E_FILE_TOO_LARGE', 'E_FILE_SIZE_MISMATCH', 'E_FILE_TYPE_MISMATCH', 'E_FILE_NOT_FOUND', 'E_UPLOAD_TOKEN', 'E_UPLOAD_EXPIRED', 'E_STORAGE_LIMIT']);
 
-class OutOfSpace extends Error {}
+/** The workspace went (archived or deleted) while the file was uploading. */
+class WorkspaceGone extends Error {}
 
 const uploadBody = validator('json', (value, c) => {
   const v = objectOf(value) ?? {};
@@ -88,9 +89,6 @@ export const chatFileRoutes = new Hono()
     if (!ent) return notFound(c, 'workspace');
     if (ent.readOnly) return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
     if (input.size > ent.limits.maxFileBytes) return c.json(problem('file_too_large', "That file is over your plan's file size limit."), 413);
-    if (ent.usage.storageUsedBytes + input.size > ent.limits.storageQuotaBytes) {
-      return c.json(problem('storage_quota', 'This workspace is out of file space. Remove files or upgrade the plan.'), 402);
-    }
     if (unfinished >= UNFINISHED_PER_HOUR || unsent >= UNSENT_MAX) {
       c.header('Retry-After', '60');
       return c.json(problem('rate_limited', 'Too many files waiting to be sent. Send or remove some first.'), 429);
@@ -107,7 +105,7 @@ export const chatFileRoutes = new Hono()
     return c.json({attachmentId: row.id, upload: grant.data.upload}, 201);
   })
 
-  // 3. The bytes are stored: the platform confirms, then the space is reserved with ONE conditional UPDATE.
+  // 3. The bytes are stored: the platform confirms, then the bytes are counted (no storage limit on any plan).
   .post('/chat/attachments/:id/complete', withViewer, requireAuth, withDb, noStore, async c => {
     const me = c.var.viewer.id!;
     const {db} = c.var;
@@ -122,32 +120,28 @@ export const chatFileRoutes = new Hono()
       return c.json(problem(done.code, done.message), done.status === 402 ? 402 : 400);
     }
     // Still in the workspace (removed since asking for the link: the file never counts against its space).
-    const [ent, member] = await Promise.all([
-      getEntitlements(db, row.workspaceId),
-      db.workspaceMember.findFirst({where: {workspaceId: row.workspaceId, userId: me}, select: {userId: true}}),
-    ]);
+    const member = await db.workspaceMember.findFirst({where: {workspaceId: row.workspaceId, userId: me}, select: {userId: true}});
     if (!member) {
       await db.attachment.deleteMany({where: {id: row.id, uploadedBy: me, ready: false}});
       return notFound(c, 'file');
     }
-    const quota = ent?.limits.storageQuotaBytes ?? 0;
     try {
       const flipped = await db.$transaction(async tx => {
         const {count} = await tx.attachment.updateMany({where: {id: row.id, uploadedBy: me, ready: false}, data: {ready: true}});
         if (count === 0) return false; // a second confirm: already counted
         const reserved = await tx.$executeRaw`
           UPDATE workspaces SET storage_used_bytes = storage_used_bytes + ${row.size}
-          WHERE id = ${row.workspaceId} AND archived_at IS NULL AND storage_used_bytes + ${row.size} <= ${quota}`;
-        if (reserved === 0) throw new OutOfSpace();
+          WHERE id = ${row.workspaceId} AND archived_at IS NULL`;
+        if (reserved === 0) throw new WorkspaceGone();
         return true;
       });
       if (flipped) forgetEntitlements(db, row.workspaceId);
       return c.json({attachment: chatFileShape(row)});
     } catch (error) {
-      if (!(error instanceof OutOfSpace)) throw error;
+      if (!(error instanceof WorkspaceGone)) throw error;
       // Not ready, so no bytes to give back; the AFTER DELETE trigger queues the stored file for deletion.
       await db.attachment.deleteMany({where: {id: row.id, uploadedBy: me, ready: false}});
-      return c.json(problem('storage_quota', 'This workspace is out of file space. Remove files or upgrade the plan.'), 402);
+      return c.json(problem('not_found', 'That workspace is no longer available.'), 404);
     }
   })
 

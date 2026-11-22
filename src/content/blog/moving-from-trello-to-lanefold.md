@@ -17,7 +17,7 @@ If your team is on Trello and you are curious about Lanefold, you do not have to
 | List | Lane |
 | Card | Card |
 
-The structure is familiar. What is different is around it: built-in chat, a My Day screen across all your boards, an Inbox, and a keyboard-first way of working.
+The structure is familiar. What is different is around it: built-in chat, a My Day screen across all your boards, and a keyboard-first way of working.
 
 ## Importing a Trello board
 

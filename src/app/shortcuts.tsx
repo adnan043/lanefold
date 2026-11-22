@@ -10,10 +10,10 @@ import './shortcuts.css';
 /**
  * Keyboard shortcuts (this file is EAGER and tiny: the listener only; the help dialog is `shortcuts-dialog.tsx`, lazy). Ignored while typing (inputs, textareas, selects, editable text), while a dialog is open
  * (except `?` toggling its own) and with Ctrl / Cmd / Alt held (Cmd K belongs to the palette).
- * `g` then b / m / i / c goes Boards / My Day / Inbox / Chat within 1.5 s. `n` presses the screen's first "add"
+ * `g` then b / m / c goes Boards / My Day / Chat within 1.5 s. `n` presses the screen's first "add"
  * button (a card on a board, a board on the list). `/` opens the palette.
  */
-const GO: Record<string, string> = {b: '/boards', m: '/my-day', i: '/inbox', c: '/chat'};
+const GO: Record<string, string> = {b: '/boards', m: '/my-day', c: '/chat'};
 
 function typing(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;

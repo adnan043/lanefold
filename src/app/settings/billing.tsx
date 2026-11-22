@@ -13,10 +13,12 @@ import {queryOptions} from '@tanstack/react-query';
 
 type Plan = {
   plan: string;
-  maxMembers: number;
+  rank: number;
+  /** null = unlimited. */
+  maxMembers: number | null;
+  maxBoards: number | null;
   maxFileBytes: number;
-  storageQuotaBytes: number;
-  maxFlows: number;
+  flowRunsPerMonth: number | null;
   auditLog: boolean;
   purchasable: boolean;
 };
@@ -24,8 +26,9 @@ type WorkspaceBilling = {
   workspace: {id: number; name: string; plan: string};
   entitlements: {
     plan: string;
-    limits: {maxMembers: number; maxFileBytes: number; storageQuotaBytes: number};
-    usage: {members: number; storageUsedBytes: number};
+    limits: {maxMembers: number; maxBoards: number; maxFileBytes: number; flowRunsPerMonth: number | null};
+    unlimited: {members: boolean; boards: boolean; flowRuns: boolean};
+    usage: {members: number; boards: number; flowRuns: number};
     features: {auditLog: boolean};
     readOnly: boolean;
     inGrace: boolean;
@@ -54,14 +57,15 @@ function TestMode({mode}: {mode: 'test' | 'live' | null | undefined}) {
   );
 }
 
-function Usage({label, used, limit, text}: {label: string; used: number; limit: number; text: string}) {
+/** One limit and its use; an unlimited one shows the count only (no bar). */
+function Usage({label, used, limit, text}: {label: string; used: number; limit: number | null; text: string}) {
   return (
     <div className="lf-usage">
       <div className="lf-usage-head">
         <span>{label}</span>
         <span className="muted">{text}</span>
       </div>
-      <ProgressBar label={label} value={used} max={Math.max(1, limit)} />
+      {limit !== null && <ProgressBar label={label} value={used} max={Math.max(1, limit)} />}
     </div>
   );
 }
@@ -109,24 +113,25 @@ export function Billing() {
           {!data.entitlements.upgradeUi && <Notice tone="info">{t('billing.freeForAll')}</Notice>}
           <Card title={t('billing.currentPlan')} actions={<Badge tone="brand">{planName(t, data.entitlements.plan)}</Badge>}>
             <div className="lf-form">
-              <Usage
-                label={t('billing.members')}
-                used={data.entitlements.usage.members}
-                limit={data.entitlements.limits.maxMembers}
-                text={t('billing.usedOf', {
-                  used: formatNumber(data.entitlements.usage.members),
-                  limit: formatNumber(data.entitlements.limits.maxMembers),
-                })}
-              />
-              <Usage
-                label={t('billing.storage')}
-                used={data.entitlements.usage.storageUsedBytes}
-                limit={data.entitlements.limits.storageQuotaBytes}
-                text={t('billing.usedOf', {
-                  used: formatBytes(data.entitlements.usage.storageUsedBytes),
-                  limit: formatBytes(data.entitlements.limits.storageQuotaBytes),
-                })}
-              />
+              {(
+                [
+                  ['billing.members', data.entitlements.usage.members, data.entitlements.unlimited.members ? null : data.entitlements.limits.maxMembers],
+                  ['billing.boards', data.entitlements.usage.boards, data.entitlements.unlimited.boards ? null : data.entitlements.limits.maxBoards],
+                  ['billing.flowRuns', data.entitlements.usage.flowRuns, data.entitlements.limits.flowRunsPerMonth],
+                ] as const
+              ).map(([key, used, limit]) => (
+                <Usage
+                  key={key}
+                  label={t(key)}
+                  used={used}
+                  limit={limit}
+                  text={
+                    limit === null
+                      ? t('billing.usedUnlimited', {used: formatNumber(used)})
+                      : t('billing.usedOf', {used: formatNumber(used), limit: formatNumber(limit)})
+                  }
+                />
+              ))}
               <dl className="lf-settings-list">
                 <dt>{t('billing.maxFile')}</dt>
                 <dd>{formatBytes(data.entitlements.limits.maxFileBytes)}</dd>
@@ -146,7 +151,7 @@ export function Billing() {
 
 function bigger(data: WorkspaceBilling): Plan[] {
   const now = data.plans.find(plan => plan.plan === data.entitlements.plan);
-  return data.plans.filter(plan => plan.purchasable && (!now || plan.storageQuotaBytes > now.storageQuotaBytes));
+  return data.plans.filter(plan => plan.purchasable && (!now || plan.rank > now.rank));
 }
 
 function UpgradeDrawer({open, onClose, workspaceId, data}: {open: boolean; onClose: () => void; workspaceId: number; data: WorkspaceBilling}) {
@@ -178,7 +183,12 @@ function UpgradeDrawer({open, onClose, workspaceId, data}: {open: boolean; onClo
     onClose();
   };
   const summary = (plan: Plan) =>
-    t('billing.planSummary', {members: plan.maxMembers, file: formatBytes(plan.maxFileBytes), storage: formatBytes(plan.storageQuotaBytes)});
+    t('billing.planSummary', {
+      members: plan.maxMembers ?? t('billing.unlimited'),
+      boards: plan.maxBoards ?? t('billing.unlimited'),
+      file: formatBytes(plan.maxFileBytes),
+      runs: plan.flowRunsPerMonth ?? t('billing.unlimited'),
+    });
 
   return (
     <Drawer

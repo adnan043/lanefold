@@ -419,16 +419,4 @@ describe.skipIf(!DATABASE_URL)('chat (integration, real Postgres)', () => {
     // The messages page carries the same counter.
     expect((await ann.get(`/site-api/conversations/${channel}/messages`)).json.editRev).toBe(r0 + 6);
   });
-
-  it("in someone's Inbox chat, nobody else can be mentioned (not even workspace owners)", async () => {
-    expect((await mia.post(`/site-api/workspaces/${wsA}/inbox/cards`, {title: 'note to self'})).status).toBe(201);
-    const inbox = await db.board.findFirstOrThrow({where: {inboxOf: ids.mia!}, select: {id: true}});
-    const chat = (await mia.post(`/site-api/boards/${inbox.id}/conversation`, {})).json.conversation.id;
-    const sent = await send(mia, chat, 'hey @ann and @mia', undefined, {mentions: [ids.ann!, ids.mia!]});
-    expect(sent.status).toBe(201);
-    expect(sent.json.message.mentions).toEqual([ids.mia!]);
-    expect(await db.notification.count({where: {userId: ids.ann!, kind: 'message_mention'}})).toBe(0);
-    // And the owner still cannot open it.
-    expect((await ann.get(`/site-api/conversations/${chat}/messages`)).status).toBe(404);
-  });
 });

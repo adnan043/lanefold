@@ -13,7 +13,7 @@ import '../styles/home.css';
 
 import HeroVisual from '../components/home/HeroVisual.astro';
 import Icon, {type IconName} from '../components/home/Icon.astro';
-import {HOME, PLAN_DEFAULTS, PRICING, withName} from '../content/site';
+import {countCell, HOME, PLAN_DEFAULTS, PRICING, withName} from '../content/site';
 import Base from '../layouts/Base.astro';
 import {staticContext} from '../server/page';
 
@@ -314,8 +314,8 @@ const [wide, tall, ...small] = HOME.features.items;
                 </div>
                 <p>{plan.blurb}</p>
                 <p class="home-plan-limit">
-                  <strong>{PLAN_DEFAULTS[plan.key as keyof typeof PLAN_DEFAULTS].members}</strong> members ·{' '}
-                  <strong>{PLAN_DEFAULTS[plan.key as keyof typeof PLAN_DEFAULTS].storageGb} GB</strong> storage
+                  <strong>{countCell(PLAN_DEFAULTS[plan.key as keyof typeof PLAN_DEFAULTS].members)}</strong> members ·{' '}
+                  <strong>{countCell(PLAN_DEFAULTS[plan.key as keyof typeof PLAN_DEFAULTS].boards)}</strong> boards
                 </p>
               </li>
             ))

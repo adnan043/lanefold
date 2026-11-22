@@ -47,7 +47,7 @@ export async function sweepEndedMemberships(db: PrismaClient): Promise<{moved: n
             WHERE m.workspace_id = r.id
               AND (m.status IN ('active', 'trialing', 'past_due') OR m.access_ends_at > now())
               AND (${!config.production}::boolean OR m.mode = 'live')
-            ORDER BY p.storage_quota_bytes DESC LIMIT 1), 'free') AS to_plan
+            ORDER BY p.rank DESC LIMIT 1), 'free') AS to_plan
           FROM unnest(${rows.map(r => r.id)}::int[], ${rows.map(r => r.plan)}::text[]) AS r(id, plan)
         ) t
         JOIN plan_limits pl ON pl.plan = t.to_plan
@@ -94,9 +94,9 @@ export async function sweepGrace(db: PrismaClient): Promise<{checked: number}> {
       WHERE w.id > ${cursor}
         AND (
           (s.billing_mode = 'PAID' AND w.grace_until IS NULL
-            AND (w.member_count > p.max_members OR w.storage_used_bytes > p.storage_quota_bytes))
+            AND w.member_count > p.max_members)
           OR (w.grace_until IS NOT NULL
-            AND (s.billing_mode = 'FREE_FOR_ALL' OR (w.member_count <= p.max_members AND w.storage_used_bytes <= p.storage_quota_bytes))))
+            AND (s.billing_mode = 'FREE_FOR_ALL' OR w.member_count <= p.max_members)))
       ORDER BY w.id LIMIT ${PAGE_SIZE}`;
     if (rows.length) {
       const ids = rows.map(r => r.id);

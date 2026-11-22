@@ -157,7 +157,7 @@ export const db = createDb(DATABASE_URL || 'postgresql://unused@localhost/unused
 
 export async function resetDatabase() {
   await db.$executeRawUnsafe(
-    'TRUNCATE "pending_sign_ups", "users", "user_roles", "refresh_tokens", "password_resets", "email_verifications", "email_changes", "recovery_codes", "sign_in_codes", "login_attempts", "audit_events", "job_deliveries", "user_profiles", "workspaces", "activity", "notifications", "saved_filters", "comments", "attachments", "card_links", "messages", "conversations", "payment_events", "orders", "memberships" RESTART IDENTITY CASCADE'
+    'TRUNCATE "pending_sign_ups", "users", "user_roles", "refresh_tokens", "password_resets", "email_verifications", "email_changes", "recovery_codes", "sign_in_codes", "login_attempts", "audit_events", "job_deliveries", "user_profiles", "workspaces", "activity", "notifications", "saved_filters", "comments", "attachments", "card_links", "messages", "conversations", "payment_events", "orders", "memberships", "flow_run_counts" RESTART IDENTITY CASCADE'
   );
   await db.$executeRawUnsafe('DELETE FROM "roles" WHERE NOT "is_system"');
   await db.$executeRawUnsafe('UPDATE "auth_state" SET "owner_user_id" = NULL, "owner_env_id" = NULL');

@@ -205,12 +205,13 @@ describe.skipIf(!DATABASE_URL)('flows (integration, real Postgres)', () => {
     await db.appSettings.update({where: {id: 1}, data: {billingMode: 'PAID'}});
     await invalidateAppSettings();
     try {
-      await db.$executeRaw`UPDATE plan_limits SET max_flows = 0 WHERE plan = 'free'`;
+      await db.$executeRaw`UPDATE plan_limits SET flow_runs_per_month = 0 WHERE plan = 'free'`;
       expect((await flow({trigger: {kind: 'card_created'}, actions: [{type: 'comment', body: 'x'}]})).status).toBe(403);
       const card = await addCard();
       expect((await cardRow(card)).commentCount).toBe(0);
       expect((await ann.delete(`/site-api/flows/${made}`)).status).toBe(200);
     } finally {
+      await db.$executeRaw`UPDATE plan_limits SET flow_runs_per_month = 250 WHERE plan = 'free'`;
       await db.appSettings.update({where: {id: 1}, data: {billingMode: 'FREE_FOR_ALL'}});
       await invalidateAppSettings();
     }

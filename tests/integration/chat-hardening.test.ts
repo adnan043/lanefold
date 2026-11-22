@@ -33,7 +33,7 @@ describe.skipIf(!DATABASE_URL)('chat hardening (integration, real Postgres)', ()
     b.post(`/site-api/conversations/${conv}/messages`, {body, clientId: `c-${Math.random().toString(36).slice(2, 12)}`, ...extra});
 
   const makeReadOnly = async () => {
-    await db.workspace.update({where: {id: wsA}, data: {storageUsedBytes: 9_000_000_000_000, graceUntil: new Date(Date.now() - 60_000)}});
+    await db.workspace.update({where: {id: wsA}, data: {memberCount: 11, graceUntil: new Date(Date.now() - 60_000)}});
   };
 
   it('editing keeps linked cards and mentions when the fields are absent, replaces them when present', async () => {

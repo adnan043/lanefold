@@ -492,6 +492,7 @@ model Workspace {
   invites   WorkspaceInvite[]
   joinLinks WorkspaceJoinLink[]
   boards    Board[]
+  flowRunCounts FlowRunCount[]
   templates CardTemplate[]
 
   @@index([createdBy])
@@ -1272,8 +1273,16 @@ model PlanLimit {
   plan              String   @id @db.VarChar(16)
   maxMembers        Int      @map("max_members")
   maxFileBytes      BigInt   @map("max_file_bytes")
+  /// Not read any more (no storage limit on any plan): dropped in a later release.
   storageQuotaBytes BigInt   @map("storage_quota_bytes")
+  /// Not read any more (flows are limited by runs a month): dropped in a later release.
   maxFlows          Int      @default(0) @map("max_flows")
+  /// Open boards a workspace may have; null = unlimited (behind SAFETY_CAPS.maxBoards).
+  maxBoards         Int?     @map("max_boards")
+  /// Flow runs (one flow on one card) a workspace may use per calendar month (UTC); null = unlimited.
+  flowRunsPerMonth  Int?     @map("flow_runs_per_month")
+  /// Plan order, smallest first: an upgrade is a plan with a higher rank.
+  rank              Int      @default(0) @db.SmallInt
   /// Price key (payments catalogue) a monthly checkout uses; empty for free.
   priceKeyMonthly   String   @default("") @map("price_key_monthly") @db.VarChar(63)
   auditLog          Boolean  @default(false) @map("audit_log")
@@ -1368,6 +1377,18 @@ model CardDependency {
 
 /// One automation rule of a board (Phase 7): trigger, optional conditions, up to 3 actions.
 /// `config` is validated field by field on every write (src/lib/flows.ts) and again before it runs; nothing is filtered on it.
+/// Flow runs a workspace used in one calendar month (UTC); the engine reserves runs here in one statement.
+model FlowRunCount {
+  workspaceId Int      @map("workspace_id")
+  month       DateTime @db.Date
+  runs        Int      @default(0)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, month])
+  @@map("flow_run_counts")
+}
+
 model Flow {
   id          Int       @id @default(autoincrement())
   boardId     Int       @map("board_id")

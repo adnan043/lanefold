@@ -4,6 +4,7 @@ import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
 import {notify} from '../notifications';
 import {type FlowAction, type FlowConfig, MAX_FLOWS_PER_BOARD, readConfig, type TriggerKind} from './config';
+import {releaseFlowRuns, reserveFlowRuns} from './runs';
 
 /**
  * The Flows engine (Phase 7). A small, bounded interpreter that runs AFTER a card write has committed
@@ -69,24 +70,11 @@ async function loadBoard(db: PrismaClient, boardId: number, workspaceId: number)
   return b;
 }
 
-/**
- * The highest flow id of a workspace that is within its plan's flow count (its OLDEST `maxFlows` flows, by id), or null
- * when every flow is. After a downgrade the newer flows over the count stop running (and can't be edited or switched
- * on) until some are deleted or the plan grows; the count is otherwise checked only on create. One read on
- * flows(workspace_id, id).
- */
-export async function lastFlowInPlan(db: Pick<PrismaClient, '$queryRaw'>, workspaceId: number, maxFlows: number): Promise<number | null> {
-  if (maxFlows <= 0) return 0;
-  const [row] = await db.$queryRaw<{id: number}[]>`
-    SELECT id FROM flows WHERE workspace_id = ${workspaceId} ORDER BY id OFFSET ${maxFlows - 1} LIMIT 1`;
-  return row ? row.id : null;
-}
-
-/** null = flows may not run here; otherwise the flow-id cutoff of lastFlowInPlan (null inside = no cutoff). */
-async function mayRun(db: PrismaClient, workspaceId: number): Promise<{upTo: number | null} | null> {
+/** null = flows may not run here; otherwise the plan's flow runs a month (null inside = unlimited). */
+async function mayRun(db: PrismaClient, workspaceId: number): Promise<{runLimit: number | null} | null> {
   const ent = await getEntitlements(db, workspaceId);
   if (!ent || !ent.features.flows || ent.readOnly) return null;
-  return {upTo: await lastFlowInPlan(db, workspaceId, ent.limits.maxFlows)};
+  return {runLimit: ent.limits.flowRunsPerMonth};
 }
 
 /** Of `ids`, the active workspace members who can see this board. */
@@ -288,39 +276,55 @@ export async function applyFlow(
   cardIds: readonly number[],
   run: Run,
   onMove?: (event: FlowEvent) => Promise<void>,
-  deadline?: number
+  deadline?: number,
+  runLimit: number | null = null
 ): Promise<number | null> {
   const config = readConfig(flow.config);
   if (!config) return null;
   const fresh = cardIds.filter(cardId => !run.seen.has(`${flow.id}:${cardId}`));
   if (fresh.length === 0) return null;
   const pass = await passing(db, board, fresh, config);
+  const runnable = pass ? fresh.filter(cardId => pass.has(cardId)).length : fresh.length;
+  // The month's flow runs (one per card this flow acts on), reserved in one statement; what is not used goes back.
+  let left = await reserveFlowRuns(db, board.workspaceId, runnable, runLimit);
+  let spent = false;
   const memo = new Map<string, Promise<unknown>>();
-  for (const cardId of fresh) {
-    const key = `${flow.id}:${cardId}`;
-    if (run.seen.has(key)) continue;
-    if (deadline !== undefined && Date.now() >= deadline) return cardId;
-    if (pass && !pass.has(cardId)) {
-      run.seen.add(key);
-      continue;
-    }
-    if (run.budget.left < config.actions.length) return cardId;
-    run.seen.add(key);
-    const ctx: Ctx = {db, board, cardId, flow: {id: flow.id, name: flow.name}, kind, run, memo};
-    for (const action of config.actions) {
-      // A chained flow (onMove) may have spent the shared budget part-way through this card.
-      if (run.budget.left <= 0) break;
-      run.budget.left--;
-      try {
-        const out = await perform(ctx, action);
-        if (out && out.moved && onMove) await onMove({kind: 'card_moved', workspaceId: board.workspaceId, boardId: board.id, cardId, laneId: out.moved, fromLaneId: out.from});
-      } catch (err) {
-        // Words for the log only: never the card text, never a secret.
-        console.error(`flow ${flow.id} ${action.type} failed: ${(err as Error).message}`);
+  try {
+    for (const cardId of fresh) {
+      const key = `${flow.id}:${cardId}`;
+      if (run.seen.has(key)) continue;
+      if (deadline !== undefined && Date.now() >= deadline) return cardId;
+      if (pass && !pass.has(cardId)) {
+        run.seen.add(key);
+        continue;
+      }
+      if (run.budget.left < config.actions.length) return cardId;
+      // The plan's runs for this month are used up: the rest waits for next month (like Trello's command runs).
+      if (left <= 0) {
+        spent = true;
         break;
       }
+      left--;
+      run.seen.add(key);
+      const ctx: Ctx = {db, board, cardId, flow: {id: flow.id, name: flow.name}, kind, run, memo};
+      for (const action of config.actions) {
+        // A chained flow (onMove) may have spent the shared budget part-way through this card.
+        if (run.budget.left <= 0) break;
+        run.budget.left--;
+        try {
+          const out = await perform(ctx, action);
+          if (out && out.moved && onMove) await onMove({kind: 'card_moved', workspaceId: board.workspaceId, boardId: board.id, cardId, laneId: out.moved, fromLaneId: out.from});
+        } catch (err) {
+          // Words for the log only: never the card text, never a secret.
+          console.error(`flow ${flow.id} ${action.type} failed: ${(err as Error).message}`);
+          break;
+        }
+      }
     }
+  } finally {
+    if (left > 0) await releaseFlowRuns(db, board.workspaceId, left).catch(() => undefined);
   }
+  if (spent) console.warn(`flows: workspace ${board.workspaceId} has used this month's flow runs`);
   return null;
 }
 
@@ -343,9 +347,8 @@ export async function runFlows(db: PrismaClient, events: readonly FlowEvent[], r
       mayRun(db, first.workspaceId),
       loadBoard(db, first.boardId, first.workspaceId),
     ]);
-    if (found.length === 0 || !allowed || !board) return;
-    const flows = allowed.upTo === null ? found : found.filter(f => f.id <= allowed.upTo!);
-    if (flows.length === 0) return;
+    const flows = found;
+    if (flows.length === 0 || !allowed || !board) return;
     const next = {...run, depth: run.depth + 1};
     let skipped = 0;
     for (let at = 0; at < events.length; at += MAX_EVENT_CARDS) {
@@ -367,7 +370,7 @@ export async function runFlows(db: PrismaClient, events: readonly FlowEvent[], r
         const wanted = config.trigger.laneId;
         const ids = batch.filter(e => lane.has(e.cardId) && (!wanted || e.laneId === wanted) && e.fromLaneId !== e.laneId).map(e => e.cardId);
         if (ids.length === 0) continue;
-        const stoppedAt = await applyFlow(db, board, flow, first.kind, ids, run, ev => runFlows(db, [ev], next));
+        const stoppedAt = await applyFlow(db, board, flow, first.kind, ids, run, ev => runFlows(db, [ev], next), undefined, allowed.runLimit);
         if (stoppedAt !== null) skipped += ids.length - ids.indexOf(stoppedAt);
       }
     }

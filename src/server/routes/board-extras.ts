@@ -5,7 +5,7 @@ import {generateKeyBetween} from 'fractional-indexing';
 
 import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
-import {getEntitlements} from '../entitlements';
+import {boardLimitMessage, boardLimitReached, getEntitlements} from '../entitlements';
 import {boardAccess, membership, notFound, rankOf, boardReachable} from '../workspaces';
 import {idOf, invalid, objectOf, textField} from '../validation';
 import {seatFilter} from './card-detail';
@@ -292,6 +292,7 @@ export const boardExtraRoutes = new Hono()
     const name = (c.req.valid('json').name ?? `${source.name.slice(0, 73)} (copy)`).slice(0, 80);
     const board = await db.$transaction(async tx => {
       if (await boardCapReached(tx, workspaceId, userId)) return null;
+      if (ent && (await boardLimitReached(tx, workspaceId, ent.limits.maxBoards))) return 'board_limit' as const;
       const row = await tx.board.create({
         data: {
           workspaceId,
@@ -313,6 +314,7 @@ export const boardExtraRoutes = new Hono()
       await tx.activity.create({data: {workspaceId, boardId: row.id, actorId: userId, kind: 'board.created', meta: {name, copiedFrom: boardId}}});
       return row;
     });
+    if (board === 'board_limit') return c.json(problem('board_limit_reached', boardLimitMessage(ent?.limits.maxBoards ?? 0)), 409);
     if (!board) {
       c.header('Retry-After', '600');
       return c.json(problem('board_rate_limited', 'You created many boards in the last hour. Try again later.'), 429);

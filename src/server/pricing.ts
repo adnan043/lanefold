@@ -3,6 +3,7 @@ import type {PrismaClient} from '../generated/prisma/client';
 import {cache} from '../platform/cache';
 import {listPrices, type Price} from '../platform/payments';
 import {type BillingMode, getAppSettings} from './entitlements';
+import {UNLIMITED_MEMBERS} from '../lib/plan-limits';
 
 /**
  * What the public pricing page shows (SPEC Phase 9): the plan limits in `plan_limits`, read at request time
@@ -11,20 +12,21 @@ import {type BillingMode, getAppSettings} from './entitlements';
  * A price appears only when the plan's sandbox/live price key exists in the platform catalogue (the owner
  * decides the amounts); the key itself never leaves the server.
  */
-// v2: entries now carry `maxFlows`; a new key so an older cached entry (without it) is never read.
-export const PUBLIC_PLANS_KEY = 'pricing:plans:v2';
+// v3: Trello-like limits (boards, flow runs a month, no storage); a new key so an older cached entry is never read.
+export const PUBLIC_PLANS_KEY = 'pricing:plans:v3';
 const PUBLIC_PLANS_TTL = 86_400;
 
 const MB = 1024 * 1024;
-const GB = 1024 * MB;
 
 export interface PublicPlan {
   plan: string;
-  maxMembers: number;
+  /** null = unlimited. */
+  maxMembers: number | null;
+  /** Open boards; null = unlimited. */
+  maxBoards: number | null;
   fileMb: number;
-  storageGb: number;
-  /** Flows (automations) the workspace may keep; 0 = not on this plan. */
-  maxFlows: number;
+  /** Flow runs (automations) a month; null = unlimited, 0 = not on this plan. */
+  flowRunsPerMonth: number | null;
   auditLog: boolean;
   /** The price key the plan is sold under ('' = not for sale). Server only: stripped before sending. */
   priceKey: string;
@@ -42,16 +44,16 @@ export interface PublicPricing {
 export async function loadPublicPlans(db: PrismaClient): Promise<PublicPlan[]> {
   return cache.getOrSet(PUBLIC_PLANS_KEY, PUBLIC_PLANS_TTL, async () => {
     const rows = await db.planLimit.findMany({
-      select: {plan: true, maxMembers: true, maxFileBytes: true, storageQuotaBytes: true, maxFlows: true, auditLog: true, priceKeyMonthly: true},
-      orderBy: {storageQuotaBytes: 'asc'},
+      select: {plan: true, maxMembers: true, maxBoards: true, maxFileBytes: true, flowRunsPerMonth: true, auditLog: true, priceKeyMonthly: true},
+      orderBy: {rank: 'asc'},
       take: 10,
     });
     return rows.map(row => ({
       plan: row.plan,
-      maxMembers: row.maxMembers,
+      maxMembers: row.maxMembers >= UNLIMITED_MEMBERS ? null : row.maxMembers,
+      maxBoards: row.maxBoards,
       fileMb: Math.round(Number(row.maxFileBytes) / MB),
-      storageGb: Math.round((Number(row.storageQuotaBytes) / GB) * 100) / 100,
-      maxFlows: row.maxFlows,
+      flowRunsPerMonth: row.flowRunsPerMonth,
       auditLog: row.auditLog,
       priceKey: row.priceKeyMonthly,
     }));

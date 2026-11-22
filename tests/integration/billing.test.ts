@@ -29,7 +29,7 @@ async function setRoles(email: string, ...slugs: string[]) {
   await db.userRole.createMany({data: roles.map(role => ({userId: id, roleId: role.id}))});
 }
 
-const PRO = {maxMembers: 50, maxFileBytes: 104857600, storageQuotaBytes: 21474836480, maxFlows: 10, auditLog: false};
+const PRO = {maxMembers: 500, maxBoards: null, maxFileBytes: 262144000n, flowRunsPerMonth: 1000, auditLog: false};
 
 describe.skipIf(!DATABASE_URL)('billing (integration, real Postgres)', () => {
   let admin: Browser;
@@ -119,7 +119,7 @@ describe.skipIf(!DATABASE_URL)('billing (integration, real Postgres)', () => {
 
     expect((await run(membership(ref, 'pro-monthly', 'active'))).changed).toBe(true);
     expect(await plan()).toBe('pro');
-    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).memberLimit).toBe(50);
+    expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).memberLimit).toBe(500);
     expect((await run(membership(ref, 'pro-monthly', 'active'))).changed).toBe(false);
     expect((await run(membership(ref, 'team-monthly', 'active'))).changed).toBe(true);
     expect(await plan()).toBe('team');
@@ -139,19 +139,21 @@ describe.skipIf(!DATABASE_URL)('billing (integration, real Postgres)', () => {
 
   it('plan limits: owners only, validated, lowering starts the grace clock', async () => {
     expect((await admin.get('/site-api/billing/plans')).status).toBe(403);
-    expect((await member.request('PATCH', '/site-api/billing/plans/pro', {...PRO, maxFileMb: 100, storageGb: 20})).status).toBe(403);
+    expect((await member.request('PATCH', '/site-api/billing/plans/pro', {maxMembers: null, maxBoards: null, maxFileMb: 100, flowRunsPerMonth: 1000, auditLog: false})).status).toBe(403);
     const list = await staff.get('/site-api/billing/plans');
     expect(list.status).toBe(200);
     expect((list.json.plans as {plan: string}[]).map(p => p.plan).sort()).toEqual(['free', 'pro', 'team']);
 
-    const body = {maxMembers: 1, maxFileMb: 50, storageGb: 5, maxFlows: 3, auditLog: true};
+    const body = {maxMembers: 1, maxBoards: 5, maxFileMb: 50, flowRunsPerMonth: 3, auditLog: true};
     expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxMembers: 0})).status).toBe(422);
-    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 2048})).status).toBe(422);
-    // An admin may go past the old 100 MB, up to the app's 2047 MB per file (attachments.size is an integer).
-    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 2047})).status).toBe(200);
-    // Up to 10 TB of storage, on the top plan (storage must grow free < pro < team, so pro can't take it).
-    expect((await staff.request('PATCH', '/site-api/billing/plans/team', {...body, storageGb: 10240})).status).toBe(200);
-    expect((await staff.request('PATCH', '/site-api/billing/plans/team', {...body, storageGb: 10241})).status).toBe(422);
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxBoards: 0})).status).toBe(422);
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, flowRunsPerMonth: -1})).status).toBe(422);
+    // The per-file ceiling is 250 MB (Trello's paid limit).
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 251})).status).toBe(422);
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 250})).status).toBe(200);
+    // A missing limit is not "unlimited": only an explicit null is.
+    const {maxBoards: _drop, ...noBoards} = body;
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', noBoards)).status).toBe(422);
     expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, auditLog: 'yes'})).status).toBe(422);
     expect((await staff.request('PATCH', '/site-api/billing/plans/ghost', body)).status).toBe(404);
 
@@ -247,17 +249,17 @@ describe.skipIf(!DATABASE_URL)('billing (integration, real Postgres)', () => {
     }
   });
 
-  it('plan limits: storage must strictly grow free < pro < team', async () => {
-    const GB = 1024 ** 3;
-    const [free, team] = await Promise.all([db.planLimit.findUniqueOrThrow({where: {plan: 'free'}}), db.planLimit.findUniqueOrThrow({where: {plan: 'team'}})]);
-    const body = {maxMembers: 50, maxFileMb: 100, maxFlows: 10, auditLog: false};
-    const patch = (storageGb: number) => staff.request('PATCH', '/site-api/billing/plans/pro', {...body, storageGb});
-    const atFree = await patch(Math.max(1, Math.floor(Number(free.storageQuotaBytes) / GB)));
-    expect(atFree.status).toBe(422);
-    expect(JSON.stringify(atFree.json)).toContain('storageGb');
-    expect((await patch(Math.ceil(Number(team.storageQuotaBytes) / GB))).status).toBe(422);
-    expect((await db.planLimit.findUniqueOrThrow({where: {plan: 'pro'}})).storageQuotaBytes).toBe(BigInt(PRO.storageQuotaBytes));
-    expect((await patch(20)).status).toBe(200);
+  it('plan limits: null is unlimited (members kept at the safety cap, boards and runs NULL); plans list in rank order', async () => {
+    const saved = await staff.request('PATCH', '/site-api/billing/plans/pro', {maxMembers: null, maxBoards: null, maxFileMb: 100, flowRunsPerMonth: null, auditLog: false});
+    expect(saved.status).toBe(200);
+    expect(saved.json.plan).toMatchObject({plan: 'pro', maxMembers: null, maxBoards: null, flowRunsPerMonth: null, maxFileBytes: 100 * 1024 * 1024});
+    const row = await db.planLimit.findUniqueOrThrow({where: {plan: 'pro'}});
+    expect([row.maxMembers, row.maxBoards, row.flowRunsPerMonth]).toEqual([500, null, null]);
+    const list = await staff.get('/site-api/billing/plans');
+    expect((list.json.plans as {plan: string}[]).map(p => p.plan)).toEqual(['free', 'pro', 'team']);
+    const plans = list.json.plans as Record<string, unknown>[];
+    for (const plan of plans) expect(plan).not.toHaveProperty('storageQuotaBytes');
+    expect(plans[0]).toMatchObject({maxMembers: 10, maxBoards: 10, flowRunsPerMonth: 250});
   });
 
   it('a workspace over its limit with no grace clock gets one when its entitlements are read', async () => {

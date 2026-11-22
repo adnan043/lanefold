@@ -29,7 +29,7 @@ export type FlowT = {
   problems: string[];
 };
 
-export type FlowsAnswer = {items: FlowT[]; limit: {max: number; used: number; boardMax: number}; enabled: boolean};
+export type FlowsAnswer = {items: FlowT[]; limit: {runsPerMonth: number | null; runsUsed: number; boardMax: number}; enabled: boolean};
 export type FlowInput = {name: string; enabled?: boolean; trigger: FlowTrigger; conditions: {labelId?: number | null}; actions: FlowAction[]};
 
 export const TRIGGER_KINDS = ['card_created', 'card_moved', 'daily_due'] as const;

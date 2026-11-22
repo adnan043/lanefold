@@ -128,7 +128,7 @@ const priceParts = (key: string) => {
           </thead>
           <tbody>
             {
-              (['members', 'file', 'storage', 'flows'] as const).map(row => (
+              (['members', 'boards', 'file', 'flows'] as const).map(row => (
                 <tr>
                   <th scope="row">{PRICING.compareHeaders[row]}</th>
                   {plans.map(plan => <td class:list={{featured: plan.featured}}>{plan.limits[row]}</td>)}

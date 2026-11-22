@@ -52,7 +52,6 @@ type RS = {
   chatUnsent: string; // a chat file the workspace owner uploaded and has not sent yet
   invite: string;
   link: string;
-  inboxCard: string;
   flow: string;
   template: string; // a card template authored by the workspace owner
 };
@@ -297,7 +296,7 @@ const TABLE: Row[] = [
   row('GET /billing/plans', 'perm', {path: () => '/billing/plans'}),
   row('PATCH /billing/plans/:plan', 'perm', {
     path: () => '/billing/plans/free',
-    body: () => ({maxMembers: 5, maxFileMb: 5, storageGb: 1, maxFlows: 1, auditLog: false}),
+    body: () => ({maxMembers: 5, maxBoards: 5, maxFileMb: 5, flowRunsPerMonth: 1, auditLog: false}),
     lenient: true,
   }),
   row('GET /billing/workspaces', 'perm', {path: () => '/billing/workspaces'}),
@@ -342,9 +341,6 @@ const TABLE: Row[] = [
   // ---- search.ts ---------------------------------------------------------------------------
   row('GET /workspaces/:id/search', 'resource', {path: r => `/workspaces/${r.ws}/search?q=zqx`}),
   row('GET /my-day', 'self'),
-  row('GET /workspaces/:id/inbox', 'resource', {path: r => `/workspaces/${r.ws}/inbox`}),
-  row('POST /workspaces/:id/inbox/cards', 'resource', {path: r => `/workspaces/${r.ws}/inbox/cards`, body: () => ({title: 'x'}), min: 'member'}),
-  row('POST /inbox/cards/:id/triage', 'resource', {path: r => `/inbox/cards/${r.inboxCard}/triage`, body: r => ({laneId: Number(r.lane1)}), min: 'member', below: [403, 404]}),
 
   // ---- saved-filters.ts: personal; an id that is not mine (here a card id) is a 404 for everybody ---------------
   row('GET /boards/:id/saved-filters', 'resource', {path: r => `/boards/${r.board}/saved-filters`, priv: true}),
@@ -563,9 +559,6 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
         data: {workspaceId, tokenHash: `${tag.toLowerCase()}${'1'.repeat(64)}`.slice(0, 64), role: 'viewer', expiresAt: new Date(Date.now() + 86_400_000), maxUses: 5, createdBy: ownerId},
         select: {id: true},
       });
-      await owner.post(`/site-api/workspaces/${workspaceId}/inbox/cards`, {title: `ZQX${tag} inbox`});
-      const inbox = await db.card.findFirst({where: {workspaceId, board: {inboxOf: ownerId}}, select: {id: true}});
-      if (!inbox) throw new Error(`no inbox card for ${tag}`);
       const flow = await db.flow.create({
         data: {
           boardId,
@@ -603,7 +596,6 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
         chatUnsent: String(chatUnsent.id),
         invite: String(invite.id),
         link: String(link.id),
-        inboxCard: String(inbox.id),
       };
     };
 
@@ -916,13 +908,7 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
       expect(await db.conversationMember.count({where: {userId: f.u.bob, workspaceId: Number(f.pub.ws)}})).toBe(0);
     });
 
-    it('B’s lane, ids and cursors do nothing in A’s inbox, list and board routes', async () => {
-      const triage = await ann.post(`/site-api/inbox/cards/${f.pub.inboxCard}/triage`, {laneId: Number(f.other.lane1)});
-      expect(triage.status, 'laneId of B').toBeGreaterThanOrEqual(400);
-      expect((await db.card.findUniqueOrThrow({where: {id: Number(f.pub.inboxCard)}, select: {workspaceId: true}})).workspaceId).toBe(Number(f.pub.ws));
-      const bobsInbox = await ann.post(`/site-api/inbox/cards/${f.other.inboxCard}/triage`, {laneId: Number(f.pub.lane1)});
-      expect(bobsInbox.status, 'inbox card of B').toBe(404);
-
+    it('B’s lane, ids and cursors do nothing in A’s list and board routes', async () => {
       for (const q of [`before=${f.other.card}`, `after=${f.other.card}`, `before=${f.other.lane1}&after=${f.other.card2}`]) {
         const res = await ann.get(`/site-api/lanes/${f.pub.lane1}/cards?${q}`);
         expect(res.status, q).toBeLessThan(500);
@@ -930,7 +916,6 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
       }
       for (const path of [
         `/workspaces/${f.pub.ws}/boards?before=${f.other.board}`,
-        `/workspaces/${f.pub.ws}/inbox?before=${f.other.inboxCard}`,
         `/workspaces/${f.pub.ws}/members?after=${f.u.bob}`,
         `/workspaces/${f.pub.ws}/search?q=zqx&before=${f.other.card}`,
         `/conversations/${f.pub.conv}/messages?before=${f.other.msg}`,
@@ -987,7 +972,7 @@ describe.skipIf(!DATABASE_URL)('authz matrix (integration, real Postgres)', () =
       expect(await db.label.count({where: {boardId: Number(f.other.board), name: 'ZQXALPHA injected'}})).toBe(0);
     });
 
-    it('search, my day and the inbox never reach across workspaces or into the private board', async () => {
+    it('search and my day never reach across workspaces or into the private board', async () => {
       for (const who of [vic, nick]) {
         for (const path of [`/workspaces/${f.pub.ws}/search?q=zqx`, '/my-day', `/workspaces/${f.pub.ws}/conversations`, '/chat/pulse', '/notifications', `/workspaces/${f.pub.ws}/boards`]) {
           const res = await who.get(`/site-api${path}`);

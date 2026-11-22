@@ -273,17 +273,6 @@ describe.skipIf(!DATABASE_URL)('Lanefold journey (integration, real Postgres)', 
     expect((day.json.items as J[]).map(i => [i.title, i.group])).toEqual([['Plan the launch', 'today']]);
     expect((await bob.get(`/site-api/my-day?today=${today}`)).json.items).toEqual([]);
 
-    // Inbox: capture, then triage into a lane.
-    const captured = await ann.post(`/site-api/workspaces/${ws}/inbox/cards`, {title: 'Call the printer'});
-    expect(captured.status).toBe(201);
-    const inbox = await ann.get(`/site-api/workspaces/${ws}/inbox`);
-    expect((inbox.json.items as J[]).map(i => i.title)).toEqual(['Call the printer']);
-    expect(((await bob.get(`/site-api/workspaces/${ws}/inbox`)).json.items as J[])).toEqual([]);
-    const triaged = await ann.post(`/site-api/inbox/cards/${captured.json.card.id}/triage`, {laneId: lane3});
-    expect(triaged.status).toBe(200);
-    expect((await ann.get(`/site-api/workspaces/${ws}/inbox`)).json.items).toEqual([]);
-    expect(await laneTitles(lane3)).toEqual(['Call the printer']);
-    expect((await boardLanes())[2]!.cardCount).toBe(1);
   });
 
   it('starts a sandbox checkout from the free plan (admins only) and the hook upgrades the workspace', async () => {
@@ -300,7 +289,7 @@ describe.skipIf(!DATABASE_URL)('Lanefold journey (integration, real Postgres)', 
     const ref = `${ids.ann}:${ws}`;
     expect((await inRequestScope(() => applyWorkspacePlan(membership(ref, 'pro-monthly', 'active')))).changed).toBe(true);
     const row = await db.workspace.findUniqueOrThrow({where: {id: ws}});
-    expect([row.plan, row.memberLimit, row.graceUntil]).toEqual(['pro', 50, null]);
+    expect([row.plan, row.memberLimit, row.graceUntil]).toEqual(['pro', 500, null]);
     expect(((await ann.get(`/site-api/workspaces/${ws}/billing`)).json.entitlements as J).plan).toBe('pro');
 
     // The cap is lifted: the turned-away person joins with the same link.
@@ -341,7 +330,6 @@ describe.skipIf(!DATABASE_URL)('Lanefold journey (integration, real Postgres)', 
       await ann.post(`/site-api/lanes/${lane1}/cards`, {title: 'Too late'}),
       await ann.post(`/site-api/cards/${cards[0]!.id}/comments`, {body: 'too late'}),
       await ann.post(`/site-api/workspaces/${ws}/join-links`, {}),
-      await ann.post(`/site-api/workspaces/${ws}/inbox/cards`, {title: 'Too late'}),
     ];
     for (const res of refused) {
       expect(res.status).toBe(409);

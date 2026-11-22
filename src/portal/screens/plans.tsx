@@ -2,33 +2,38 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {useState} from 'react';
 
 import {api, ApiError, read} from '../api';
-import {FILE_CEILING_LABEL, FILE_CEILING_MB, STORAGE_CEILING_GB} from '../../lib/file-limits';
+import {FILE_CEILING_LABEL, FILE_CEILING_MB} from '../../lib/file-limits';
+import {MAX_BOARDS_CAP, MAX_FLOW_RUNS_INPUT, UNLIMITED_MEMBERS} from '../../lib/plan-limits';
 import {formatBytes, PlanBadge, planLabel} from '../billing-shared';
 import {type PlanRow, planLimitsQuery} from '../queries';
 import {Badge, Button, Card, Checkbox, type Column, DataTable, Drawer, EmptyState, ErrorNote, Field, Notice, PageHeader, useForm, useToast} from '../ui';
 
 const MB = 1024 * 1024;
-const GB = 1024 * MB;
 
 const range = (min: number, max: number, what: string) => (value: string) =>
-  /^\d{1,6}$/.test(value.trim()) && Number(value) >= min && Number(value) <= max ? null : `${what}: a whole number from ${min} to ${max}.`;
+  /^\d{1,7}$/.test(value.trim()) && Number(value) >= min && Number(value) <= max ? null : `${what}: a whole number from ${min} to ${max}.`;
+/** Empty = unlimited; otherwise the same range. */
+const optional = (min: number, max: number, what: string) => (value: string) => (value.trim() === '' ? null : range(min, max, what)(value));
 
-/** The SAME limits `src/server/routes/billing.ts` enforces (the safety caps in entitlements.ts; file size: src/lib/file-limits.ts). */
+/** The SAME limits `src/server/routes/billing.ts` enforces (src/lib/plan-limits.ts; file size: src/lib/file-limits.ts). */
 const RULES = {
-  maxMembers: [range(1, 500, 'Members')],
+  maxMembers: [optional(1, UNLIMITED_MEMBERS - 1, 'Members (empty = unlimited)')],
+  maxBoards: [optional(1, MAX_BOARDS_CAP - 1, 'Open boards (empty = unlimited)')],
   maxFileMb: [range(1, FILE_CEILING_MB, 'File size in MB')],
-  storageGb: [range(1, STORAGE_CEILING_GB, 'Storage in GB')],
-  maxFlows: [range(0, 200, 'Flows (0 turns them off)')],
+  flowRunsPerMonth: [optional(0, MAX_FLOW_RUNS_INPUT, 'Automation runs a month (empty = unlimited, 0 = off)')],
 };
 
-type Values = {maxMembers: string; maxFileMb: string; storageGb: string; maxFlows: string; auditLog: boolean};
+type Values = {maxMembers: string; maxBoards: string; maxFileMb: string; flowRunsPerMonth: string; auditLog: boolean};
+const text = (n: number | null) => (n === null ? '' : String(n));
 const valuesOf = (plan: PlanRow): Values => ({
-  maxMembers: String(plan.maxMembers),
+  maxMembers: text(plan.maxMembers),
+  maxBoards: text(plan.maxBoards),
   maxFileMb: String(Math.round(plan.maxFileBytes / MB)),
-  storageGb: String(Math.round(plan.storageQuotaBytes / GB)),
-  maxFlows: String(plan.maxFlows),
+  flowRunsPerMonth: text(plan.flowRunsPerMonth),
   auditLog: plan.auditLog,
 });
+const numberOrNull = (value: string) => (value.trim() === '' ? null : Number(value));
+const countCell = (n: number | null) => (n === null ? 'Unlimited' : n.toLocaleString('en-US'));
 
 /** `/dashboard/plans`: what each plan includes (`site:plans:manage`). */
 export function PlanLimits() {
@@ -36,7 +41,7 @@ export function PlanLimits() {
   const toast = useToast();
   const plans = useQuery(planLimitsQuery);
   const [editing, setEditing] = useState<PlanRow | null>(null);
-  const form = useForm<Values>({maxMembers: '', maxFileMb: '', storageGb: '', maxFlows: '', auditLog: false}, RULES);
+  const form = useForm<Values>({maxMembers: '', maxBoards: '', maxFileMb: '', flowRunsPerMonth: '', auditLog: false}, RULES);
 
   const save = useMutation({
     mutationFn: (values: Values) =>
@@ -44,12 +49,12 @@ export function PlanLimits() {
         api.billing.plans[':plan'].$patch({
           param: {plan: editing!.plan},
           json: {
-            maxMembers: Number(values.maxMembers),
+            maxMembers: numberOrNull(values.maxMembers),
+            maxBoards: numberOrNull(values.maxBoards),
             maxFileMb: Number(values.maxFileMb),
-            storageGb: Number(values.storageGb),
-            maxFlows: Number(values.maxFlows),
+            flowRunsPerMonth: numberOrNull(values.flowRunsPerMonth),
             auditLog: values.auditLog,
-            // The route READS maxFileMb / storageGb (what the form edits) but Hono types the body as the validator's
+            // The route READS maxFileMb (what the form edits) but Hono types the body as the validator's
             // OUTPUT (bytes), so the typed client needs this cast; the wire shape is the one above.
           } as never,
         })
@@ -78,10 +83,10 @@ export function PlanLimits() {
 
   const columns: Column<PlanRow>[] = [
     {key: 'plan', header: 'Plan', cell: row => <PlanBadge plan={row.plan} />},
-    {key: 'members', header: 'Members', width: 'shrink', cell: row => row.maxMembers},
+    {key: 'members', header: 'Members', width: 'shrink', cell: row => countCell(row.maxMembers)},
+    {key: 'boards', header: 'Open boards', width: 'shrink', cell: row => countCell(row.maxBoards)},
     {key: 'file', header: 'Largest file', width: 'shrink', hideOnMobile: true, cell: row => formatBytes(row.maxFileBytes)},
-    {key: 'storage', header: 'Storage', width: 'shrink', cell: row => formatBytes(row.storageQuotaBytes)},
-    {key: 'flows', header: 'Flows', width: 'shrink', hideOnMobile: true, cell: row => row.maxFlows},
+    {key: 'flows', header: 'Automation runs / month', width: 'shrink', hideOnMobile: true, cell: row => (row.flowRunsPerMonth === 0 ? 'Off' : countCell(row.flowRunsPerMonth))},
     {key: 'audit', header: 'Audit log', width: 'shrink', hideOnMobile: true, cell: row => (row.auditLog ? <Badge tone="success">On</Badge> : <span className="muted">Off</span>)},
     {
       key: 'actions',
@@ -99,7 +104,7 @@ export function PlanLimits() {
     <div className="app-page">
       <PageHeader title="Plan limits" description="What each plan includes. Applies to every workspace on that plan, at once." />
       <Notice tone="info">
-        Lowering a limit never deletes anything: workspaces now over it get the grace period, then become read-only until they shrink or upgrade.
+        Limits work like Trello: members, open boards, file size and automation runs a month. There is no storage limit. Lowering the member limit never deletes anything: workspaces now over it get the grace period, then become read-only until they shrink or upgrade. Over the board limit, a workspace keeps its boards but cannot open new ones.
       </Notice>
       <Card flush>
         <DataTable
@@ -132,19 +137,19 @@ export function PlanLimits() {
         }>
         <div className="form-stack">
           <div className="form-grid">
-            <Field id="f-maxMembers" label="Members" error={form.error('maxMembers')}>
+            <Field id="f-maxMembers" label="Members" hint="Leave empty for unlimited." error={form.error('maxMembers')}>
               <input {...form.field('maxMembers')} inputMode="numeric" autoComplete="off" placeholder="e.g. 10" />
             </Field>
-            <Field id="f-maxFlows" label="Flows" hint="0 turns flows off." error={form.error('maxFlows')}>
-              <input {...form.field('maxFlows')} inputMode="numeric" autoComplete="off" placeholder="e.g. 5" />
+            <Field id="f-maxBoards" label="Open boards" hint="Leave empty for unlimited." error={form.error('maxBoards')}>
+              <input {...form.field('maxBoards')} inputMode="numeric" autoComplete="off" placeholder="e.g. 10" />
             </Field>
           </div>
           <div className="form-grid">
             <Field id="f-maxFileMb" label="Largest file (MB)" hint={`Up to ${FILE_CEILING_MB} (${FILE_CEILING_LABEL}).`} error={form.error('maxFileMb')}>
-              <input {...form.field('maxFileMb')} inputMode="numeric" autoComplete="off" placeholder="e.g. 25" />
+              <input {...form.field('maxFileMb')} inputMode="numeric" autoComplete="off" placeholder="e.g. 10" />
             </Field>
-            <Field id="f-storageGb" label="Storage (GB)" hint={`Up to ${STORAGE_CEILING_GB} (10 TB).`} error={form.error('storageGb')}>
-              <input {...form.field('storageGb')} inputMode="numeric" autoComplete="off" placeholder="e.g. 5" />
+            <Field id="f-flowRunsPerMonth" label="Automation runs a month" hint="Empty for unlimited, 0 turns Flows off." error={form.error('flowRunsPerMonth')}>
+              <input {...form.field('flowRunsPerMonth')} inputMode="numeric" autoComplete="off" placeholder="e.g. 250" />
             </Field>
           </div>
           <Checkbox

@@ -101,10 +101,12 @@ export const sessionsQuery = queryOptions({
 export type PaymentsStatus = {ready: boolean; mode: 'test' | 'live'} | null;
 export type PlanInfo = {
   plan: string;
-  maxMembers: number;
+  rank: number;
+  /** null = unlimited (members, boards, flow runs a month). */
+  maxMembers: number | null;
+  maxBoards: number | null;
   maxFileBytes: number;
-  storageQuotaBytes: number;
-  maxFlows: number;
+  flowRunsPerMonth: number | null;
   auditLog: boolean;
   purchasable: boolean;
 };
@@ -124,8 +126,9 @@ export type WorkspaceBilling = {
   entitlements: {
     plan: string;
     billingMode: 'PAID' | 'FREE_FOR_ALL';
-    limits: {maxMembers: number; maxFileBytes: number; storageQuotaBytes: number; maxFlows: number};
-    usage: {members: number; storageUsedBytes: number};
+    limits: {maxMembers: number; maxBoards: number; maxFileBytes: number; flowRunsPerMonth: number | null};
+    unlimited: {members: boolean; boards: boolean; flowRuns: boolean};
+    usage: {members: number; boards: number; flowRuns: number};
     overLimit: boolean;
     inGrace: boolean;
     graceUntil: string | null;

@@ -29,7 +29,7 @@ When you want opinions on a specific card, attach it to a message with # instead
 ## Keep the noise down
 
 - Mute channels you only need occasionally.
-- Use the Inbox to see what needs you, instead of watching every channel.
+- Use My Day and your notifications to see what needs you, instead of watching every channel.
 - Prefer one message with the full question over five short ones.
 
 Chat should shorten the path to a decision. The board is where the decision ends up.
