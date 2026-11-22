@@ -744,6 +744,7 @@
   "errors.use_leave": "Usa Salir del espacio de trabajo para quitarte tú mismo.",
   "errors.conflict": "Esto cambió mientras trabajabas. Recarga e inténtalo de nuevo.",
   "errors.already_subscribed": "Este espacio de trabajo ya tiene este plan o uno mayor. Actualiza la página para verlo.",
+  "errors.removed_by_admin": "Un administrador del tablero quitó a esta persona del tablero. Solo un administrador del tablero puede volver a añadirla.",
   "errors.would_lower_role": "Solo un administrador del tablero puede convertir a un miembro del espacio de trabajo en lector en este tablero.",
   "plan.limitBody": "Tu plan no lo permite. Mira los planes para mejorar.",
   "plan.seePlans": "Ver planes",

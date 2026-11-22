@@ -1440,8 +1440,8 @@ export const chatRoutes = new Hono()
     const own = row.senderId === me;
     if (row.kind === 'system') return c.json(problem('forbidden', 'You do not have access to this.'), 403);
     if (!own && !a.canModerate) return notFound(c, 'message');
-    // An archived channel is read-only: not even its authors change it.
-    if (a.archived && a.kind === 'channel') return c.json(problem('forbidden', 'You do not have access to this.'), 403);
+    // An archived channel, or an archived board's chat, is read-only: not even its authors change it.
+    if (a.archived) return c.json(problem('forbidden', 'You do not have access to this.'), 403);
     // Deleting your OWN message always works (it heals a read-only workspace); a moderator's delete does not.
     if (!own) {
       const blocked = readOnlyAnswer(c, ent);

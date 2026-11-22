@@ -749,7 +749,8 @@ export const importExportRoutes = new Hono()
             // The importer owns the row; the text says who wrote it in Trello. Nobody is impersonated.
             authorId: userId,
             bodyMd: `Imported comment by ${cm.by}${cm.at ? ` on ${cm.at.slice(0, 10)}` : ''}:\n\n${cm.text}`.slice(0, 5000),
-            ...(cm.at ? {createdAt: new Date(cm.at)} : {}),
+            // Never in the future: a future date would count against the importer's comment rate limit until it passed.
+            ...(cm.at ? {createdAt: new Date(Math.min(Date.parse(cm.at), now.getTime()))} : {}),
           }))
         );
         if (comments.length) await tx.comment.createMany({data: comments});

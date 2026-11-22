@@ -3,6 +3,7 @@ import {validator} from 'hono/validator';
 
 import type {PrismaClient} from '../../generated/prisma/client';
 import {audit} from '../../platform/auth';
+import {sha256Hex} from '../../platform/auth/encoding';
 import {cache} from '../../platform/cache';
 import {config} from '../../platform/config';
 import {problem, requireAuth, requirePermission, withDb, withViewer} from '../../platform/guards';
@@ -211,9 +212,13 @@ export const billingRoutes = new Hono()
       if (ways.ok && ways.data.length > 1) return c.json({choose: true as const, gateways: ways.data});
       if (ways.ok && ways.data.length === 1) chosen = ways.data[0]!.slug;
     }
+    // One open checkout per workspace, plan and way to pay for an hour, whoever starts it: two admins (or one admin
+    // back after the platform's own 2-minute key) get the SAME checkout, never a second subscription billed alongside.
+    const idempotencyKey = (await sha256Hex(`plan-checkout:${workspaceId}:${target.plan}:${chosen ?? ''}:${Math.floor(Date.now() / 3_600_000)}`)).slice(0, 48);
     const started = await createCheckout(c.req.url, {
       price,
       quantity: 1,
+      idempotencyKey,
       successPath: '/thanks/',
       cancelPath: '/app/settings/billing',
       // The hook reads the workspace from `customerRef` (`<userId>:<workspaceId>`), set ONLY here.
@@ -228,7 +233,9 @@ export const billingRoutes = new Hono()
       return c.json(problem(started.code.toLowerCase(), started.message), status);
     }
     c.header('Cache-Control', 'private, no-store');
-    const {id, mode, embedded} = started.data;
+    const {id, mode, embedded, paid} = started.data;
+    // Already paid under this key (another admin just paid it): the thanks page, nothing new is started.
+    if (paid) return c.json({choose: false as const, redirectUrl: `/thanks/?checkout=${encodeURIComponent(id)}`, id, mode, embedded: null});
     return c.json({choose: false as const, redirectUrl: `/checkout/?id=${encodeURIComponent(id)}`, id, mode, embedded: embedded ?? null});
   })
 

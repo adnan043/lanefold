@@ -122,6 +122,24 @@ describe.skipIf(!DATABASE_URL)('board members (integration, real Postgres)', () 
     expect((await del(ann, benId)).status).toBe(404);
   });
 
+  it('someone a board admin removed is let back in only by a board admin, never by a member who may add people', async () => {
+    await put(ann, benId, 'member');
+    await put(ann, cyId, 'viewer');
+    await ann.request('PATCH', `/site-api/boards/${board}/sharing`, {memberInvites: 'members'});
+    expect((await del(ann, cyId)).status).toBe(200);
+    // ben may add people, but not undo the admin's removal: by the role menu or by an invite to cy's address.
+    const again = await put(ben, cyId, 'viewer');
+    expect(again.status).toBe(403);
+    expect(again.json.error).toBe('removed_by_admin');
+    const invite = await ben.post(`/site-api/boards/${board}/invites`, {email: 'cy@example.test', role: 'viewer'});
+    expect(invite.status).toBe(403);
+    expect((await cy.get(`/site-api/boards/${board}`)).status).toBe(404);
+    // A board admin can, and that lifts the removal.
+    expect((await put(ann, cyId, 'viewer')).status).toBe(200);
+    expect((await cy.get(`/site-api/boards/${board}`)).status).toBe(200);
+    expect(await db.$queryRaw<unknown[]>`SELECT 1 FROM board_removals WHERE board_id = ${board} AND user_id = ${cyId}`).toHaveLength(0);
+  });
+
   it('anyone can leave; on a workspace board leaving keeps workspace access', async () => {
     await put(ann, benId, 'viewer');
     const left = await del(ben, benId);

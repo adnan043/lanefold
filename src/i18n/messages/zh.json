@@ -736,6 +736,7 @@
   "errors.use_leave": "请使用“退出工作区”来移除自己。",
   "errors.conflict": "你操作期间内容已发生变化。请刷新后重试。",
   "errors.already_subscribed": "此工作区已有此方案或更高级的方案。请刷新页面查看。",
+  "errors.removed_by_admin": "看板管理员已将此人移出看板。只有看板管理员才能将其重新添加。",
   "errors.would_lower_role": "只有看板管理员才能在此看板上将工作区成员设为查看者。",
   "plan.limitBody": "你的套餐不支持此操作。请查看套餐以升级。",
   "plan.seePlans": "查看套餐",

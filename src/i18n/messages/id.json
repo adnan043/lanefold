@@ -736,6 +736,7 @@
   "errors.use_leave": "Gunakan Keluar dari workspace untuk mengeluarkan diri Anda.",
   "errors.conflict": "Itu berubah saat Anda bekerja. Muat ulang dan coba lagi.",
   "errors.already_subscribed": "Ruang kerja ini sudah memiliki paket ini atau yang lebih besar. Muat ulang halaman untuk melihatnya.",
+  "errors.removed_by_admin": "Admin papan telah mengeluarkan orang ini dari papan. Hanya admin papan yang dapat menambahkannya kembali.",
   "errors.would_lower_role": "Hanya admin papan yang dapat menjadikan anggota ruang kerja sebagai pemirsa di papan ini.",
   "plan.limitBody": "Paket Anda tidak mengizinkan itu. Lihat paket untuk meningkatkan.",
   "plan.seePlans": "Lihat paket",

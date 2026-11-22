@@ -152,7 +152,7 @@ export const cardMoveBoardRoutes = new Hono()
             INSERT INTO card_board_exits (workspace_id, board_id, card_id, rev)
             VALUES (${workspaceId}::int, ${srcBoard}::int, ${ctx.cardId}::int, ${srcRev}::bigint)
           )
-          UPDATE lanes SET card_count = card_count - 1, updated_rev = ${srcRev}::bigint
+          UPDATE lanes SET card_count = GREATEST(card_count - 1, 0), updated_rev = ${srcRev}::bigint
           WHERE id = ${from}::int AND board_id = ${srcBoard}::int AND workspace_id = ${workspaceId}::int`;
 
         await tx.cardFieldValue.deleteMany({where: {cardId: ctx.cardId, workspaceId}});
@@ -215,6 +215,11 @@ export const cardMoveBoardRoutes = new Hono()
     if (ctx.card.archivedAt) return notFound(c, 'card');
     const {boardId, laneId} = c.req.valid('json');
     const {workspaceId} = ctx;
+    // A private board's (or an Inbox's) card leaving it: only someone who may write there, as moving it needs. A
+    // read-only seat could otherwise copy its description and checklists to a board the whole workspace sees.
+    if ((ctx.access.visibility === 'private' || ctx.inboxOf !== null) && boardId !== ctx.boardId && !ctx.access.canWrite) {
+      return c.json(problem('forbidden', 'You do not have access to this.'), 403);
+    }
     // The target check and the source read side by side (the source is already proven readable by cardCtx).
     const [target, src] = await Promise.all([targetFor(db, userId, ctx.workspaceId, boardId, laneId), db.card.findFirst({
       where: {id: ctx.cardId, boardId: ctx.boardId, workspaceId, archivedAt: null},

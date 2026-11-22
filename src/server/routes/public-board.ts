@@ -174,7 +174,7 @@ export const publicBoardRoutes = new Hono().get('/public/boards/:token', withDb,
              ) END AS labels,
              CASE WHEN x.id IS NULL OR x.n > ${MAX_CARDS_TOTAL}::int THEN NULL ELSE (
                SELECT COALESCE(json_agg(t.name ORDER BY t.user_id), '[]'::json)
-               FROM (SELECT cm.user_id, u.name FROM card_members cm JOIN users u ON u.id = cm.user_id
+               FROM (SELECT cm.user_id, u.name FROM card_members cm JOIN users u ON u.id = cm.user_id AND u.status = 'active'
                      WHERE cm.card_id = x.id ORDER BY cm.user_id LIMIT ${MAX_TAGS_PER_CARD}) t
              ) END AS people
       FROM (

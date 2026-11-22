@@ -736,6 +736,7 @@
   "errors.use_leave": "Dùng Rời không gian làm việc để tự rời đi.",
   "errors.conflict": "Nội dung đã thay đổi trong lúc bạn làm việc. Hãy tải lại và thử lại.",
   "errors.already_subscribed": "Không gian làm việc này đã có gói này hoặc gói lớn hơn. Hãy tải lại trang để xem.",
+  "errors.removed_by_admin": "Quản trị viên bảng đã xóa người này khỏi bảng. Chỉ quản trị viên bảng mới có thể thêm lại họ.",
   "errors.would_lower_role": "Chỉ quản trị viên bảng mới có thể đặt thành viên không gian làm việc làm người xem trên bảng này.",
   "plan.limitBody": "Gói của bạn không cho phép việc đó. Xem các gói để nâng cấp.",
   "plan.seePlans": "Xem các gói",

@@ -78,9 +78,14 @@ export const boardBackgroundRoutes = new Hono()
     const boardId = ctx.boardId;
     const uploadId = idOf(c.req.param('uploadId'));
     if (!uploadId) return notFound(c, 'file');
-    // Only my own unfinished background upload in this workspace (never a card's or a message's file).
+    // Only my own unfinished background upload in this workspace (never a card's or a message's file). A chat upload
+    // has the same shape before it is sent, so the image type and size are checked again: a chat PDF or a 200 MB file
+    // can never become a board background.
     const row = await db.attachment.findFirst({
-      where: {id: uploadId, workspaceId, cardId: null, messageId: null, uploadedBy: userId, fileId: {not: null}},
+      where: {
+        id: uploadId, workspaceId, cardId: null, messageId: null, uploadedBy: userId, fileId: {not: null},
+        contentType: {in: [...BG_IMAGE_TYPES]}, size: {lte: BG_IMAGE_MAX_BYTES},
+      },
       select: {id: true, fileId: true, size: true, ready: true},
     });
     if (!row?.fileId) return notFound(c, 'file');

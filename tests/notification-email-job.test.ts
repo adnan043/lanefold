@@ -88,11 +88,12 @@ describe('runNotificationEmails', () => {
   });
 
   it('gives the claim back and throws on a retryable failure, but not on the last try', async () => {
-    const mk = () => makeDb({due: [{user_id: 7, mode: 'immediate', cursor: 5n}], tallies: [{user_id: 7, kind: 'assigned', c: 1, m: 8n}], users: [{id: 7, email: 'a@b.co'}]});
+    const before = new Date(NOW.getTime() - 2 * 3600_000);
+    const mk = () => makeDb({due: [{user_id: 7, mode: 'immediate', cursor: 5n, notified_at: before}], tallies: [{user_id: 7, kind: 'assigned', c: 1, m: 8n}], users: [{id: 7, email: 'a@b.co'}]});
     const send = vi.fn(async () => ({kind: 'retry', status: 503}) as const);
     const db = mk();
     await expect(runNotificationEmails(db as any, job, {send, now: () => NOW})).rejects.toThrow();
-    expect(db.updateMany).toHaveBeenLastCalledWith({where: {userId: 7, emailNotifyCursor: 8n}, data: {emailNotifyCursor: 5n, emailNotifiedAt: null}});
+    expect(db.updateMany).toHaveBeenLastCalledWith({where: {userId: 7, emailNotifyCursor: 8n}, data: {emailNotifyCursor: 5n, emailNotifiedAt: before}}); // the last mail's time, so the gap still holds
     const db2 = mk();
     await expect(runNotificationEmails(db2 as any, {attempt: 3, maxAttempts: 3}, {send, now: () => NOW})).resolves.toBeUndefined();
   });

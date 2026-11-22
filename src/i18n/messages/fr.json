@@ -744,6 +744,7 @@
   "errors.use_leave": "Utilisez Quitter l’espace de travail pour vous retirer.",
   "errors.conflict": "Cet élément a changé pendant que vous travailliez. Rechargez et réessayez.",
   "errors.already_subscribed": "Cet espace de travail a déjà cette offre ou une offre supérieure. Actualisez la page pour la voir.",
+  "errors.removed_by_admin": "Un administrateur du tableau a retiré cette personne du tableau. Seul un administrateur du tableau peut la rajouter.",
   "errors.would_lower_role": "Seul un administrateur du tableau peut faire d’un membre de l’espace de travail un lecteur sur ce tableau.",
   "plan.limitBody": "Votre offre ne permet pas cela. Consultez les offres pour passer à la supérieure.",
   "plan.seePlans": "Voir les offres",

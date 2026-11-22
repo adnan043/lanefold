@@ -740,6 +740,7 @@
   "errors.use_leave": "Kendinizi çıkarmak için Çalışma alanından ayrıl'ı kullanın.",
   "errors.conflict": "Siz çalışırken bu değişti. Sayfayı yenileyip tekrar deneyin.",
   "errors.already_subscribed": "Bu çalışma alanında zaten bu plan veya daha büyüğü var. Görmek için sayfayı yenileyin.",
+  "errors.removed_by_admin": "Bir pano yöneticisi bu kişiyi panodan çıkardı. Onu yalnızca bir pano yöneticisi geri ekleyebilir.",
   "errors.would_lower_role": "Bu panoda bir çalışma alanı üyesini yalnızca pano yöneticisi izleyici yapabilir.",
   "plan.limitBody": "Planınız buna izin vermiyor. Yükseltmek için planlara bakın.",
   "plan.seePlans": "Planları gör",

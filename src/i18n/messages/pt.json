@@ -744,6 +744,7 @@
   "errors.use_leave": "Use Sair do workspace para remover a si mesmo.",
   "errors.conflict": "Isso mudou enquanto você trabalhava. Recarregue e tente de novo.",
   "errors.already_subscribed": "Este espaço de trabalho já tem este plano ou um maior. Atualize a página para vê-lo.",
+  "errors.removed_by_admin": "Um administrador do quadro removeu esta pessoa do quadro. Só um administrador do quadro pode adicioná-la de novo.",
   "errors.would_lower_role": "Somente um administrador do quadro pode tornar um membro do espaço de trabalho um leitor neste quadro.",
   "plan.limitBody": "Seu plano não permite isso. Veja os planos para fazer upgrade.",
   "plan.seePlans": "Ver planos",

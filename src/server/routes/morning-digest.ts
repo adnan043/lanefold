@@ -42,7 +42,8 @@ export const morningDigestRoutes = new Hono()
     const {db, viewer} = c.var;
     const userId = viewer.id!;
     const {hour, timezone} = c.req.valid('json');
-    const data = hour === null ? {digestHour: null} : {digestHour: hour, digestTz: timezone};
+    // No zone sent keeps the saved one (a missing zone is UTC only on the first save, never a reset of a stored one).
+    const data = hour === null ? {digestHour: null} : timezone ? {digestHour: hour, digestTz: timezone} : {digestHour: hour};
     const row = await db.userProfile.upsert({where: {userId}, create: {userId, ...data}, update: data, select: {digestHour: true, digestTz: true, emailNotifyMode: true}});
     return c.json({hour: row.digestHour, timezone: row.digestTz, mailConfigured: mailConfigured(), emailOn: row.emailNotifyMode !== 'off'});
   });
