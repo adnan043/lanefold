@@ -317,6 +317,39 @@ describe.skipIf(!DATABASE_URL)('chat (integration, real Postgres)', () => {
     expect(gone).toMatchObject({deleted: true, body: ''});
   });
 
+  it('an edit replaces mentions exactly; deleting a reply cleans up once and keeps the thread count honest', async () => {
+    const mentionsOf = async (id: number) =>
+      (await db.messageMention.findMany({where: {messageId: BigInt(id)}, select: {userId: true}, orderBy: {userId: 'asc'}})).map(r => r.userId);
+    const told = (userId: number) => db.notification.count({where: {userId, kind: 'message_mention'}});
+    const msg = (await send(mia, channel, 'hi @ann @vic', undefined, {mentions: [ids.ann, ids.vic]})).json.message.id as number;
+    expect(await mentionsOf(msg)).toEqual([ids.ann, ids.vic].sort((x, y) => x! - y!));
+    // One dropped, one kept: the kept one is not told again.
+    const one = await mia.request('PATCH', `/site-api/messages/${msg}`, {body: 'hi @vic', mentions: [ids.vic]});
+    expect(one.status).toBe(200);
+    expect(one.json.message.mentions).toEqual([ids.vic]);
+    expect(await mentionsOf(msg)).toEqual([ids.vic]);
+    expect(await told(ids.vic!)).toBe(1);
+    // All dropped (an empty list), then the text alone (mentions left as they are).
+    expect((await mia.request('PATCH', `/site-api/messages/${msg}`, {body: 'hi', mentions: []})).json.message.mentions).toEqual([]);
+    expect(await mentionsOf(msg)).toEqual([]);
+    expect((await mia.request('PATCH', `/site-api/messages/${msg}`, {body: 'hi there'})).json.message).toMatchObject({body: 'hi there', edited: true});
+
+    const root = (await send(ann, channel, 'root')).json.message.id as number;
+    const r1 = (await send(mia, channel, 'reply @ann', undefined, {parentId: root, mentions: [ids.ann]})).json.message.id as number;
+    await send(ann, channel, 'second reply', undefined, {parentId: root});
+    await ann.request('PUT', `/site-api/messages/${r1}/reactions`, {emoji: '👍'});
+    const replies = async () => (await db.message.findUniqueOrThrow({where: {id: BigInt(root)}, select: {replyCount: true}})).replyCount;
+    expect(await replies()).toBe(2);
+    expect((await mia.delete(`/site-api/messages/${r1}`)).status).toBe(200);
+    expect(await replies()).toBe(1);
+    expect(await mentionsOf(r1)).toEqual([]);
+    expect(await db.messageReaction.count({where: {messageId: BigInt(r1)}})).toBe(0);
+    // Deleting it again changes nothing.
+    await ann.delete(`/site-api/messages/${r1}`);
+    expect(await replies()).toBe(1);
+    expect(await db.auditEvent.count({where: {action: 'chat.message_deleted'}})).toBeLessThanOrEqual(1);
+  });
+
   it('reactions toggle and group', async () => {
     const msg = (await send(ann, channel, 'react')).json.message.id;
     await mia.request('PUT', `/site-api/messages/${msg}/reactions`, {emoji: '👍'});
