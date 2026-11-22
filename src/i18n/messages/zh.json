@@ -1963,5 +1963,7 @@
   "chat.messageFiles": "文件",
   "chat.downloadFile": "下载 {name}",
   "chat.openFile": "打开 {name}",
-  "chat.morePictures": "还有 {n} 张图片"
+  "chat.morePictures": "还有 {n} 张图片",
+  "errors.already_subscribed": "此工作区已有此方案或更高级的方案。刷新页面即可查看。",
+  "errors.would_lower_role": "只有看板管理员可以将工作区成员设为此看板的查看者。"
 }

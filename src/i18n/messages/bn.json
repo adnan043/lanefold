@@ -1976,5 +1976,7 @@
   "chat.messageFiles": "ফাইল",
   "chat.downloadFile": "{name} ডাউনলোড করুন",
   "chat.openFile": "{name} খুলুন",
-  "chat.morePictures": "আরও {n}টি ছবি"
+  "chat.morePictures": "আরও {n}টি ছবি",
+  "errors.already_subscribed": "এই ওয়ার্কস্পেসে এই প্ল্যান বা এর চেয়ে বড় প্ল্যান আগে থেকেই আছে। দেখতে পেজটি রিফ্রেশ করুন।",
+  "errors.would_lower_role": "শুধু বোর্ড অ্যাডমিন একজন ওয়ার্কস্পেস সদস্যকে এই বোর্ডে দর্শক করতে পারেন।"
 }

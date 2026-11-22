@@ -2,12 +2,13 @@ import {type RefObject, useEffect, useRef, useState} from 'react';
 
 import {useI18n, useT} from '../../i18n';
 import {rules} from '../../lib/rules';
+import {FILE_CEILING_BYTES, FILE_CEILING_LABEL} from '../../lib/file-limits';
 import {Button, buttonClass, Field, Icon, type IconName, Menu, type MenuItem, Modal, Notice, useConfirm, useForm, useToast} from '../../portal/ui';
 import {ApiError} from '../api';
 import {bytesLabel, useAction} from './parts';
 import type {AttachmentT, CardActions, DetailT} from './use-card';
 
-const MAX_BYTES = 100 * 1024 * 1024;
+const MAX_BYTES = FILE_CEILING_BYTES;
 const viewUrl = (a: AttachmentT, download = false) => `/site-api/attachments/${a.id}/view${download ? '?download=1' : ''}`;
 const openAway = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
 
@@ -201,7 +202,7 @@ export function Attachments({detail, actions, intake}: {detail: DetailT; actions
     void (async () => {
       for (const file of files) {
         if (file.size > MAX_BYTES) {
-          toast.danger(t('cd.fileTooBig', {name: file.name, max: '100 MB'}));
+          toast.danger(t('cd.fileTooBig', {name: file.name, max: FILE_CEILING_LABEL}));
           continue;
         }
         const key = ++uploadKey;

@@ -2,6 +2,7 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {useState} from 'react';
 
 import {api, ApiError, read} from '../api';
+import {FILE_CEILING_LABEL, FILE_CEILING_MB, STORAGE_CEILING_GB} from '../../lib/file-limits';
 import {formatBytes, PlanBadge, planLabel} from '../billing-shared';
 import {type PlanRow, planLimitsQuery} from '../queries';
 import {Badge, Button, Card, Checkbox, type Column, DataTable, Drawer, EmptyState, ErrorNote, Field, Notice, PageHeader, useForm, useToast} from '../ui';
@@ -12,11 +13,11 @@ const GB = 1024 * MB;
 const range = (min: number, max: number, what: string) => (value: string) =>
   /^\d{1,6}$/.test(value.trim()) && Number(value) >= min && Number(value) <= max ? null : `${what}: a whole number from ${min} to ${max}.`;
 
-/** The SAME limits `src/server/routes/billing.ts` enforces (the safety caps in entitlements.ts). */
+/** The SAME limits `src/server/routes/billing.ts` enforces (the safety caps in entitlements.ts; file size: src/lib/file-limits.ts). */
 const RULES = {
   maxMembers: [range(1, 500, 'Members')],
-  maxFileMb: [range(1, 100, 'File size in MB')],
-  storageGb: [range(1, 200, 'Storage in GB')],
+  maxFileMb: [range(1, FILE_CEILING_MB, 'File size in MB')],
+  storageGb: [range(1, STORAGE_CEILING_GB, 'Storage in GB')],
   maxFlows: [range(0, 200, 'Flows (0 turns them off)')],
 };
 
@@ -139,10 +140,10 @@ export function PlanLimits() {
             </Field>
           </div>
           <div className="form-grid">
-            <Field id="f-maxFileMb" label="Largest file (MB)" hint="Up to 100." error={form.error('maxFileMb')}>
+            <Field id="f-maxFileMb" label="Largest file (MB)" hint={`Up to ${FILE_CEILING_MB} (${FILE_CEILING_LABEL}).`} error={form.error('maxFileMb')}>
               <input {...form.field('maxFileMb')} inputMode="numeric" autoComplete="off" placeholder="e.g. 25" />
             </Field>
-            <Field id="f-storageGb" label="Storage (GB)" error={form.error('storageGb')}>
+            <Field id="f-storageGb" label="Storage (GB)" hint={`Up to ${STORAGE_CEILING_GB} (10 TB).`} error={form.error('storageGb')}>
               <input {...form.field('storageGb')} inputMode="numeric" autoComplete="off" placeholder="e.g. 5" />
             </Field>
           </div>

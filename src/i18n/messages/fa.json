@@ -1976,5 +1976,7 @@
   "chat.messageFiles": "فایل‌ها",
   "chat.downloadFile": "دانلود {name}",
   "chat.openFile": "باز کردن {name}",
-  "chat.morePictures": "{n} تصویر دیگر"
+  "chat.morePictures": "{n} تصویر دیگر",
+  "errors.already_subscribed": "این فضای کاری از قبل این طرح یا طرحی بزرگ‌تر دارد. برای دیدن آن صفحه را تازه کنید.",
+  "errors.would_lower_role": "فقط مدیر بورد می‌تواند یک عضو فضای کاری را در این بورد بیننده کند."
 }

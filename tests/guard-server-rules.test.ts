@@ -116,12 +116,10 @@ describe('server guard: queries', () => {
 
   it('no offset paging (skip:/offset:/OFFSET)', () => {
     const hits = scan(/\bskip\s*:|\boffset\s*:|\bOFFSET\s+\$\{|\bOFFSET\s+\d/);
-    expect(
-      unlisted(hits, {
-        'src/server/mail/templates.ts': 'a String.replace callback parameter named offset, not paging',
-        'src/server/flows/engine.ts': "lastFlowInPlan: one row (the plan's Nth flow, LIMIT 1) on flows(workspace_id, id), not paging",
-      }),
-    ).toEqual([]);
+    expect(unlisted(hits, {
+      'src/server/mail/templates.ts': 'a String.replace callback parameter named offset, not paging',
+      'src/server/flows/engine.ts': 'lastFlowInPlan: one row at the plan\'s flow count (OFFSET maxFlows - 1 LIMIT 1) on flows(workspace_id, id), not paging',
+    })).toEqual([]);
   });
 
   /** Prisma .count( in a list/overview route: file:line -> why it is bounded. */
@@ -188,7 +186,6 @@ describe('server guard: route guards', () => {
     'src/server/routes/public-board.ts:GET /public/boards/:token': 'public read-only board: the unguessable hashed share token in the where is the capability; no viewer is read',
     'src/server/routes/billing.ts:GET /billing/public-plans': 'public pricing page data: plan limits and catalogue amounts only, cached, no viewer read, price keys stripped',
     'src/server/routes/site.ts:GET /': 'the public brand (name, logo), re-projected field by field',
-    'src/server/routes/branding.ts:GET /brand.css': 'the brand colour as accent CSS for every page: one hex from app_settings, cached, no viewer read',
   };
 
   type Route = {rel: string; id: string; head: string; line: number};

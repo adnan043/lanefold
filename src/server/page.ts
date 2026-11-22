@@ -1,7 +1,6 @@
 import {type Abilities, NO_ABILITIES, type Site, type Viewer} from '../lib/types';
 import {GUEST} from '../platform/auth';
 import {backend, read} from './backend';
-import {brandCssHref} from './routes/branding';
 
 /**
  * What every on-demand page needs, from the Site API in-process: the site's
@@ -19,8 +18,6 @@ export async function pageContext(request: Request, response: {headers: Headers}
   const [brand, me] = await Promise.all([
     read<{site: Site | null}>(api.site.$get()),
     read<{viewer: Viewer; roles: string[]; abilities: Abilities}>(api.me.$get()),
-    // The layout's versioned brand.css link (memoized per request): read now, beside these, not after them.
-    brandCssHref(),
   ]);
   response.headers.set('Cache-Control', 'private, no-store');
   return {

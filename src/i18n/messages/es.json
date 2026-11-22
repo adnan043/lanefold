@@ -1989,5 +1989,7 @@
   "chat.messageFiles": "Archivos",
   "chat.downloadFile": "Descargar {name}",
   "chat.openFile": "Abrir {name}",
-  "chat.morePictures": "{n} imágenes más"
+  "chat.morePictures": "{n} imágenes más",
+  "errors.already_subscribed": "Este espacio de trabajo ya tiene este plan o uno superior. Actualiza la página para verlo.",
+  "errors.would_lower_role": "Solo un administrador del tablero puede convertir a un miembro del espacio de trabajo en lector de este tablero."
 }

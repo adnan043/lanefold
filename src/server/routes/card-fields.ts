@@ -309,9 +309,14 @@ export const cardFieldRoutes = new Hono()
       const last = await tx.card.findFirst({where: {workspaceId: ctx.workspaceId, laneId: src.laneId, archivedAt: null}, orderBy: [{position: 'desc'}, {id: 'desc'}], select: {position: true}});
       const room = await tx.$queryRaw<{id: number}[]>`
         UPDATE lanes SET card_count = card_count + 1, updated_rev = ${rev}
-        WHERE id = ${src.laneId} AND board_id = ${ctx.boardId} AND workspace_id = ${ctx.workspaceId} AND card_count + 1 <= ${MAX_CARDS_PER_LANE}::int
+        WHERE id = ${src.laneId} AND board_id = ${ctx.boardId} AND workspace_id = ${ctx.workspaceId} AND archived_at IS NULL
+          AND card_count + 1 <= ${MAX_CARDS_PER_LANE}::int
         RETURNING id`;
-      if (!room[0]) return 'full' as const;
+      if (!room[0]) {
+        // Refused: an archived lane (a copy never lands there) or a full one; the extra read runs only on refusal.
+        const open = await tx.lane.findFirst({where: {id: src.laneId, workspaceId: ctx.workspaceId, archivedAt: null}, select: {id: true}});
+        return open ? ('full' as const) : ('lane_gone' as const);
+      }
       const items = src.checklists.reduce((n, l) => n + l.items.length, 0);
       const number = await reserveCardNumbers(tx, ctx.boardId, ctx.workspaceId, 1);
       const copy = await tx.card.create({
@@ -330,6 +335,7 @@ export const cardFieldRoutes = new Hono()
       return {cardId: copy.id, rev: String(rev)};
     });
     if (out === 'full') return c.json(problem('lane_card_limit', `A lane holds up to ${MAX_CARDS_PER_LANE} cards.`), 409);
+    if (out === 'lane_gone') return notFound(c, 'lane');
     return out ? c.json(out, 201) : notFound(c, 'card');
   })
 

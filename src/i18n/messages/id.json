@@ -1963,5 +1963,7 @@
   "chat.messageFiles": "File",
   "chat.downloadFile": "Unduh {name}",
   "chat.openFile": "Buka {name}",
-  "chat.morePictures": "{n} gambar lagi"
+  "chat.morePictures": "{n} gambar lagi",
+  "errors.already_subscribed": "Workspace ini sudah memiliki paket ini atau yang lebih besar. Muat ulang halaman untuk melihatnya.",
+  "errors.would_lower_role": "Hanya admin papan yang dapat menjadikan anggota workspace sebagai pemirsa di papan ini."
 }

@@ -184,14 +184,17 @@ function EmailSection({viewer}: {viewer: Viewer}) {
           setSent(null);
           change.mutate({email: values.email, password: values.password});
         })}>
-        <Field id="f-newEmail" label="New email address" error={form.error('email')}>
-          <input {...form.field('email')} type="email" autoComplete="email" inputMode="email" placeholder="name@example.com" />
-        </Field>
-        {needsPassword && (
-          <Field id="f-emailPassword" label="Current password" error={form.error('password')}>
-            <PasswordInput {...form.field('password')} autoComplete="current-password" placeholder="Your current password" />
+        {/* Side by side when both show; one field alone keeps the full width. Phones: one column (global.css). */}
+        <div className={needsPassword ? 'form-grid' : undefined}>
+          <Field id="f-newEmail" label="New email address" error={form.error('email')}>
+            <input {...form.field('email')} type="email" autoComplete="email" inputMode="email" placeholder="name@example.com" />
           </Field>
-        )}
+          {needsPassword && (
+            <Field id="f-emailPassword" label="Current password" error={form.error('password')}>
+              <PasswordInput {...form.field('password')} autoComplete="current-password" placeholder="Your current password" />
+            </Field>
+          )}
+        </div>
         {formError(change.error)}
         {sent && <Notice tone="success">{sent}</Notice>}
         <div className="form-actions">
@@ -597,14 +600,16 @@ function DeleteSection() {
         className="form-stack"
         noValidate
         onSubmit={form.submit(values => remove.mutate({password: values.password, confirm: values.confirm.trim()}))}>
-        {needsPassword && (
-          <Field id="f-deletePassword" label="Current password" error={form.error('password')}>
-            <PasswordInput {...form.field('password')} autoComplete="current-password" placeholder="Your current password" />
+        <div className={needsPassword ? 'form-grid' : undefined}>
+          {needsPassword && (
+            <Field id="f-deletePassword" label="Current password" error={form.error('password')}>
+              <PasswordInput {...form.field('password')} autoComplete="current-password" placeholder="Your current password" />
+            </Field>
+          )}
+          <Field id="f-deleteConfirm" label="Type DELETE to confirm" error={form.error('confirm')}>
+            <input {...form.field('confirm')} autoComplete="off" spellCheck={false} placeholder="DELETE" />
           </Field>
-        )}
-        <Field id="f-deleteConfirm" label="Type DELETE to confirm" error={form.error('confirm')}>
-          <input {...form.field('confirm')} autoComplete="off" spellCheck={false} placeholder="DELETE" />
-        </Field>
+        </div>
         {formError(remove.error)}
         <div className="form-actions">
           <Button type="submit" variant="danger" icon="trash" pending={remove.isPending} pendingLabel="Deleting…" disabled={form.blocked}>

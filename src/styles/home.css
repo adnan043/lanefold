@@ -986,14 +986,15 @@
 /* ----------------------------------------------------------- closing CTA -- */
 
 .home-cta {
-  /* A deep panel made from the brand accent, so a rebrand recolours it and it reads the same in both themes. */
-  --cta-deep: color-mix(in srgb, var(--accent) 62%, black);
-  --cta-deeper: color-mix(in srgb, var(--accent) 34%, black);
+  /* A deep blue panel (its own colour, not the accent), the same in both themes. */
+  --cta-hue: #1d4ed8;
+  --cta-deep: color-mix(in srgb, var(--cta-hue) 62%, black);
+  --cta-deeper: color-mix(in srgb, var(--cta-hue) 34%, black);
   --cta-text: white;
   --cta-soft: color-mix(in oklab, white 78%, transparent);
   --cta-glass: color-mix(in oklab, white 8%, transparent);
   --cta-glass-line: color-mix(in oklab, white 16%, transparent);
-  --cta-bright: color-mix(in oklab, var(--accent) 30%, white);
+  --cta-bright: color-mix(in oklab, var(--cta-hue) 30%, white);
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -1002,11 +1003,11 @@
   align-items: center;
   gap: clamp(32px, 5vw, 64px);
   padding: clamp(40px, 6vw, 72px);
-  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  border: 1px solid color-mix(in oklab, var(--cta-hue) 40%, transparent);
   border-radius: 32px;
   background: linear-gradient(150deg, var(--cta-deep), var(--cta-deeper) 70%);
   color: var(--cta-text);
-  box-shadow: 0 40px 80px -40px color-mix(in oklab, var(--accent) 60%, transparent);
+  box-shadow: 0 40px 80px -40px color-mix(in oklab, var(--cta-hue) 60%, transparent);
 }
 
 .home-cta-glow {
@@ -1014,7 +1015,7 @@
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(36rem 22rem at 100% 0%, color-mix(in oklab, var(--accent) 55%, transparent), transparent 70%),
+    radial-gradient(36rem 22rem at 100% 0%, color-mix(in oklab, var(--cta-hue) 55%, transparent), transparent 70%),
     radial-gradient(24rem 18rem at 0% 100%, color-mix(in oklab, var(--info) 30%, transparent), transparent 70%),
     radial-gradient(circle at 1px 1px, color-mix(in oklab, white 12%, transparent) 1px, transparent 0) 0 0 / 24px 24px;
 }
@@ -1080,7 +1081,7 @@
   block-size: 22px;
   flex: none;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--accent) 45%, transparent);
+  background: color-mix(in oklab, var(--cta-hue) 45%, transparent);
   color: var(--cta-bright);
 }
 
@@ -1099,7 +1100,7 @@
 }
 
 .home .button.home-button-lg.home-cta-primary:hover {
-  background: color-mix(in oklab, white 88%, var(--accent));
+  background: color-mix(in oklab, white 88%, var(--cta-hue));
 }
 
 .home .button.home-button-lg.home-cta-ghost {
@@ -1169,7 +1170,7 @@
   gap: 6px;
   padding: 10px;
   border-radius: 10px;
-  background: color-mix(in oklab, white 92%, var(--accent));
+  background: color-mix(in oklab, white 92%, var(--cta-hue));
   box-shadow: 0 4px 10px -6px black;
 }
 

@@ -1963,5 +1963,7 @@
   "chat.messageFiles": "ไฟล์",
   "chat.downloadFile": "ดาวน์โหลด {name}",
   "chat.openFile": "เปิด {name}",
-  "chat.morePictures": "รูปภาพอีก {n} รูป"
+  "chat.morePictures": "รูปภาพอีก {n} รูป",
+  "errors.already_subscribed": "พื้นที่ทำงานนี้มีแผนนี้หรือแผนที่ใหญ่กว่าอยู่แล้ว รีเฟรชหน้าเพื่อดู",
+  "errors.would_lower_role": "เฉพาะผู้ดูแลบอร์ดเท่านั้นที่ทำให้สมาชิกพื้นที่ทำงานเป็นผู้ชมในบอร์ดนี้ได้"
 }

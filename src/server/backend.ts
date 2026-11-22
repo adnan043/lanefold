@@ -17,7 +17,9 @@ import {app, type AppType} from './app';
  * site's own hostname for a Site API path instead: it is a second Worker
  * invocation (slower, billed twice) and loses the per-request memo.
  */
-const FORWARDED = ['cookie', 'authorization', 'user-agent', 'accept-language'];
+// `cf-connecting-ip`: the visitor's address (Cloudflare sets and overwrites it), so a route's per-address rate limit
+// counts this visitor, not every page visitor as one.
+const FORWARDED = ['cookie', 'authorization', 'user-agent', 'accept-language', 'cf-connecting-ip'];
 
 export function backend(request: Request) {
   const origin = new URL(request.url).origin;

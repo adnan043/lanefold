@@ -1976,5 +1976,7 @@
   "chat.messageFiles": "फ़ाइलें",
   "chat.downloadFile": "{name} डाउनलोड करें",
   "chat.openFile": "{name} खोलें",
-  "chat.morePictures": "{n} और चित्र"
+  "chat.morePictures": "{n} और चित्र",
+  "errors.already_subscribed": "इस वर्कस्पेस के पास यह प्लान या इससे बड़ा प्लान पहले से है। इसे देखने के लिए पेज रीफ़्रेश करें।",
+  "errors.would_lower_role": "केवल बोर्ड एडमिन ही किसी वर्कस्पेस सदस्य को इस बोर्ड पर दर्शक बना सकता है।"
 }

@@ -76,6 +76,8 @@ export const cardRecurrenceRoutes = new Hono()
       const rev = await bumpRev(tx, ctx.boardId, ctx.workspaceId); // the board lock: two people editing the rule take turns
       const existing = await tx.cardRecurrence.findFirst({where: {cardId: ctx.cardId, workspaceId: ctx.workspaceId}, select: {cardId: true, enabled: true}});
       if (!existing?.enabled) {
+        // The cap is per WORKSPACE but the lock above is per board: this lock makes two boards' new rules take turns.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ctx.workspaceId}::int, 7104)`;
         const live = await tx.cardRecurrence.count({where: {workspaceId: ctx.workspaceId, enabled: true}});
         if (live >= MAX_RULES_PER_WORKSPACE) return 'limit' as const;
       }

@@ -2,7 +2,7 @@
  * Accent presets, high contrast and text size for Settings > Appearance. Tokens only; loaded after global.css.
  * Every preset is checked for contrast in light and dark (tests/contrast.test.ts): the accent is >= 4.5:1 on
  * every surface (it is used as text and as the focus ring), its ink >= 4.5:1 on it, its text on its soft tint too.
- * No data-accent = the site's brand colour (/site-api/brand.css), else global.css's green; 'green' is explicit.
+ * No data-accent = global.css's green (the site's colour); 'green' is explicit.
  * Dark values apply under data-theme='dark', or when the device is dark and the mode is not forced light / contrast.
  */
 
@@ -319,8 +319,8 @@ html[data-radius='round'] {
 .lf-swatch[data-accent='orange'] { --swatch-bg: #b34209; }
 .lf-swatch[data-accent='slate'] { --swatch-bg: #566881; }
 .lf-swatch[data-accent='green'] { --swatch-bg: #0f6b4f; }
-/* The site's brand colour (/site-api/brand.css sets --brand-swatch; none set = the default green). */
-.lf-swatch[data-accent='brand'] { --swatch-bg: var(--brand-swatch, #0f6b4f); }
+/* No personal accent: the site's own colour, global.css's green. */
+.lf-swatch[data-accent='brand'] { --swatch-bg: #0f6b4f; }
 
 /* Settings: the person's own accent colour, the last pill of the row (prefs.ts applyCustomAccent). */
 .lf-swatches-group {

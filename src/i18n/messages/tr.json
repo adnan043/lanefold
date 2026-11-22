@@ -1976,5 +1976,7 @@
   "chat.messageFiles": "Dosyalar",
   "chat.downloadFile": "{name} indir",
   "chat.openFile": "{name} aç",
-  "chat.morePictures": "{n} resim daha"
+  "chat.morePictures": "{n} resim daha",
+  "errors.already_subscribed": "Bu çalışma alanında bu plan veya daha büyüğü zaten var. Görmek için sayfayı yenileyin.",
+  "errors.would_lower_role": "Bu panoda bir çalışma alanı üyesini yalnızca pano yöneticisi izleyici yapabilir."
 }

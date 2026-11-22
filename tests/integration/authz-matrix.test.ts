@@ -287,10 +287,6 @@ const TABLE: Row[] = [
   row('DELETE /chat/attachments/:id', 'resource', {path: r => `/chat/attachments/${r.chatUnsent}`, priv: true, note: 'the uploader only: anyone else gets 404'}),
   row('GET /chat/attachments/:id/view', 'resource', {path: r => `/chat/attachments/${r.chatFile}/view`, priv: true, noPositive: true}),
 
-  // ---- branding.ts -------------------------------------------------------------------------
-  row('GET /brand.css', 'public', {path: () => '/brand.css', note: 'the brand colour as CSS; nothing personal'}),
-  row('GET /branding', 'perm', {path: () => '/branding'}),
-  row('PUT /branding', 'perm', {path: () => '/branding', body: () => ({brandColor: null}), lenient: true}),
   // ---- billing.ts --------------------------------------------------------------------------
   row('GET /workspaces/:id/billing', 'resource', {path: r => `/workspaces/${r.ws}/billing`}),
   row('POST /workspaces/:id/billing/checkout', 'resource', {path: r => `/workspaces/${r.ws}/billing/checkout`, body: () => ({plan: 'pro'}), min: 'admin'}),

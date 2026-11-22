@@ -1989,5 +1989,7 @@
   "chat.messageFiles": "Arquivos",
   "chat.downloadFile": "Baixar {name}",
   "chat.openFile": "Abrir {name}",
-  "chat.morePictures": "Mais {n} imagens"
+  "chat.morePictures": "Mais {n} imagens",
+  "errors.already_subscribed": "Este espaço de trabalho já tem este plano ou um maior. Atualize a página para vê-lo.",
+  "errors.would_lower_role": "Apenas um administrador do quadro pode tornar um membro do espaço de trabalho leitor neste quadro."
 }

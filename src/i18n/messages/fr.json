@@ -1989,5 +1989,7 @@
   "chat.messageFiles": "Fichiers",
   "chat.downloadFile": "Télécharger {name}",
   "chat.openFile": "Ouvrir {name}",
-  "chat.morePictures": "{n} images de plus"
+  "chat.morePictures": "{n} images de plus",
+  "errors.already_subscribed": "Cet espace de travail a déjà cette offre ou une offre supérieure. Actualisez la page pour la voir.",
+  "errors.would_lower_role": "Seul un administrateur du tableau peut rendre un membre de l’espace de travail lecteur sur ce tableau."
 }

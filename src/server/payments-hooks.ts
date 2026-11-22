@@ -170,9 +170,12 @@ export async function applyWorkspacePlan(membership: PlatformMembership, mode?: 
 const platformUrl = () => config.siteUrl ?? 'http://localhost';
 
 /**
- * After an upgrade is paid (a membership that just started or renewed on a bigger plan), stops the workspace's OTHER
- * lower-plan subscriptions from billing again: cancelled AT PERIOD END (payments.md's default: what was already paid
- * stays valid, nothing renews, no double billing). `applyWorkspacePlan` already keeps the higher plan meanwhile.
+ * After a plan subscription starts or renews, keeps exactly ONE running subscription per workspace and stops the others
+ * from billing again: cancelled AT PERIOD END (payments.md's default: what was already paid stays valid, nothing
+ * renews, no double billing). The one kept is the biggest plan, then a healthy one over a past-due one, then the
+ * oldest: every event reaches the same answer, so two subscriptions never cancel each other. This covers an upgrade
+ * (the lower plan stops), two checkouts for the same plan paid at once (the newer stops) and a lower plan paid after
+ * a bigger one (the lower stops). `applyWorkspacePlan` already keeps the higher plan meanwhile.
  * Throws when the platform fails (not for "already gone") so the event is tried again; idempotent.
  */
 export async function cancelSupersededMemberships(membership: PlatformMembership, mode?: string): Promise<number> {
@@ -181,12 +184,19 @@ export async function cancelSupersededMemberships(membership: PlatformMembership
   // A test-mode "upgrade" on the live site grants nothing, so it must never stop a real, paid subscription.
   if (!modeGrants(mode)) return 0;
   const db = database();
+  // Only subscriptions that grant here (live payments on the live site, as modeGrants): a test one never outranks a paid one.
   const lower = await db.$queryRaw<{id: string; mode: string}[]>`
-    SELECT m.subscription_id AS id, m.mode AS mode
-    FROM memberships m JOIN plan_limits p ON p.price_key_monthly = m.price_key
-    WHERE m.workspace_id = ${workspaceId} AND m.subscription_id <> ${membership.id}
-      AND m.status IN ('active', 'trialing', 'past_due') AND m.access_ends_at IS NULL
-      AND p.storage_quota_bytes < (SELECT storage_quota_bytes FROM plan_limits WHERE price_key_monthly = ${membership.price} LIMIT 1)
+    WITH running AS (
+      SELECT m.id AS row_id, m.subscription_id, m.mode, m.status, m.created_at, p.storage_quota_bytes AS quota
+      FROM memberships m JOIN plan_limits p ON p.price_key_monthly = m.price_key AND p.price_key_monthly <> ''
+      WHERE m.workspace_id = ${workspaceId}
+        AND m.status IN ('active', 'trialing', 'past_due') AND m.access_ends_at IS NULL
+        AND (${!config.production}::boolean OR m.mode = 'live')
+    ), kept AS (
+      SELECT subscription_id FROM running ORDER BY quota DESC, (status = 'past_due'), created_at, row_id LIMIT 1
+    )
+    SELECT r.subscription_id AS id, r.mode AS mode FROM running r
+    WHERE r.subscription_id <> (SELECT subscription_id FROM kept)
     LIMIT 5`;
   let cancelled = 0;
   for (const old of lower) {

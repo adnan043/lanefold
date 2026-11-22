@@ -4,6 +4,7 @@ import {validator} from 'hono/validator';
 import type {PrismaClient} from '../../generated/prisma/client';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {CHAT_FILE_MAX_BYTES, CHAT_FILE_TYPES, CHAT_INLINE_TYPES, chatFileShape} from '../../lib/chat-files';
+import {FILE_CEILING_LABEL} from '../../lib/file-limits';
 import {forgetEntitlements, getEntitlements} from '../entitlements';
 import {completeUpload, createUpload, fileUrl} from '../files';
 import {notFound} from '../workspaces';
@@ -43,7 +44,7 @@ const uploadBody = validator('json', (value, c) => {
     return invalid(c, {file: {code: 'E_FILE_TYPE', message: 'Send a PDF, Word, Excel, PowerPoint, text, CSV, ZIP or picture file.'}});
   }
   const size = typeof v.size === 'number' && Number.isSafeInteger(v.size) ? v.size : 0;
-  if (size < 1 || size > CHAT_FILE_MAX_BYTES) return invalid(c, {file: {code: 'E_FILE_TOO_LARGE', message: 'Pick a file from 1 byte up to 100 MB.'}});
+  if (size < 1 || size > CHAT_FILE_MAX_BYTES) return invalid(c, {file: {code: 'E_FILE_TOO_LARGE', message: `Pick a file from 1 byte up to ${FILE_CEILING_LABEL}.`}});
   // A name is shown and becomes the download's file name: no path separators, quotes or control characters.
   return {name: name.value.replace(/[\\/"\u0000-\u001f\u007f]/g, '_'), contentType, size};
 });

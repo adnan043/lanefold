@@ -1976,5 +1976,7 @@
   "chat.messageFiles": "Dateien",
   "chat.downloadFile": "{name} herunterladen",
   "chat.openFile": "{name} öffnen",
-  "chat.morePictures": "{n} weitere Bilder"
+  "chat.morePictures": "{n} weitere Bilder",
+  "errors.already_subscribed": "Dieser Arbeitsbereich hat diesen oder einen größeren Plan bereits. Lade die Seite neu, um ihn zu sehen.",
+  "errors.would_lower_role": "Nur ein Board-Admin kann ein Mitglied des Arbeitsbereichs auf diesem Board zum Betrachter machen."
 }

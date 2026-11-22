@@ -1,9 +1,8 @@
 import {contrastRatio, hexToRgb, normalizeHex} from '../portal/ui/contrast';
 
 /**
- * The admin's brand colour (any `#rrggbb`, /dashboard Branding) turned into the five accent tokens of
- * `src/styles/global.css` for light and dark mode. Pure and browser-safe: the dashboard previews with it,
- * `/site-api/brand.css` serves it.
+ * A person's own accent colour (any `#rrggbb`, app Settings > Appearance > Custom color) turned into the five
+ * accent tokens of `src/styles/global.css` for light and dark mode. Pure and browser-safe.
  *
  * Any colour is accepted; it is moved toward black (light mode) or white (dark mode) only as far as needed so
  * that, like the tested presets (tests/contrast.test.ts), the accent and the accent text are 4.5:1 on every
@@ -82,26 +81,7 @@ const block = (selector: string, t: AccentTokens, indent = '') =>
   `${indent}  --accent-soft: ${t.accentSoft};\n${indent}  --accent-text: ${t.accentText};\n${indent}}\n`;
 
 /**
- * The stylesheet for a brand colour: '' for none (global.css keeps its green). Only when the person has not
- * chosen their own accent (`data-accent`, app Settings > Appearance), and never in high-contrast mode.
- * Specificity, not load order, makes it win over global.css (`:root`, `:root[data-theme='dark']`).
- */
-export function brandCss(value: unknown): string {
-  const p = brandPalette(value);
-  if (!p) return '';
-  return (
-    `/* Brand colour ${p.color}, set in /dashboard Branding. */\n` +
-    `:root {\n  --brand-swatch: ${p.light.accent};\n}\n` +
-    block(':root:not([data-accent]):not([data-theme=\'contrast\'])', p.light) +
-    block(':root[data-theme=\'dark\']:not([data-accent])', p.dark) +
-    '@media (prefers-color-scheme: dark) {\n' +
-    block(':root:not([data-theme=\'light\']):not([data-theme=\'contrast\']):not([data-accent])', p.dark, '  ') +
-    '}\n'
-  );
-}
-
-/**
- * A person's own accent (app Settings > Appearance > Custom color), made readable like the brand colour. Applies
+ * A person's own accent (app Settings > Appearance > Custom color), made readable. Applies
  * under `data-accent='custom'`; high contrast mode still wins (accents.css). '' when not `#rrggbb`.
  */
 export function customAccentCss(value: unknown): string {
