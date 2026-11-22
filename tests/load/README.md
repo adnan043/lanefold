@@ -20,3 +20,32 @@ BASE_URL=http://localhost:4321 VUS=200 k6 run tests/load/public.js         # any
 - Start with `smoke`. Never load-test from the editor sandbox (it shares the machine with the Preview).
 - Sign-in, sign-up and code requests are rate limited on purpose: don't put them under load,
   you'd only measure the limits.
+
+## The full app session (Kanban + chat, local)
+
+`app-user.js` is a signed-in person at the app's own rhythm: the board poll (5 s), the chat pulse (3 s with the chat
+open, `CHAT_OPEN` share of users, else 30 s), the bell (30 s), and one action every 3–10 s (70 % reads, 20 % card
+writes, 10 % chat messages with @mentions). Each user is its own test account, signed in once. It measures board sync
+and chat delivery from send to seen by another user, and catches lost or duplicated messages.
+`SCENARIO=hot` puts everyone on one board and one chat; `spread` gives teams of 10 their own workspace.
+
+```sh
+node --env-file=.env --import ./tests/load/lib/ts-hook.mjs tests/load/seed.mjs   # USERS=500 (10..500): accounts + LT-* workspaces
+K6=/path/to/k6 tests/load/run-level.sh spread 50                                  # one level: 1 m ramp, 3 m hold, report
+K6=/path/to/k6 tests/load/run-ladder.sh hot "10 25 50 100 250 500"                # levels in order, stops at a stop condition
+node --env-file=.env tests/load/cleanup.mjs                                       # remove every test account and LT-* workspace
+```
+
+| File | What it does |
+| --- | --- |
+| `seed.mjs` / `cleanup.mjs` | test data: accounts by SQL (sign-up is rate limited per IP), everything else through the API; LOCAL databases only |
+| `app-user.js` | the k6 session above; reads `.fixtures.json` (written by the seed, git-ignored) |
+| `check.mjs` | after a level: lane counts, card positions, board revisions, message numbers, duplicates, lost messages |
+| `run-level.sh` | one level + a monitor that stops k6 when this computer drops under `MIN_FREE_MB` (1000) free memory |
+| `report.mjs` | the level's report, plus a row in `results/summary.md` (git-ignored) |
+
+Stop conditions (status `STOP`): HTTP p95 over 3 s or errors over 5 %. Targets (status `FAIL` when missed): p95 < 500 ms,
+p99 < 1 s, errors < 1 %, board sync p95 < 6 s, chat p95 < 4 s, no data issues. k6 exits 99 whenever ANY threshold
+fails, targets included, so the stop conditions are judged from the numbers in `report.mjs`.
+
+A local run measures this computer (one `workerd` process, Postgres in Docker), never the live site's capacity.
