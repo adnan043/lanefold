@@ -70,7 +70,7 @@ interface Props {
    * back to the website, and there is no footer.
    */
   bare?: boolean;
-  /** A marketing page: eased mouse-wheel scrolling (src/platform/smooth-scroll.ts). */
+  /** A marketing page: eased mouse-wheel scrolling (src/lib/smooth-scroll.ts). */
   smoothScroll?: boolean;
 }
 
@@ -286,11 +286,12 @@ const structured = indexable
     )}
 
     <script>
-      import {logout, refreshSession, siteFetch} from '../platform/browser';
+      import {refreshSession, siteFetch} from '../platform/browser';
+      import {logout} from '../lib/logout';
       import {browserStorage, clearAllDrafts} from '../app/draft-store';
       import {hydrateStaticPage} from '../platform/static-page';
       import {notifyPaymentOpener} from '../lib/checkout-session';
-      import {stopSmoothScroll, syncSmoothScroll} from '../platform/smooth-scroll';
+      import {stopSmoothScroll, syncSmoothScroll} from '../lib/smooth-scroll';
       // Every button shows when it is busy (AGENTS.md "Buttons and forms").
       const busy = (button: HTMLButtonElement, label?: string) => {
         button.disabled = true;

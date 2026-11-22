@@ -14,7 +14,6 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 export interface Scope {
   viewer?: Promise<unknown>;
   access?: Promise<unknown>;
-  brandHref?: Promise<unknown>;
   db?: unknown;
 }
 
@@ -25,7 +24,7 @@ export function inRequestScope<T>(fn: () => T): T {
 }
 
 /** `make()` once per request for `key`; outside a scope, every call runs it. */
-export function scoped<T>(key: 'viewer' | 'access' | 'brandHref', make: () => Promise<T>): Promise<T> {
+export function scoped<T>(key: 'viewer' | 'access', make: () => Promise<T>): Promise<T> {
   const scope = storage.getStore();
   if (!scope) return make();
   return (scope[key] ??= make()) as Promise<T>;
