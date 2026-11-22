@@ -2,6 +2,7 @@ import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it} from '
 
 import {app} from '../../src/server/app';
 import {FILE_CEILING_BYTES} from '../../src/lib/file-limits';
+import {invalidateAppSettings} from '../../src/server/entitlements';
 import {cleanupOld} from '../../src/server/jobs/sweeps';
 import {Browser, configureEnv, DATABASE_URL, db, resetDatabase, signedIn} from './support/harness';
 
@@ -89,6 +90,19 @@ describe.skipIf(!DATABASE_URL)('chat files (integration, real Postgres)', () => 
   const send = (b: Browser, body: string, attachmentIds: number[], conv = channel) =>
     b.post(`/site-api/conversations/${conv}/messages`, {body, clientId: `c-${Math.random().toString(36).slice(2, 12)}`, attachmentIds});
   const used = async () => Number((await db.workspace.findUniqueOrThrow({where: {id: wsA}, select: {storageUsedBytes: true}})).storageUsedBytes);
+
+  it('no storage limit (like Trello): a huge storage use never refuses an upload; the plan\'s per-file size still does', async () => {
+    await db.appSettings.update({where: {id: 1}, data: {billingMode: 'PAID'}});
+    await invalidateAppSettings();
+    await db.workspace.update({where: {id: wsA}, data: {storageUsedBytes: 9_000_000_000_000}});
+    const file = await upload(mia);
+    expect(file.size).toBe(1000);
+    expect(await used()).toBe(9_000_000_001_000);
+    // Free plan: 10 MB per file.
+    const big = await mia.post(`/site-api/conversations/${channel}/attachments`, {name: 'big.pdf', contentType: PDF, size: 10 * 1024 * 1024 + 1});
+    expect(big.status).toBe(413);
+    expect(big.json.error).toBe('file_too_large');
+  });
 
   it('uploads, sends with no text, and shows the file to whoever reads the conversation', async () => {
     const file = await upload(mia);

@@ -118,7 +118,6 @@ describe('server guard: queries', () => {
     const hits = scan(/\bskip\s*:|\boffset\s*:|\bOFFSET\s+\$\{|\bOFFSET\s+\d/);
     expect(unlisted(hits, {
       'src/server/mail/templates.ts': 'a String.replace callback parameter named offset, not paging',
-      'src/server/flows/engine.ts': 'lastFlowInPlan: one row at the plan\'s flow count (OFFSET maxFlows - 1 LIMIT 1) on flows(workspace_id, id), not paging',
     })).toEqual([]);
   });
 
@@ -131,7 +130,7 @@ describe('server guard: queries', () => {
     'src/server/routes/chat-extras.ts': 'per-message card-ref limit check under a row lock',
     'src/server/routes/card-recurrence.ts': 'per-workspace enabled-rule cap inside the save transaction, scoped by workspace',
     'src/server/routes/card-templates.ts': 'per-card checklist cap and per-workspace template cap inside transactions (advisory lock), scoped by workspace',
-    'src/server/routes/flows.ts': 'flow caps inside the create transaction (workspace row lock) and the plan cap shown on the list: workspace-scoped, tiny, indexed, bounded by the plan limit',
+    'src/server/routes/flows.ts': 'the per-board flow cap inside the create transaction (board row lock): board-scoped, tiny, indexed, bounded by MAX_FLOWS_PER_BOARD',
     'src/server/routes/import-export.ts': 'idempotency check by importId inside the import transaction',
     'src/server/routes/lane-actions.ts': 'lane limit check inside the copy transaction, after the board row lock, scoped by workspace + board',
     'src/server/routes/members.ts': 'last-owner check inside the transaction',

@@ -1,6 +1,6 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 
-const state = {plan: 'team', others: [] as {plan: string; storage: bigint}[], updates: [] as unknown[]};
+const state = {plan: 'team', others: [] as {plan: string; rank: number}[], updates: [] as unknown[]};
 
 vi.mock('../src/server/entitlements', () => ({startGraceForOverLimit: async () => undefined, startGraceForWorkspaces: async () => undefined}));
 vi.mock('../src/platform/auth', () => ({audit: async () => undefined}));
@@ -8,7 +8,7 @@ vi.mock('../src/platform/db', async importOriginal => {
   const original = await importOriginal<typeof import('../src/platform/db')>();
   const fake = {
     planLimit: {
-      findFirst: async () => ({plan: 'pro', storageQuotaBytes: 10n}),
+      findFirst: async () => ({plan: 'pro', rank: 1}),
       findUnique: async () => ({maxMembers: 50}),
     },
     workspace: {
@@ -43,7 +43,7 @@ describe('a late ended subscription event', () => {
   });
 
   it('never downgrades a workspace that has a newer active subscription', async () => {
-    state.others = [{plan: 'team', storage: 100n}];
+    state.others = [{plan: 'team', rank: 2}];
     expect((await applyWorkspacePlan(ended)).changed).toBe(false);
     expect(state.updates).toHaveLength(0);
   });

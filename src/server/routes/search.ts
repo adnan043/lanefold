@@ -1,25 +1,19 @@
 import {Hono} from 'hono';
 import {createMiddleware} from 'hono/factory';
 import {validator} from 'hono/validator';
-import {generateKeyBetween} from 'fractional-indexing';
 
-import type {PrismaClient} from '../../generated/prisma/client';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {softCheck} from '../soft-limit';
 import {afterResponse} from '../after-response';
-import {parseCardNumber, reserveCardNumbers} from '../card-number';
-import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
-import {boardAccess, membership, notFound, rankOf} from '../workspaces';
-import {idOf, intField, invalid, likeEscape, objectOf, textField} from '../validation';
+import {parseCardNumber} from '../card-number';
+import {membership, notFound, rankOf} from '../workspaces';
+import {idOf, invalid, likeEscape} from '../validation';
 
 /**
- * Phase 3: search, My Day and the personal Inbox. Mounted ONCE at `/` in `app.ts`.
+ * Phase 3: search and My Day. Mounted ONCE at `/` in `app.ts`.
  *
  *   GET  /workspaces/:id/search?q=&before=       cards (title, description), boards and people names
  *   GET  /my-day?today=YYYY-MM-DD                cards assigned to me across every workspace I am in
- *   GET  /workspaces/:id/inbox?before=           my quick-capture cards in this workspace
- *   POST /workspaces/:id/inbox/cards             capture one card (creates my Inbox board on first use)
- *   POST /inbox/cards/:id/triage                 move an Inbox card into a lane of a board I can write
  *
  * Access: the visitor's workspace membership is in EVERY query (a join on `workspace_members`, or the
  * `membership()` guard); private boards only for board members and workspace owners/admins; another user's
@@ -47,15 +41,11 @@ const MIN_QUERY = 2;
 const MIN_DESCRIPTION_QUERY = 3;
 const MAX_QUERY = 80;
 const MY_DAY_CAP = 200;
-const INBOX_PAGE = 50;
-const INBOX_CAP = 500;
 
 const noStore = createMiddleware(async (c, next) => {
   c.header('Cache-Control', 'private, no-store');
   await next();
 });
-
-const forbidden = (c: {json: (b: unknown, s: 403) => Response}) => c.json(problem('forbidden', 'You do not have access to this.'), 403);
 
 const dayOf = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
@@ -115,49 +105,6 @@ function groupOf(due: string | null, today: string, weekEnd: string): 'overdue' 
   if (due === today) return 'today';
   return due <= weekEnd ? 'next7' : 'later';
 }
-
-/* ----------------------------------------------------------------- inbox */
-
-const captureBody = validator('json', (value, c) => {
-  const title = textField(objectOf(value)?.title, 1, 200);
-  if (!title.ok) return invalid(c, {title: title.error});
-  return {title: title.value};
-});
-
-const triageBody = validator('json', (value, c) => {
-  const lane = intField(objectOf(value)?.laneId, 1, 2_147_483_647);
-  if (!lane.ok) return invalid(c, {laneId: {code: 'required', message: 'Choose a lane.'}});
-  return {laneId: lane.value};
-});
-
-/** Thrown inside a transaction to roll it back: the target lane is full, or the card moved meanwhile. */
-class LaneFull extends Error {
-  constructor(readonly why: 'full' | 'stale' = 'full') {
-    super(why);
-  }
-}
-
-type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
-
-/** `boards.rev + 1`, row-locked (same as boards.ts): every change on a board gets its own rev. */
-async function bumpRev(tx: Tx, boardId: number, workspaceId: number): Promise<bigint> {
-  const rows = await tx.$queryRaw<{rev: bigint}[]>`
-    UPDATE boards SET rev = rev + 1, updated_at = now()
-    WHERE id = ${boardId} AND workspace_id = ${workspaceId} RETURNING rev`;
-  if (!rows[0]) throw new Error('board vanished');
-  return rows[0].rev;
-}
-
-const inboxCardCols = {id: true, number: true, title: true, priority: true, dueDate: true, createdAt: true, completedAt: true} as const;
-const inboxShape = (r: {id: number; number: number | null; title: string; priority: string; dueDate: Date | null; createdAt: Date; completedAt: Date | null}) => ({
-  id: r.id,
-  number: r.number,
-  title: r.title,
-  priority: r.priority,
-  dueDate: dayOf(r.dueDate),
-  createdAt: r.createdAt.toISOString(),
-  completed: r.completedAt !== null,
-});
 
 export const searchRoutes = new Hono()
   /* ------------------------------------------------------------ search */
@@ -319,166 +266,4 @@ export const searchRoutes = new Hono()
         };
       }),
     });
-  })
-
-  /* ------------------------------------------------------------- inbox */
-  .get('/workspaces/:id/inbox', searchQuery, withViewer, requireAuth, withDb, noStore, async c => {
-    const db = c.var.db;
-    const userId = c.var.viewer.id!;
-    const workspaceId = idOf(c.req.param('id'));
-    if (!workspaceId) return notFound(c);
-    const before = idOf(c.req.valid('query').before);
-    // The membership check and, beside it, the board with its cards in ONE query (nested select); my Inbox only
-    // (`inboxOf: userId`). Nothing is answered unless the membership check passes. Done cards stay (shown ticked)
-    // until archived or moved, as on My Day.
-    const [member, board] = await Promise.all([
-      membership(db, workspaceId, userId),
-      db.board.findFirst({
-      where: {workspaceId, inboxOf: userId, archivedAt: null},
-      orderBy: {id: 'asc'},
-      select: {
-        id: true,
-        cards: {
-          where: {workspaceId, archivedAt: null, ...(before ? {id: {lt: before}} : {})},
-          orderBy: {id: 'desc'},
-          take: INBOX_PAGE + 1,
-          select: inboxCardCols,
-        },
-      },
-      }),
-    ]);
-    if (!member) return notFound(c);
-    if (!board) return c.json({boardId: null, items: [], nextBefore: null});
-    const page = board.cards.slice(0, INBOX_PAGE);
-    return c.json({boardId: board.id, items: page.map(inboxShape), nextBefore: board.cards.length > INBOX_PAGE ? page.at(-1)!.id : null});
-  })
-
-  .post('/workspaces/:id/inbox/cards', captureBody, withViewer, requireAuth, withDb, noStore, async c => {
-    const db = c.var.db;
-    const userId = c.var.viewer.id!;
-    const workspaceId = idOf(c.req.param('id'));
-    if (!workspaceId) return notFound(c);
-    const member = await membership(db, workspaceId, userId);
-    if (!member) return notFound(c);
-    if (rankOf(member.role) < 2) return forbidden(c);
-    const ent = await getEntitlements(db, workspaceId);
-    if (ent?.readOnly) return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
-    const {title} = c.req.valid('json');
-    const out = await db.$transaction(async tx => {
-      // Two quick captures must not make two Inboxes: serialise on (workspace, user).
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${workspaceId}::int, ${userId}::int)`;
-      let board = await tx.board.findFirst({
-        where: {workspaceId, inboxOf: userId, archivedAt: null},
-        orderBy: {id: 'asc'},
-        select: {id: true, lanes: {where: {archivedAt: null}, orderBy: {id: 'asc'}, take: 1, select: {id: true, cardCount: true}}},
-      });
-      if (!board) {
-        board = await tx.board.create({
-          data: {
-            workspaceId,
-            name: 'Inbox',
-            visibility: 'private',
-            inboxOf: userId,
-            rev: 1n,
-            createdBy: userId,
-            lanes: {create: {workspaceId, name: 'Inbox', position: generateKeyBetween(null, null), updatedRev: 1n}},
-          },
-          select: {id: true, lanes: {where: {archivedAt: null}, orderBy: {id: 'asc'}, take: 1, select: {id: true, cardCount: true}}},
-        });
-      }
-      const lane = board.lanes[0];
-      if (!lane) return 'broken' as const;
-      if (lane.cardCount >= INBOX_CAP || lane.cardCount >= MAX_CARDS_PER_LANE) return 'full' as const;
-      const rev = await bumpRev(tx, board.id, workspaceId);
-      const last = await tx.card.findFirst({where: {workspaceId, laneId: lane.id, archivedAt: null}, orderBy: [{position: 'desc'}, {id: 'desc'}], select: {position: true}});
-      const number = await reserveCardNumbers(tx, board.id, workspaceId, 1);
-      const card = await tx.card.create({
-        data: {number, boardId: board.id, laneId: lane.id, workspaceId, title, position: generateKeyBetween(last?.position ?? null, null), updatedRev: rev, createdBy: userId},
-        select: inboxCardCols,
-      });
-      await tx.lane.updateMany({where: {id: lane.id, boardId: board.id, workspaceId}, data: {cardCount: {increment: 1}, updatedRev: rev}});
-      return {card, boardId: board.id};
-    });
-    if (out === 'full') return c.json(problem('limit_reached', `Your Inbox holds up to ${INBOX_CAP} cards. Move some to a board first.`), 409);
-    if (out === 'broken') return c.json(problem('internal_error', 'Your Inbox could not be opened.'), 500);
-    return c.json({boardId: out.boardId, card: inboxShape(out.card)}, 201);
-  })
-
-  .post('/inbox/cards/:id/triage', triageBody, withViewer, requireAuth, withDb, noStore, async c => {
-    const db = c.var.db;
-    const userId = c.var.viewer.id!;
-    const cardId = idOf(c.req.param('id'));
-    if (!cardId) return notFound(c, 'card');
-    const {laneId} = c.req.valid('json');
-    // The card must be in MY Inbox, in a workspace I am still in.
-    const card = await db.card.findFirst({
-      where: {id: cardId, archivedAt: null, board: {inboxOf: userId, archivedAt: null, workspace: {archivedAt: null, members: {some: {userId}}}}},
-      select: {id: true, boardId: true, laneId: true, workspaceId: true},
-    });
-    if (!card) return notFound(c, 'card');
-    // The target: a live lane of an ordinary board of the SAME workspace that I may write to.
-    const target = await db.lane.findFirst({
-      where: {id: laneId, workspaceId: card.workspaceId, archivedAt: null, board: {inboxOf: null, archivedAt: null}},
-      select: {id: true, boardId: true},
-    });
-    if (!target) return notFound(c, 'lane');
-    const access = await boardAccess(db, target.boardId, userId);
-    if (!access || access.workspaceId !== card.workspaceId || access.archived) return notFound(c, 'lane');
-    if (!access.canWrite) return forbidden(c);
-    const ent = await getEntitlements(db, card.workspaceId);
-    if (ent?.readOnly) return c.json(problem('workspace_read_only', 'This workspace is read-only until its plan limits are fixed.'), 409);
-    const done = await db
-      .$transaction(async tx => {
-      // Lock the two boards in id order (no deadlock with a concurrent move the other way).
-      const ids = [card.boardId, target.boardId].sort((a, b) => a - b);
-      const revs = new Map<number, bigint>();
-      for (const id of ids) revs.set(id, await bumpRev(tx, id, card.workspaceId));
-      const last = await tx.card.findFirst({
-        where: {workspaceId: card.workspaceId, laneId: target.id, archivedAt: null},
-        orderBy: [{position: 'desc'}, {id: 'desc'}],
-        select: {position: true},
-      });
-      // The target's cap is ONE conditional update; no room rolls the whole triage back.
-      const room = await tx.$queryRaw<{id: number}[]>`
-        UPDATE lanes SET card_count = card_count + 1, updated_rev = ${revs.get(target.boardId)!}
-        WHERE id = ${target.id} AND board_id = ${target.boardId} AND workspace_id = ${card.workspaceId}
-          AND card_count + 1 <= ${MAX_CARDS_PER_LANE}::int
-        RETURNING id`;
-      if (!room[0]) throw new LaneFull();
-      // A new number on the board it lands on (the card keeps its id).
-      const number = await reserveCardNumbers(tx, target.boardId, card.workspaceId, 1);
-      const {count} = await tx.card.updateMany({
-        where: {id: card.id, boardId: card.boardId, laneId: card.laneId, workspaceId: card.workspaceId, archivedAt: null},
-        data: {number, boardId: target.boardId, laneId: target.id, position: generateKeyBetween(last?.position ?? null, null), updatedRev: revs.get(target.boardId)!},
-      });
-      if (!count) throw new LaneFull('stale');
-      // Labels belong to a board: the ones of the old board mean nothing on the new one.
-      await tx.cardLabel.deleteMany({where: {cardId: card.id}});
-      // So do custom field values and a repeat rule (as on a move to another board, card-move-board.ts); the card's
-      // notifications (only mine: an Inbox is private) follow it to its new board.
-      await tx.cardFieldValue.deleteMany({where: {cardId: card.id, workspaceId: card.workspaceId}});
-      await tx.cardRecurrence.deleteMany({where: {cardId: card.id, workspaceId: card.workspaceId}});
-      await tx.notification.updateMany({where: {cardId: card.id, workspaceId: card.workspaceId}, data: {boardId: target.boardId}});
-      // The Inbox lane's counter and the exit record in ONE statement: the Inbox board's delta (another tab of mine)
-      // learns the card left only from `card_board_exits` (GET /boards/:id/changes `removed`).
-      const srcRev = revs.get(card.boardId)!;
-      await tx.$executeRaw`
-        WITH x AS (
-          INSERT INTO card_board_exits (workspace_id, board_id, card_id, rev)
-          VALUES (${card.workspaceId}::int, ${card.boardId}::int, ${card.id}::int, ${srcRev}::bigint)
-        )
-        UPDATE lanes SET card_count = card_count - 1, updated_rev = ${srcRev}::bigint
-        WHERE id = ${card.laneId}::int AND board_id = ${card.boardId}::int AND workspace_id = ${card.workspaceId}::int`;
-      await tx.activity.create({
-        data: {workspaceId: card.workspaceId, boardId: target.boardId, cardId: card.id, actorId: userId, kind: 'card.moved', meta: {from: 'inbox'}},
-      });
-      return true;
-    })
-      .catch(err => {
-        if (err instanceof LaneFull) return err.why;
-        throw err;
-      });
-    if (done === 'full') return c.json(problem('lane_card_limit', `A lane holds up to ${MAX_CARDS_PER_LANE} cards.`), 409);
-    if (done !== true) return c.json(problem('stale', 'That card already moved.'), 409);
-    return c.json({ok: true, boardId: target.boardId, laneId: target.id});
   });

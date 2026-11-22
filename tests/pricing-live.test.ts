@@ -45,8 +45,8 @@ describe('pricing reads limits at request time through the cache', () => {
 
 describe('PAID billing mode', () => {
   const plans: PublicPlan[] = [
-    {plan: 'free', maxMembers: 7, fileMb: 10, storageGb: 2, maxFlows: 0, auditLog: false, priceKey: ''},
-    {plan: 'pro', maxMembers: 60, fileMb: 100, storageGb: 20, maxFlows: 25, auditLog: false, priceKey: 'pro-monthly'},
+    {plan: 'free', maxMembers: 7, maxBoards: 10, fileMb: 10, flowRunsPerMonth: 250, auditLog: false, priceKey: ''},
+    {plan: 'pro', maxMembers: null, maxBoards: null, fileMb: 250, flowRunsPerMonth: 1000, auditLog: false, priceKey: 'pro-monthly'},
   ];
 
   it('shows a price only for a plan whose price exists, never the price key', () => {
@@ -66,10 +66,18 @@ describe('PAID billing mode', () => {
     const free = merged.find(p => p.key === 'free')!;
     expect(free.limits.members).toBe('7');
     expect(free.features).toContain('Up to 7 members');
-    expect(free.limits.flows).toBe('Not included');
+    expect(free.limits.boards).toBe('10');
+    expect(free.limits.flows).toBe('250 a month');
+    expect(free.features).toContain('250 automation runs a month');
     const pro = merged.find(p => p.key === 'pro')!;
-    expect(pro.limits.flows).toBe('Up to 25');
-    expect(pro.features).toContain('Up to 25 flows (automations)');
+    expect(pro.limits.members).toBe('Unlimited');
+    expect(pro.limits.boards).toBe('Unlimited');
+    expect(pro.limits.flows).toBe('1,000 a month');
+    expect(pro.features).toEqual(['Unlimited members', 'Unlimited boards', '250 MB per file', '1,000 automation runs a month']);
+    // Flows switched off on a plan: its runs line goes.
+    const off = withLiveLimits(PRICING.plans, composePricing('PAID', [{...plans[0]!, flowRunsPerMonth: 0}], []));
+    expect(off.find(p => p.key === 'free')!.features.some(f => /automation runs/.test(f))).toBe(false);
+    expect(off.find(p => p.key === 'free')!.limits.flows).toBe('Not included');
     const team = merged.find(p => p.key === 'team')!;
     expect(team.limits).toEqual(PRICING.plans.find(p => p.key === 'team')!.limits);
     expect(withLiveLimits(PRICING.plans, null)).toBe(PRICING.plans);

@@ -1,6 +1,7 @@
 import {Hono} from 'hono';
 import {validator} from 'hono/validator';
 
+import type {PrismaClient} from '../../generated/prisma/client';
 import {audit} from '../../platform/auth';
 import {cache} from '../../platform/cache';
 import {config} from '../../platform/config';
@@ -14,11 +15,13 @@ import {
   SAFETY_CAPS,
   startGraceForOverLimit,
 } from '../entitlements';
+import {flowRunsUsed} from '../flows/runs';
 import {clearPublicPlans, getPublicPricing} from '../pricing';
 import {softLimited} from '../soft-limit';
 import {PERMISSIONS} from '../permissions';
 import {idOf, intField, invalid, objectOf} from '../validation';
-import {FILE_CEILING_MB, STORAGE_CEILING_GB} from '../../lib/file-limits';
+import {FILE_CEILING_MB} from '../../lib/file-limits';
+import {MAX_BOARDS_CAP, MAX_FLOW_RUNS_INPUT, UNLIMITED_MEMBERS} from '../../lib/plan-limits';
 import {notFound, requireWorkspaceRole} from '../workspaces';
 
 /**
@@ -34,7 +37,7 @@ import {notFound, requireWorkspaceRole} from '../workspaces';
  *   PUT  /site-api/billing/settings                  {billingMode, graceDays}
  * `site:plans:manage` (/dashboard Plan limits):
  *   GET   /site-api/billing/plans                    every plan's limits
- *   PATCH /site-api/billing/plans/:plan              {maxMembers, maxFileMb, storageGb, maxFlows, auditLog}
+ *   PATCH /site-api/billing/plans/:plan              {maxMembers, maxBoards, maxFileMb, flowRunsPerMonth, auditLog} (null = unlimited)
  * `site:workspace:read` (/dashboard Workspaces; every call is audited):
  *   GET  /site-api/billing/workspaces?before=        every workspace, newest first
  *
@@ -42,44 +45,48 @@ import {notFound, requireWorkspaceRole} from '../workspaces';
  */
 
 const MB = 1024 * 1024;
-const GB = 1024 * MB;
 const PAGE_SIZE = 20;
 const GATEWAY = /^[a-z0-9_-]{1,40}$/;
-/** The plans from smallest to biggest: a bigger plan always has strictly more storage. */
-const PLAN_ORDER = ['free', 'pro', 'team'];
 /** The plans on offer (browser shape, no price key): changes only in PATCH /billing/plans/:plan, which clears it. */
-const PLANS_CACHE_KEY = 'billing:plans';
+const PLANS_CACHE_KEY = 'billing:plans:v2';
 const PLANS_TTL = 86_400;
 const PLAN_RE = /^[a-z][a-z0-9-]{0,15}$/;
 
 /** What the browser may see of one plan (never the price key: only whether it can be bought). */
 const planOut = (row: {
   plan: string;
+  rank: number;
   maxMembers: number;
+  maxBoards: number | null;
   maxFileBytes: bigint;
-  storageQuotaBytes: bigint;
-  maxFlows: number;
+  flowRunsPerMonth: number | null;
   auditLog: boolean;
   priceKeyMonthly: string;
 }) => ({
   plan: row.plan,
-  maxMembers: row.maxMembers,
+  rank: row.rank,
+  /** null = unlimited (at the safety cap). */
+  maxMembers: row.maxMembers >= UNLIMITED_MEMBERS ? null : row.maxMembers,
+  maxBoards: row.maxBoards,
   maxFileBytes: Number(row.maxFileBytes),
-  storageQuotaBytes: Number(row.storageQuotaBytes),
-  maxFlows: row.maxFlows,
+  flowRunsPerMonth: row.flowRunsPerMonth,
   auditLog: row.auditLog,
   purchasable: row.priceKeyMonthly !== '',
 });
 
 const planSelect = {
   plan: true,
+  rank: true,
   maxMembers: true,
+  maxBoards: true,
   maxFileBytes: true,
-  storageQuotaBytes: true,
-  maxFlows: true,
+  flowRunsPerMonth: true,
   auditLog: true,
   priceKeyMonthly: true,
 } as const;
+
+/** A limit that may be left empty for "unlimited" (null). */
+const optionalInt = (value: unknown, min: number, max: number) => (value === null ? ({ok: true, value: null} as const) : intField(value, min, max));
 
 const checkoutBody = validator('json', (value, c) => {
   const body = objectOf(value);
@@ -101,25 +108,35 @@ const settingsBody = validator('json', (value, c) => {
 
 const planBody = validator('json', (value, c) => {
   const body = objectOf(value);
-  const members = intField(body?.maxMembers, 1, SAFETY_CAPS.maxMembers);
+  // Members, boards and flow runs: null = unlimited (members are then stored at the safety cap).
+  const members = optionalInt(body?.maxMembers, 1, SAFETY_CAPS.maxMembers - 1);
+  const boards = optionalInt(body?.maxBoards, 1, MAX_BOARDS_CAP - 1);
   const fileMb = intField(body?.maxFileMb, 1, FILE_CEILING_MB);
-  const storageGb = intField(body?.storageGb, 1, STORAGE_CEILING_GB);
-  const flows = intField(body?.maxFlows, 0, SAFETY_CAPS.maxFlows);
+  const runs = optionalInt(body?.flowRunsPerMonth, 0, MAX_FLOW_RUNS_INPUT);
   const errors: Record<string, {code: string; message: string}> = {};
   if (!members.ok) errors.maxMembers = members.error;
+  if (!boards.ok) errors.maxBoards = boards.error;
   if (!fileMb.ok) errors.maxFileMb = fileMb.error;
-  if (!storageGb.ok) errors.storageGb = storageGb.error;
-  if (!flows.ok) errors.maxFlows = flows.error;
+  if (!runs.ok) errors.flowRunsPerMonth = runs.error;
   if (typeof body?.auditLog !== 'boolean') errors.auditLog = {code: 'invalid', message: 'Choose on or off.'};
-  if (Object.keys(errors).length) return invalid(c, errors);
+  if (!members.ok || !boards.ok || !fileMb.ok || !runs.ok || Object.keys(errors).length) return invalid(c, errors);
   return {
-    maxMembers: (members as {value: number}).value,
-    maxFileBytes: (fileMb as {value: number}).value * MB,
-    storageQuotaBytes: (storageGb as {value: number}).value * GB,
-    maxFlows: (flows as {value: number}).value,
+    maxMembers: members.value ?? UNLIMITED_MEMBERS,
+    maxBoards: boards.value,
+    maxFileBytes: BigInt(fileMb.value * MB),
+    flowRunsPerMonth: runs.value,
     auditLog: body!.auditLog as boolean,
   };
 });
+
+/** Open boards of a workspace, counted up to the safety cap (bounded; index boards(workspace_id, archived_at, id)). */
+async function openBoards(db: Pick<PrismaClient, '$queryRaw'>, workspaceId: number): Promise<number> {
+  const [row] = await db.$queryRaw<{n: number}[]>`
+    SELECT count(*)::int AS n FROM (
+      SELECT 1 FROM boards WHERE workspace_id = ${workspaceId}::int AND archived_at IS NULL LIMIT ${SAFETY_CAPS.maxBoards}::int
+    ) open_boards`;
+  return row?.n ?? 0;
+}
 
 const beforeQuery = validator('query', value => ({before: idOf(typeof value.before === 'string' ? value.before : '')}));
 
@@ -134,19 +151,22 @@ export const billingRoutes = new Hono()
   // ---- a workspace's own billing -------------------------------------------------------------------
   .get('/workspaces/:id/billing', withViewer, requireAuth, withDb, requireWorkspaceRole('viewer'), async c => {
     const {db, workspaceId, member} = c.var;
-    const [entitlements, plans, workspace, payments] = await Promise.all([
+    const [entitlements, plans, workspace, payments, boards, flowRuns] = await Promise.all([
       getEntitlements(db, workspaceId),
       cache.getOrSet(PLANS_CACHE_KEY, PLANS_TTL, async () =>
-        (await db.planLimit.findMany({select: planSelect, orderBy: {storageQuotaBytes: 'asc'}, take: 10})).map(planOut),
+        (await db.planLimit.findMany({select: planSelect, orderBy: {rank: 'asc'}, take: 10})).map(planOut),
       ),
       db.workspace.findUnique({where: {id: workspaceId}, select: {id: true, name: true, plan: true}}),
       paymentsStatus(c.req.url),
+      openBoards(db, workspaceId),
+      flowRunsUsed(db, workspaceId),
     ]);
     if (!entitlements || !workspace) return notFound(c);
     c.header('Cache-Control', 'private, no-store');
     return c.json({
       workspace,
-      entitlements,
+      // Usage of the limits a plan sets (like Trello): members, open boards, flow runs this month. No storage limit.
+      entitlements: {...entitlements, usage: {...entitlements.usage, boards, flowRuns}},
       plans,
       canManage: member.rank >= 3,
       payments,
@@ -169,7 +189,7 @@ export const billingRoutes = new Hono()
     const target = plans.find(row => row.plan === plan);
     const current = plans.find(row => row.plan === entitlements.plan);
     if (!target || target.priceKeyMonthly === '') return c.json(problem('not_found', 'That plan cannot be bought.'), 404);
-    if (target.plan === entitlements.plan || (current && target.storageQuotaBytes <= current.storageQuotaBytes)) {
+    if (target.plan === entitlements.plan || (current && target.rank <= current.rank)) {
       return c.json(problem('not_an_upgrade', 'Choose a plan bigger than the current one.'), 409);
     }
     // A subscription for this plan or a bigger one is already running (a second tab, another admin, or one paid but not
@@ -177,7 +197,7 @@ export const billingRoutes = new Hono()
     const [running] = await db.$queryRaw<{plan: string}[]>`
       SELECT p.plan FROM memberships m JOIN plan_limits p ON p.price_key_monthly = m.price_key AND p.price_key_monthly <> ''
       WHERE m.workspace_id = ${workspaceId} AND m.status IN ('active', 'trialing', 'past_due') AND m.access_ends_at IS NULL
-        AND p.storage_quota_bytes >= ${target.storageQuotaBytes}
+        AND p.rank >= ${target.rank}
         AND (${!config.production}::boolean OR m.mode = 'live')
       LIMIT 1`;
     if (running) {
@@ -268,7 +288,7 @@ export const billingRoutes = new Hono()
 
   // ---- site owners: plan limits --------------------------------------------------------------------
   .get('/billing/plans', withViewer, requireAuth, requirePermission(PERMISSIONS.PLANS_MANAGE), withDb, async c => {
-    const rows = await c.var.db.planLimit.findMany({select: {...planSelect, updatedAt: true}, orderBy: {storageQuotaBytes: 'asc'}, take: 10});
+    const rows = await c.var.db.planLimit.findMany({select: {...planSelect, updatedAt: true}, orderBy: {rank: 'asc'}, take: 10});
     c.header('Cache-Control', 'private, no-store');
     return c.json({plans: rows.map(row => ({...planOut(row), priceKey: row.priceKeyMonthly, updatedAt: row.updatedAt.toISOString()}))});
   })
@@ -278,16 +298,6 @@ export const billingRoutes = new Hono()
     if (!PLAN_RE.test(plan)) return c.json(problem('not_found', 'No such plan.'), 404);
     const db = c.var.db;
     const data = c.req.valid('json');
-    // Storage must strictly increase free < pro < team (the plan rank everywhere is by storage).
-    const stored = await db.planLimit.findMany({select: {plan: true, storageQuotaBytes: true}, take: 10});
-    const storage = new Map(stored.map(row => [row.plan, Number(row.storageQuotaBytes)]));
-    storage.set(plan, data.storageQuotaBytes);
-    const ladder = PLAN_ORDER.filter(name => storage.has(name));
-    for (let i = 1; i < ladder.length; i++) {
-      if (storage.get(ladder[i]!)! <= storage.get(ladder[i - 1]!)!) {
-        return invalid(c, {storageGb: {code: 'invalid', message: `Storage must grow with each plan: ${ladder.join(' < ')}.`}});
-      }
-    }
     // `updateMany` keeps "not found" a plain count of 0 (no throw) and never creates a plan.
     const {count} = await db.planLimit.updateMany({where: {plan}, data});
     if (!count) return c.json(problem('not_found', 'No such plan.'), 404);
@@ -299,7 +309,7 @@ export const billingRoutes = new Hono()
       actorUserId: c.var.viewer.id,
       action: 'plan.limits_changed',
       target: ['plan_limits', plan],
-      meta: {maxMembers: data.maxMembers, maxFlows: data.maxFlows, auditLog: data.auditLog},
+      meta: {maxMembers: data.maxMembers, maxBoards: data.maxBoards, flowRunsPerMonth: data.flowRunsPerMonth, auditLog: data.auditLog},
     });
     const row = await db.planLimit.findUnique({where: {plan}, select: {...planSelect, updatedAt: true}});
     return row ? c.json({plan: {...planOut(row), priceKey: row.priceKeyMonthly, updatedAt: row.updatedAt.toISOString()}}) : notFound(c, 'plan');

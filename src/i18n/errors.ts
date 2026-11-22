@@ -64,7 +64,7 @@ export function fieldErrorTexts(lookup: Lookup, error: ErrorLike | null | undefi
 }
 
 /** Codes that mean "your plan stops this": the app shows a toast with a "See plans" action (`plan-limits.tsx`). */
-export const PLAN_LIMIT_CODES = ['plan_limit', 'workspace_limit', 'member_limit_reached', 'limit_reached', 'workspace_read_only', 'read_only', 'storage_limit', 'storage_limit_reached', 'storage_quota', 'file_too_large'] as const;
+export const PLAN_LIMIT_CODES = ['plan_limit', 'workspace_limit', 'member_limit_reached', 'board_limit_reached', 'limit_reached', 'workspace_read_only', 'read_only', 'storage_limit', 'storage_limit_reached', 'storage_quota', 'file_too_large'] as const;
 
 export function isPlanLimitCode(code: string | undefined): boolean {
   return code !== undefined && (PLAN_LIMIT_CODES as readonly string[]).includes(code);

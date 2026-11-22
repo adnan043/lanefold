@@ -1,7 +1,7 @@
 import type {PrismaClient} from '../../generated/prisma/client';
 import {getEntitlements} from '../entitlements';
 import {readConfig} from '../flows/config';
-import {applyFlow, type FlowEvent, lastFlowInPlan, MAX_ACTIONS_PER_RUN, newRun, runFlows} from '../flows/engine';
+import {applyFlow, type FlowEvent, MAX_ACTIONS_PER_RUN, newRun, runFlows} from '../flows/engine';
 
 /**
  * The daily Flows job: `daily_due` flows ("a card is due in N days"). Scheduled hourly in background.json; every
@@ -72,9 +72,6 @@ export async function runDailyFlows(
           }),
         ]);
         if (!ent || !ent.features.flows || ent.readOnly || !board) continue;
-        // Over the plan's flow count (after a downgrade): only the oldest flows within it run.
-        const upTo = await lastFlowInPlan(db, flow.workspaceId, ent.limits.maxFlows);
-        if (upTo !== null && flow.id > upTo) continue;
         const rows = await db.card.findMany({
           where: {
             workspaceId: flow.workspaceId,
@@ -96,7 +93,7 @@ export async function runDailyFlows(
         // short, applyFlow returns the card it stopped at and the position is recorded below, like a deadline stop.
         const run = newRun(0, rows.length * config.actions.length);
         const chain = (ev: FlowEvent) => runFlows(db, [ev], {depth: 1, seen: run.seen, budget: {left: MAX_ACTIONS_PER_RUN}});
-        const stoppedAt = await applyFlow(db, board, flow, 'daily_due', rows.map(r => r.id), run, chain, deadline);
+        const stoppedAt = await applyFlow(db, board, flow, 'daily_due', rows.map(r => r.id), run, chain, deadline, ent.limits.flowRunsPerMonth);
         // Cards are in id order: everything before the one it stopped at is done. A full page may have more after it.
         const resumeAfter = stoppedAt !== null ? stoppedAt - 1 : rows.length === cardsPerFlow ? rows.at(-1)!.id : null;
         cards += stoppedAt !== null ? rows.findIndex(r => r.id === stoppedAt) : rows.length;

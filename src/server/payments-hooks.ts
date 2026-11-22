@@ -122,7 +122,7 @@ export async function recordMembership(membership: PlatformMembership, mode: str
 }
 
 /**
- * A workspace's plan follows its subscriptions: it is the HIGHEST plan (by `plan_limits.storage_quota_bytes`) among
+ * A workspace's plan follows its subscriptions: it is the HIGHEST plan (by `plan_limits.rank`) among
  * ALL memberships of the workspace that still grant access (the event's own one counts by its status), never the
  * plan of the event's price alone. So a late event of a lower plan cannot flip an upgrade back, and an ended old
  * subscription never undoes a newer one. With no granting membership the plan falls to `free`, but only when the
@@ -134,22 +134,22 @@ export async function applyWorkspacePlan(membership: PlatformMembership, mode?: 
   if (!workspaceId) return {changed: false};
   const db = database();
   const [bought, workspace, others] = await Promise.all([
-    db.planLimit.findFirst({where: {priceKeyMonthly: membership.price}, select: {plan: true, storageQuotaBytes: true}}),
+    db.planLimit.findFirst({where: {priceKeyMonthly: membership.price}, select: {plan: true, rank: true}}),
     db.workspace.findUnique({where: {id: workspaceId}, select: {plan: true}}),
     // Same predicate as the daily sweep; the highest plan among the OTHER memberships that still give access.
-    db.$queryRaw<{plan: string; storage: bigint}[]>`
-      SELECT p.plan AS plan, p.storage_quota_bytes AS storage
+    db.$queryRaw<{plan: string; rank: number}[]>`
+      SELECT p.plan AS plan, p.rank::int AS rank
       FROM memberships m JOIN plan_limits p ON p.price_key_monthly = m.price_key
       WHERE m.workspace_id = ${workspaceId} AND m.subscription_id <> ${membership.id}
         AND (m.status IN ('active', 'trialing', 'past_due') OR m.access_ends_at > now())
         AND (${!config.production}::boolean OR m.mode = 'live')
-      ORDER BY p.storage_quota_bytes DESC
+      ORDER BY p.rank DESC
       LIMIT 1`,
   ]);
   if (!bought || !workspace) return {changed: false};
   const grants = modeGrants(mode) && grantsAccess(membership.status, membership.accessEndsAt);
-  const candidates = [...(grants ? [{plan: bought.plan, storage: bought.storageQuotaBytes}] : []), ...others];
-  const best = candidates.reduce<{plan: string; storage: bigint} | null>((top, c) => (!top || c.storage > top.storage ? c : top), null);
+  const candidates = [...(grants ? [{plan: bought.plan, rank: bought.rank}] : []), ...others];
+  const best = candidates.reduce<{plan: string; rank: number} | null>((top, c) => (!top || c.rank > top.rank ? c : top), null);
   const target = best ? best.plan : workspace.plan === bought.plan ? 'free' : workspace.plan;
   if (target === workspace.plan) {
     // Idempotent: a retry after a failed grace start (or an audit) still starts the clock when over the limits.
@@ -187,7 +187,7 @@ export async function cancelSupersededMemberships(membership: PlatformMembership
   // Only subscriptions that grant here (live payments on the live site, as modeGrants): a test one never outranks a paid one.
   const lower = await db.$queryRaw<{id: string; mode: string}[]>`
     WITH running AS (
-      SELECT m.id AS row_id, m.subscription_id, m.mode, m.status, m.created_at, p.storage_quota_bytes AS quota
+      SELECT m.id AS row_id, m.subscription_id, m.mode, m.status, m.created_at, p.rank AS quota
       FROM memberships m JOIN plan_limits p ON p.price_key_monthly = m.price_key AND p.price_key_monthly <> ''
       WHERE m.workspace_id = ${workspaceId}
         AND m.status IN ('active', 'trialing', 'past_due') AND m.access_ends_at IS NULL

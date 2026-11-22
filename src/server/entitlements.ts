@@ -1,6 +1,7 @@
 import type {PrismaClient} from '../generated/prisma/client';
 import {cache} from '../platform/cache';
 import {FILE_CEILING_BYTES} from '../lib/file-limits';
+import {MAX_BOARDS_CAP, UNLIMITED_MEMBERS} from '../lib/plan-limits';
 
 /**
  * Entitlements: THE only place that decides what a workspace may do (docs/product/SPEC.md §10).
@@ -8,7 +9,8 @@ import {FILE_CEILING_BYTES} from '../lib/file-limits';
  * `app_settings` or `workspaces.plan` themselves.
  *
  *  - `FREE_FOR_ALL`: every feature unlocked, plan limits NOT enforced (only the safety caps below), never read-only.
- *  - `PAID` (default): the workspace's plan limits are enforced. A workspace over a limit (members or storage) is in
+ *  - `PAID` (default): the workspace's plan limits are enforced (like Trello: members, open boards, file size, flow runs
+ *    a month; no storage limit). A workspace over its MEMBER limit is in
  *    grace until `workspaces.grace_until`; after it passes, it is READ-ONLY (`readOnly: true`). It heals by itself
  *    once the workspace is back under its limits. Nothing is ever deleted by a mode switch or a downgrade.
  *
@@ -20,10 +22,13 @@ export type BillingMode = 'PAID' | 'FREE_FOR_ALL';
 
 export type PlanLimits = {
   plan: string;
+  /** At SAFETY_CAPS.maxMembers or more = unlimited. */
   maxMembers: number;
+  /** Open boards; null = unlimited. */
+  maxBoards: number | null;
   maxFileBytes: number;
-  storageQuotaBytes: number;
-  maxFlows: number;
+  /** Flow runs (one flow on one card) per calendar month (UTC); null = unlimited. */
+  flowRunsPerMonth: number | null;
   auditLog: boolean;
 };
 
@@ -31,12 +36,14 @@ export type AppSettingsValue = {billingMode: BillingMode; graceDays: number; mai
 
 /** What FREE_FOR_ALL still caps, so nothing runs away (never shown as a plan limit). */
 export const SAFETY_CAPS = {
-  maxMembers: 500,
-  /** Per-file cap in FREE_FOR_ALL mode only. Plans may go up to FILE_CEILING_BYTES (src/lib/file-limits.ts). */
-  maxFileBytes: 100 * 1024 * 1024,
-  /** Storage in FREE_FOR_ALL mode only. Plans may go up to STORAGE_CEILING_GB (src/lib/file-limits.ts). */
-  storageQuotaBytes: 200 * 1024 * 1024 * 1024,
-  maxFlows: 200,
+  /** The most members any workspace may have: a plan at this number is shown as "Unlimited". */
+  maxMembers: UNLIMITED_MEMBERS,
+  /** The most open boards any workspace may have ("Unlimited" on a plan is this). */
+  maxBoards: MAX_BOARDS_CAP,
+  /** The per-file ceiling (src/lib/file-limits.ts): 250 MB, Trello's paid limit. */
+  maxFileBytes: FILE_CEILING_BYTES,
+  /** No cap on flow runs a month (each run is still bounded by the engine's action budgets). */
+  flowRunsPerMonth: null,
 } as const;
 
 /** Safety cap on live cards in one lane (not a plan limit: it stops a script from filling the database). */
@@ -46,9 +53,9 @@ export const MAX_CARDS_PER_LANE = 500;
 const FALLBACK_LIMITS: PlanLimits = {
   plan: 'free',
   maxMembers: 10,
+  maxBoards: 10,
   maxFileBytes: 10 * 1024 * 1024,
-  storageQuotaBytes: 1024 * 1024 * 1024,
-  maxFlows: 0,
+  flowRunsPerMonth: 0,
   auditLog: false,
 };
 
@@ -56,7 +63,6 @@ export type EntitlementWorkspace = {
   id: number;
   plan: string;
   memberCount: number;
-  storageUsedBytes: number;
   graceUntil: Date | null;
 };
 
@@ -64,12 +70,15 @@ export type Entitlements = {
   workspaceId: number;
   billingMode: BillingMode;
   plan: string;
-  /** What the workspace may use right now (plan limits when PAID, safety caps when FREE_FOR_ALL). */
-  limits: {maxMembers: number; maxFileBytes: number; storageQuotaBytes: number; maxFlows: number};
+  /** What the workspace may use right now (plan limits when PAID, safety caps when FREE_FOR_ALL). Always enforceable
+   *  numbers, except `flowRunsPerMonth` (null = unlimited). */
+  limits: {maxMembers: number; maxBoards: number; maxFileBytes: number; flowRunsPerMonth: number | null};
+  /** Which limits are "Unlimited" to show (the number behind them is only the safety cap). */
+  unlimited: {members: boolean; boards: boolean; flowRuns: boolean};
   /** Features unlocked (all of them when FREE_FOR_ALL). */
   features: {auditLog: boolean; flows: boolean};
-  usage: {members: number; storageUsedBytes: number};
-  /** Over a PAID limit: until `graceUntil` (null = clock not started yet) the workspace still works. */
+  usage: {members: number};
+  /** Over the PAID member limit: until `graceUntil` (null = clock not started yet) the workspace still works. */
   overLimit: boolean;
   inGrace: boolean;
   graceUntil: string | null;
@@ -91,22 +100,27 @@ export function computeEntitlements({limits, workspace, mode, now = new Date()}:
   const plan = limits ?? FALLBACK_LIMITS;
   const free = mode === 'FREE_FOR_ALL';
   const effective = free
-    ? {...SAFETY_CAPS}
+    ? {maxMembers: SAFETY_CAPS.maxMembers, maxBoards: SAFETY_CAPS.maxBoards, maxFileBytes: SAFETY_CAPS.maxFileBytes, flowRunsPerMonth: SAFETY_CAPS.flowRunsPerMonth}
     : {
-        maxMembers: plan.maxMembers,
-        maxFileBytes: plan.maxFileBytes,
-        storageQuotaBytes: plan.storageQuotaBytes,
-        maxFlows: plan.maxFlows,
+        maxMembers: Math.min(plan.maxMembers, SAFETY_CAPS.maxMembers),
+        maxBoards: Math.min(plan.maxBoards ?? SAFETY_CAPS.maxBoards, SAFETY_CAPS.maxBoards),
+        maxFileBytes: Math.min(plan.maxFileBytes, SAFETY_CAPS.maxFileBytes),
+        flowRunsPerMonth: plan.flowRunsPerMonth,
       };
-  const overLimit = !free && (workspace.memberCount > effective.maxMembers || workspace.storageUsedBytes > effective.storageQuotaBytes);
+  const overLimit = !free && workspace.memberCount > effective.maxMembers;
   const graceOver = overLimit && workspace.graceUntil !== null && workspace.graceUntil.getTime() <= now.getTime();
   return {
     workspaceId: workspace.id,
     billingMode: mode,
     plan: workspace.plan,
     limits: effective,
-    features: {auditLog: free || plan.auditLog, flows: free || plan.maxFlows > 0},
-    usage: {members: workspace.memberCount, storageUsedBytes: workspace.storageUsedBytes},
+    unlimited: {
+      members: effective.maxMembers >= SAFETY_CAPS.maxMembers,
+      boards: effective.maxBoards >= SAFETY_CAPS.maxBoards,
+      flowRuns: effective.flowRunsPerMonth === null,
+    },
+    features: {auditLog: free || plan.auditLog, flows: free || plan.flowRunsPerMonth !== 0},
+    usage: {members: workspace.memberCount},
     overLimit,
     inGrace: overLimit && !graceOver,
     graceUntil: overLimit && workspace.graceUntil ? workspace.graceUntil.toISOString() : null,
@@ -153,12 +167,11 @@ type Row = {
   id: number;
   plan: string;
   member_count: number;
-  storage_used_bytes: bigint;
   grace_until: Date | null;
   max_members: number | null;
+  max_boards: number | null;
   max_file_bytes: bigint | null;
-  storage_quota_bytes: bigint | null;
-  max_flows: number | null;
+  flow_runs_per_month: number | null;
   audit_log: boolean | null;
 };
 
@@ -175,10 +188,10 @@ function limitsOf(row: Row): PlanLimits | null {
     : {
         plan: row.plan,
         maxMembers: row.max_members,
-        // Never above the app's ceiling, whatever an older plan row says (attachments.size can't hold more).
+        maxBoards: row.max_boards,
+        // Never above the app's ceiling, whatever an older plan row says.
         maxFileBytes: Math.min(Number(row.max_file_bytes), FILE_CEILING_BYTES),
-        storageQuotaBytes: Number(row.storage_quota_bytes),
-        maxFlows: row.max_flows ?? 0,
+        flowRunsPerMonth: row.flow_runs_per_month,
         auditLog: row.audit_log ?? false,
       };
 }
@@ -191,7 +204,6 @@ function buildFrom(row: Row, mode: BillingMode, graceUntil: Date | null): Entitl
       id: row.id,
       plan: row.plan,
       memberCount: row.member_count,
-      storageUsedBytes: Number(row.storage_used_bytes),
       graceUntil,
     },
   });
@@ -200,8 +212,8 @@ function buildFrom(row: Row, mode: BillingMode, graceUntil: Date | null): Entitl
 async function load(db: PrismaClient, workspaceId: number): Promise<Entitlements | null> {
   const [rows, settings] = await Promise.all([
     db.$queryRaw<Row[]>`
-      SELECT w.id, w.plan, w.member_count, w.storage_used_bytes, w.grace_until,
-             p.max_members, p.max_file_bytes, p.storage_quota_bytes, p.max_flows, p.audit_log
+      SELECT w.id, w.plan, w.member_count, w.grace_until,
+             p.max_members, p.max_boards, p.max_file_bytes, p.flow_runs_per_month, p.audit_log
       FROM workspaces w LEFT JOIN plan_limits p ON p.plan = w.plan
       WHERE w.id = ${workspaceId} LIMIT 1`,
     getAppSettings(db),
@@ -223,7 +235,7 @@ async function load(db: PrismaClient, workspaceId: number): Promise<Entitlements
       return result;
     }
   }
-  // Back under the limits with an old clock still set (members removed, storage freed, a plan raised): drop it now,
+  // Back under the limits with an old clock still set (members removed, a plan raised): drop it now,
   // not at the next daily sweep, so a later overage (a downgrade the same day) starts a FRESH grace instead of
   // reading the expired date as "grace over". One idempotent UPDATE, only in that state; a failure never breaks the read.
   // Only when the plan has a plan_limits row: the UPDATE joins it, so without one it could never clear the clock and
@@ -267,8 +279,8 @@ export async function getEntitlementsMany(db: PrismaClient, workspaceIds: readon
   if (ids.length === 0) return out;
   const [rows, settings] = await Promise.all([
     db.$queryRaw<Row[]>`
-      SELECT w.id, w.plan, w.member_count, w.storage_used_bytes, w.grace_until,
-             p.max_members, p.max_file_bytes, p.storage_quota_bytes, p.max_flows, p.audit_log
+      SELECT w.id, w.plan, w.member_count, w.grace_until,
+             p.max_members, p.max_boards, p.max_file_bytes, p.flow_runs_per_month, p.audit_log
       FROM workspaces w LEFT JOIN plan_limits p ON p.plan = w.plan
       WHERE w.id = ANY(${ids}::int[])
       LIMIT ${ids.length}`,
@@ -330,13 +342,13 @@ export async function startGraceForWorkspaces(db: PrismaClient, ids: number[], {
     FROM plan_limits p, app_settings s
     WHERE p.plan = w.plan AND s.id = 1 AND s.billing_mode = 'PAID'
       AND (w.grace_until IS NULL OR (${restartExpired}::boolean AND w.grace_until <= now()))
-      AND (w.member_count > p.max_members OR w.storage_used_bytes > p.storage_quota_bytes)
+      AND w.member_count > p.max_members
       AND w.id = ANY(${ids}::int[])`;
   await db.$executeRaw`
     UPDATE workspaces w SET grace_until = NULL
     FROM plan_limits p, app_settings s
     WHERE p.plan = w.plan AND s.id = 1 AND w.grace_until IS NOT NULL
-      AND (s.billing_mode = 'FREE_FOR_ALL' OR (w.member_count <= p.max_members AND w.storage_used_bytes <= p.storage_quota_bytes))
+      AND (s.billing_mode = 'FREE_FOR_ALL' OR w.member_count <= p.max_members)
       AND w.id = ANY(${ids}::int[])`;
 }
 
@@ -351,7 +363,7 @@ export async function startGraceForOverLimit(db: PrismaClient, options: {plan?: 
     FROM plan_limits p, app_settings s
     WHERE p.plan = w.plan AND s.id = 1 AND s.billing_mode = 'PAID'
       AND (w.grace_until IS NULL OR (${restartExpired}::boolean AND w.grace_until <= now()))
-      AND (w.member_count > p.max_members OR w.storage_used_bytes > p.storage_quota_bytes)
+      AND w.member_count > p.max_members
       AND (${plan}::text IS NULL OR w.plan = ${plan})
       AND (${workspaceId}::int IS NULL OR w.id = ${workspaceId})`;
   // Back under the limits (or FREE_FOR_ALL): drop an old clock so a later overage starts a fresh grace.
@@ -359,7 +371,7 @@ export async function startGraceForOverLimit(db: PrismaClient, options: {plan?: 
     UPDATE workspaces w SET grace_until = NULL
     FROM plan_limits p, app_settings s
     WHERE p.plan = w.plan AND s.id = 1 AND w.grace_until IS NOT NULL
-      AND (s.billing_mode = 'FREE_FOR_ALL' OR (w.member_count <= p.max_members AND w.storage_used_bytes <= p.storage_quota_bytes))
+      AND (s.billing_mode = 'FREE_FOR_ALL' OR w.member_count <= p.max_members)
       AND (${plan}::text IS NULL OR w.plan = ${plan})
       AND (${workspaceId}::int IS NULL OR w.id = ${workspaceId})`;
   return Number(started);
@@ -367,3 +379,25 @@ export async function startGraceForOverLimit(db: PrismaClient, options: {plan?: 
 
 /** Safety cap on saved card templates per workspace (not a plan limit: every plan gets the feature). */
 export const MAX_CARD_TEMPLATES = 50;
+
+/**
+ * The plan's open-board limit (Trello: 10 open boards per Free workspace; archived boards don't count). Call INSIDE the
+ * transaction that adds or un-archives a board: the workspace row lock queues parallel creates, so two can never both
+ * pass the count. The count is bounded (it reads at most `max` rows of boards(workspace_id, archived_at, id)).
+ */
+export async function boardLimitReached(
+  tx: Pick<PrismaClient, '$queryRaw'>,
+  workspaceId: number,
+  max: number,
+): Promise<boolean> {
+  await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${workspaceId}::int FOR UPDATE`;
+  const [row] = await tx.$queryRaw<{n: number}[]>`
+    SELECT count(*)::int AS n FROM (
+      SELECT 1 FROM boards WHERE workspace_id = ${workspaceId}::int AND archived_at IS NULL LIMIT ${max}::int
+    ) open_boards`;
+  return (row?.n ?? 0) >= max;
+}
+
+/** The refusal every board-adding route sends when `boardLimitReached`. */
+export const boardLimitMessage = (max: number) =>
+  `This workspace has reached its plan's limit of ${max} open boards. Archive a board or upgrade the plan.`;

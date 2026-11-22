@@ -75,7 +75,6 @@ export function AppPalette({open, setOpen}: {open: boolean; setOpen: (open: bool
     const list: CommandItem[] = [
       {id: 'go-boards', label: t('nav.boards'), icon: 'layout-kanban', group: go, onSelect: () => void navigate({to: '/boards'})},
       {id: 'go-my-day', label: t('nav.myDay'), icon: 'calendar', group: go, onSelect: () => void navigate({to: '/my-day'})},
-      {id: 'go-inbox', label: t('nav.inbox'), icon: 'inbox', group: go, onSelect: () => void navigate({to: '/inbox'})},
       {id: 'go-chat', label: t('nav.chat'), icon: 'message', group: go, onSelect: () => void navigate({to: '/chat'})},
       {id: 'go-settings', label: t('nav.settings'), icon: 'settings', group: go, onSelect: () => void navigate({to: '/settings/appearance'})},
     ];

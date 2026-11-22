@@ -8,7 +8,6 @@ import {useT} from '../i18n';
 import {Button, buttonClass, EmptyState, LoadingBlock} from '../portal/ui';
 import {isChunkLoadError, safeErrorLabel} from './polish';
 import {todayISO} from '../portal/ui/date';
-import {inboxQuery} from './inbox/queries';
 import {myDayQuery} from './my-day/queries';
 import {boardQuery, boardsQuery, workspacesQuery} from './queries';
 import {NotFoundScreen, Root} from './shell';
@@ -128,17 +127,6 @@ const myDayRoute = createRoute({
   loader: ({context: {queryClient}}) => warm(queryClient.ensureQueryData(myDayQuery(todayISO()))),
   component: lazyRouteComponent(() => import('./my-day/my-day'), 'MyDay'),
 });
-const inboxRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/inbox',
-  staticData: {title: 'nav.inbox'},
-  loader: async ({context: {queryClient}}) => {
-    const workspaces = await queryClient.ensureQueryData(workspacesQuery).catch(() => null);
-    const id = remembered() || workspaces?.[0]?.id;
-    if (id) await warm(queryClient.ensureInfiniteQueryData(inboxQuery(id)));
-  },
-  component: lazyRouteComponent(() => import('./inbox/inbox'), 'Inbox'),
-});
 const chatRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/chat',
@@ -195,4 +183,4 @@ const settingsIndexRoute = createRoute({
   },
 });
 
-export const routeTree = rootRoute.addChildren([indexRoute, boardsRoute, boardRoute.addChildren([cardRoute]), myDayRoute, inboxRoute, chatRoute, membersRoute, joinRoute, onboardingRoute, settingsIndexRoute, settingsAppearanceRoute, settingsLanguageRoute, settingsWorkspaceRoute, settingsBillingRoute, settingsAuditRoute, settingsImportExportRoute, settingsNotificationsRoute, settingsAccountRoute]);
+export const routeTree = rootRoute.addChildren([indexRoute, boardsRoute, boardRoute.addChildren([cardRoute]), myDayRoute, chatRoute, membersRoute, joinRoute, onboardingRoute, settingsIndexRoute, settingsAppearanceRoute, settingsLanguageRoute, settingsWorkspaceRoute, settingsBillingRoute, settingsAuditRoute, settingsImportExportRoute, settingsNotificationsRoute, settingsAccountRoute]);

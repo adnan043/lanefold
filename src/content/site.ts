@@ -82,7 +82,7 @@ export const HOME = {
       {name: 'Done', tone: 'success', cards: [{title: 'Set up the workspace', flag: false}]},
     ],
     chatTitle: 'Chat on this board',
-    nav: ['Boards', 'My Day', 'Inbox', 'Chat'],
+    nav: ['Boards', 'My Day', 'Chat'],
     chat: [
       {who: 'Sam', text: 'Login fails on small phones. Can someone look?', mine: false},
       {who: 'You', text: 'On it, moving the card now.', mine: true},
@@ -95,7 +95,7 @@ export const HOME = {
     items: [
       {icon: 'dashboard', title: 'Boards, lanes and cards', body: 'Drag cards across lanes, set owners and dates, and see at a glance where every piece of work stands.', size: 'wide', art: 'board'},
       {icon: 'chat', title: 'Chat built in', body: 'Talk in a channel or right on a board, and link a message to the card it is about.', size: 'tall', art: 'chat'},
-      {icon: 'sun', title: 'My Day and Inbox', body: 'See what is yours today across every board, and jot ideas in the Inbox to sort into a board later.'},
+      {icon: 'sun', title: 'My Day', body: 'See what is yours today across every board, in one list.'},
       {icon: 'command', title: 'Keyboard first', body: 'A command palette and shortcuts to move around and add cards without the mouse.'},
       {icon: 'shield', title: 'Roles and access', body: 'Invite your team and decide who can edit and who can only read.'},
       {icon: 'import', title: 'Import from Trello', body: 'Bring a board over from a Trello JSON export, and export any board to JSON or CSV.'},
@@ -103,7 +103,7 @@ export const HOME = {
     ],
   },
   /** The strip of small pills under the hero: things that are built, nothing invented. */
-  chips: ['Kanban boards', 'Board chat', 'Channels', 'My Day', 'Inbox', 'Command palette', 'Keyboard shortcuts', 'Calendar', 'Board dashboard', 'Workload', 'Flows', 'Labels', 'Checklists', 'Trello import', 'CSV export', 'Dark mode', '20 languages'],
+  chips: ['Kanban boards', 'Board chat', 'Channels', 'My Day', 'Command palette', 'Keyboard shortcuts', 'Calendar', 'Board dashboard', 'Workload', 'Flows', 'Labels', 'Checklists', 'Trello import', 'CSV export', 'Dark mode', '20 languages'],
   /** Three alternating rows, each a feature with a small drawing (`art`). */
   spotlight: {
     eyebrow: 'A closer look',
@@ -193,11 +193,11 @@ export const HOME = {
       },
       {
         q: 'Is it free?',
-        a: 'Yes, there is a Free plan for small teams. Pro and Team raise the member and storage limits. See the pricing page for the limits of each plan.',
+        a: 'Yes, there is a Free plan for small teams: up to 10 members and 10 boards. Pro and Team give unlimited members and boards, bigger files and more automation runs. See the pricing page for the limits of each plan.',
       },
       {
         q: 'How is pricing set up?',
-        a: 'Per workspace, not per person. A plan covers everyone in the workspace, up to that plan\'s member limit.',
+        a: 'Per workspace, not per person. A plan covers everyone in the workspace: up to 10 members on Free, unlimited on Pro and Team.',
       },
       {
         q: 'Can I move over from Trello?',
@@ -218,28 +218,36 @@ export const HOME = {
     title: 'Ready to try {name}?',
     body: 'Create your account, make a workspace and add your first board.',
     /** `{members}` is filled from PLAN_DEFAULTS.free on the page. */
-    points: ['Free for up to {members} members', 'Boards and chat in one place', 'Bring your boards from Trello'],
+    points: ['Free for up to {members} members and 10 boards', 'Boards and chat in one place', 'Bring your boards from Trello'],
     primary: 'Start free',
     secondary: 'Sign in',
   },
 };
 
 /**
- * The default plan limits, as the app enforces them (the `plan_limits` seed in the first migration and
- * `FALLBACK_LIMITS` in `src/server/entitlements.ts`). The pricing page is prerendered, so the numbers are
- * kept here and `tests/marketing.test.ts` fails when they differ from those defaults. When the owner edits a
- * plan in /dashboard (Plan limits) the live app follows at once, but this page needs a code change and a Publish.
+ * The default plan limits, like Trello's (Free / Standard / Premium), as the app enforces them (migration
+ * `trello_limits` and `FALLBACK_LIMITS` in `src/server/entitlements.ts`). `null` = unlimited. No storage limit.
+ * The pricing page is prerendered, so the numbers are kept here and `tests/marketing.test.ts` fails when they differ
+ * from those defaults. When the owner edits a plan in /dashboard (Plan limits) the live app follows at once, but this
+ * page needs a code change and a Publish.
  */
 export const PLAN_DEFAULTS = {
-  free: {members: 10, fileMb: 10, storageGb: 1, flows: 0, auditLog: false},
-  pro: {members: 50, fileMb: 100, storageGb: 20, flows: 10, auditLog: false},
-  team: {members: 500, fileMb: 100, storageGb: 100, flows: 100, auditLog: true},
-} as const;
+  free: {members: 10, boards: 10, fileMb: 10, flowRuns: 250, auditLog: false},
+  pro: {members: null, boards: null, fileMb: 250, flowRuns: 1000, auditLog: false},
+  team: {members: null, boards: null, fileMb: 250, flowRuns: null, auditLog: true},
+} as const satisfies Record<string, {members: number | null; boards: number | null; fileMb: number; flowRuns: number | null; auditLog: boolean}>;
 
 const D = PLAN_DEFAULTS;
-const storage = (gb: number) => `${gb} GB`;
-/** The compare table's Flows cell: how many a workspace may keep, or none. */
-export const flowsCell = (max: number) => (max > 0 ? `Up to ${max}` : 'Not included');
+const num = (n: number) => n.toLocaleString('en-US');
+/** A count cell of the compare table: the number, or "Unlimited". */
+export const countCell = (max: number | null) => (max === null ? 'Unlimited' : num(max));
+/** The compare table's Flows cell: automation runs a month, unlimited, or none. */
+export const flowsCell = (max: number | null) => (max === null ? 'Unlimited' : max > 0 ? `${num(max)} a month` : 'Not included');
+/** The plan cards' feature lines (src/lib/pricing-view.ts rewrites them from the live limits). */
+export const membersLine = (max: number | null) => (max === null ? 'Unlimited members' : `Up to ${num(max)} members`);
+export const boardsLine = (max: number | null) => (max === null ? 'Unlimited boards' : `Up to ${num(max)} boards`);
+export const fileLine = (mb: number) => `${num(mb)} MB per file`;
+export const runsLine = (max: number | null) => (max === null ? 'Unlimited automation runs' : `${num(max)} automation runs a month`);
 
 export const PRICING = {
   title: 'Pricing',
@@ -249,11 +257,11 @@ export const PRICING = {
   /** What the Free plan's price slot shows (it has no price in the catalogue). */
   freePrice: 'Free',
   includedTitle: 'Every plan includes',
-  includedBody: 'The whole app is yours on every plan. Paid plans add room for more people and files, and Flows to automate the routine.',
+  includedBody: 'The whole app is yours on every plan, Flows included. Paid plans add unlimited members and boards, bigger files and more automation runs.',
   included: [
-    {icon: 'dashboard', title: 'Unlimited boards', body: 'Boards, lanes, cards, labels and checklists.'},
+    {icon: 'dashboard', title: 'Unlimited cards', body: 'Boards, lanes, cards, labels and checklists, with no storage limit.'},
     {icon: 'chat', title: 'Built-in chat', body: 'Channels and a chat on every board.'},
-    {icon: 'sun', title: 'My Day and Inbox', body: 'What is yours today, and a place for quick notes.'},
+    {icon: 'sun', title: 'My Day', body: 'What is yours today, across every board.'},
     {icon: 'command', title: 'Command palette', body: 'Keyboard shortcuts and quick add.'},
     {icon: 'import', title: 'Import and export', body: 'From a Trello export in, JSON or CSV out.'},
     {icon: 'globe', title: '20 languages', body: 'On phone, tablet and computer.'},
@@ -262,13 +270,13 @@ export const PRICING = {
   endTitle: 'Start on the Free plan today',
   endBody: 'Make a workspace, add a board and invite your team. Upgrade only when you need more room.',
   endCta: 'Create your workspace',
-  description: 'Simple flat plans per workspace: Free, Pro and Team. Everyone in the workspace is covered, up to the plan\'s member limit.',
+  description: 'Simple flat plans per workspace: Free, Pro and Team. Free covers 10 members and 10 boards; Pro and Team give unlimited members and boards. No storage limit.',
   lede: 'Flat plans per workspace, not per person. Start free and upgrade when your team outgrows it.',
   testNote: 'Payments run in test mode for now: no real money is charged.',
   /** Billing can be switched off by the site owner (free for all); the page is static, so it says so instead of guessing. */
-  modeNote: 'These are the plan limits when billing is on. If the site owner runs {name} free for everyone, the member and storage limits are not enforced.',
+  modeNote: 'These are the plan limits when billing is on. If the site owner runs {name} free for everyone, the plan limits are not enforced.',
   /** Shown instead of the two notes above when the site owner runs it free for everyone. */
-  freeNote: '{name} is free for everyone right now: every feature is open, and the member and storage limits below are not enforced.',
+  freeNote: '{name} is free for everyone right now: every feature is open, and the plan limits below are not enforced.',
   popularLabel: 'Most popular',
   perWorkspace: 'per workspace, not per person',
   /** Signed-in visitors see this instead of a sign-up button; it opens the workspace's billing screen. */
@@ -276,7 +284,7 @@ export const PRICING = {
   changePlanHref: '/app/settings/billing',
   compareTitle: 'Compare the limits',
   compareCaption: 'What each plan includes. Limits apply to the whole workspace.',
-  compareHeaders: {plan: 'Plan', members: 'Members', file: 'Per file', storage: 'Storage', flows: 'Flows (automations)', audit: 'Audit log'},
+  compareHeaders: {plan: 'Plan', members: 'Members', boards: 'Open boards', file: 'Per file', flows: 'Automation runs', audit: 'Audit log'},
   yes: 'Included',
   no: 'Not included',
   plans: [
@@ -287,8 +295,8 @@ export const PRICING = {
       cta: 'Start free',
       featured: false,
       lead: 'Everything you need to start:',
-      limits: {members: String(D.free.members), file: `${D.free.fileMb} MB`, storage: storage(D.free.storageGb), flows: flowsCell(D.free.flows), audit: D.free.auditLog},
-      features: ['Boards, cards and chat', 'My Day and Inbox', 'Keyboard shortcuts and command palette', `Up to ${D.free.members} members`],
+      limits: {members: countCell(D.free.members), boards: countCell(D.free.boards), file: `${D.free.fileMb} MB`, flows: flowsCell(D.free.flowRuns), audit: D.free.auditLog},
+      features: ['Boards, cards and chat', membersLine(D.free.members), boardsLine(D.free.boards), fileLine(D.free.fileMb), runsLine(D.free.flowRuns)],
     },
     {
       key: 'pro',
@@ -297,8 +305,8 @@ export const PRICING = {
       cta: 'Sign up',
       featured: true,
       lead: 'Everything in Free, plus:',
-      limits: {members: String(D.pro.members), file: `${D.pro.fileMb} MB`, storage: storage(D.pro.storageGb), flows: flowsCell(D.pro.flows), audit: D.pro.auditLog},
-      features: [`Up to ${D.pro.members} members`, `${D.pro.fileMb} MB per file`, `${storage(D.pro.storageGb)} of storage`, `Up to ${D.pro.flows} flows (automations)`],
+      limits: {members: countCell(D.pro.members), boards: countCell(D.pro.boards), file: `${D.pro.fileMb} MB`, flows: flowsCell(D.pro.flowRuns), audit: D.pro.auditLog},
+      features: [membersLine(D.pro.members), boardsLine(D.pro.boards), fileLine(D.pro.fileMb), runsLine(D.pro.flowRuns)],
     },
     {
       key: 'team',
@@ -307,8 +315,8 @@ export const PRICING = {
       cta: 'Sign up',
       featured: false,
       lead: 'Everything in Pro, plus:',
-      limits: {members: String(D.team.members), file: `${D.team.fileMb} MB`, storage: storage(D.team.storageGb), flows: flowsCell(D.team.flows), audit: D.team.auditLog},
-      features: [`Up to ${D.team.members} members`, `${storage(D.team.storageGb)} of storage`, `Up to ${D.team.flows} flows (automations)`, 'Audit log'],
+      limits: {members: countCell(D.team.members), boards: countCell(D.team.boards), file: `${D.team.fileMb} MB`, flows: flowsCell(D.team.flowRuns), audit: D.team.auditLog},
+      features: [runsLine(D.team.flowRuns), 'Audit log'],
     },
   ],
   faqTitle: 'Questions',
@@ -322,13 +330,13 @@ export const PRICING = {
 /** The features page (`src/pages/features.astro`): only what is built. */
 export const FEATURES = {
   title: 'Features',
-  description: 'Everything in {name}: kanban boards, built-in chat, My Day and Inbox, four views, Flows automations, roles, import and export, on every device and in 20 languages.',
+  description: 'Everything in {name}: kanban boards, built-in chat, My Day, four views, Flows automations, roles, import and export, on every device and in 20 languages.',
   hero: {
     eyebrow: 'Features',
     title: 'Everything your team needs, in one calm place',
     /** Words of `title` drawn in the accent gradient. */
     highlight: 'one calm place',
-    body: 'Boards for the work, chat for the conversation, and the small things that make every day faster. All of it on the Free plan, with Flows on Pro and Team.',
+    body: 'Boards for the work, chat for the conversation, and the small things that make every day faster. All of it on the Free plan, Flows included.',
     primary: 'Start free',
     secondary: 'See pricing',
     user: {primary: 'Open your boards', href: '/app'},
@@ -366,11 +374,10 @@ export const FEATURES = {
       id: 'focus',
       icon: 'sun',
       tone: 'peach',
-      title: 'My Day and Inbox',
+      title: 'My Day and notifications',
       body: 'See what needs you without opening every board.',
       items: [
         {icon: 'sun', title: 'My Day', body: 'Your cards, due soon, from all your boards in one list.'},
-        {icon: 'inbox', title: 'Inbox', body: 'Jot a card down now and sort it into a board later.'},
         {icon: 'at', title: 'Notifications', body: 'Mentions, assignments and changes on the cards you follow.'},
         {icon: 'mail', title: 'Email notifications', body: 'Opt in to get the important updates by email.'},
       ],
@@ -405,7 +412,7 @@ export const FEATURES = {
       icon: 'sparkles',
       tone: 'peach',
       title: 'Flows (automations)',
-      body: 'Let the board do the routine steps for you. On the Pro and Team plans; board admins set them up.',
+      body: 'Let the board do the routine steps for you. On every plan, with more runs a month on Pro and Team; board admins set them up.',
       items: [
         {icon: 'sparkles', title: 'When something happens', body: 'A card is added, moved into a lane, or is due in a set number of days.'},
         {icon: 'tag', title: 'Only the cards you mean', body: 'Limit a flow to a lane, or to cards with a chosen label.'},
@@ -455,7 +462,7 @@ export const FEATURES = {
     title: 'Try it free, upgrade when you need more',
     body: 'Create your workspace, add a board and invite your team.',
     /** True of the Free plan (the groups above); nothing invented. */
-    points: ['Boards and chat in one place', 'All four views of every board', 'My Day and Inbox for each person'],
+    points: ['Boards and chat in one place', 'All four views of every board', 'My Day for each person'],
     primary: 'Start free',
     user: {primary: 'Open your boards', href: '/app'},
     secondary: 'See pricing',
@@ -486,11 +493,11 @@ export const ABOUT = {
     },
     {
       heading: 'What it does',
-      body: 'Boards with lanes and cards. My Day shows what needs you, and the Inbox holds quick notes until you sort them. Channel and board chat sit beside the work. Roles control who can do what.',
+      body: 'Boards with lanes and cards. My Day shows what needs you. Channel and board chat sit beside the work. Roles control who can do what.',
     },
     {
       heading: 'How to take part',
-      body: 'Create a free account, make a workspace and add your first board. Plans are flat per workspace, so upgrade only when you need more members or storage.',
+      body: 'Create a free account, make a workspace and add your first board. Plans are flat per workspace, so upgrade only when you need more members, boards or automation runs.',
     },
   ],
 };

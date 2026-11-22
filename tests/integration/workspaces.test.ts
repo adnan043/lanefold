@@ -37,8 +37,8 @@ describe.skipIf(!DATABASE_URL)('workspaces and entitlements (integration, real P
   beforeEach(async () => {
     await resetDatabase();
     // Other files edit plan_limits (and a crashed run can leave them edited): start from the seeded plans.
-    await db.$executeRaw`UPDATE plan_limits SET max_members = 10, max_file_bytes = 10485760, storage_quota_bytes = 1073741824, max_flows = 0, audit_log = false WHERE plan = 'free'`;
-    await db.$executeRaw`UPDATE plan_limits SET max_members = 500, max_file_bytes = 104857600, storage_quota_bytes = 107374182400, max_flows = 100, audit_log = true WHERE plan = 'team'`;
+    await db.$executeRaw`UPDATE plan_limits SET max_members = 10, max_boards = 10, max_file_bytes = 10485760, flow_runs_per_month = 250, audit_log = false WHERE plan = 'free'`;
+    await db.$executeRaw`UPDATE plan_limits SET max_members = 500, max_boards = NULL, max_file_bytes = 262144000, flow_runs_per_month = NULL, audit_log = true WHERE plan = 'team'`;
     await setMode('PAID');
     ann = await signedIn(app, 'ann@example.test', undefined, '203.0.113.31');
     bob = await signedIn(app, 'bob@example.test', undefined, '203.0.113.32');
@@ -109,11 +109,13 @@ describe.skipIf(!DATABASE_URL)('workspaces and entitlements (integration, real P
     expect(await ent(999999)).toBeNull();
     const free = (await ent(wsA))!;
     expect(free).toMatchObject({plan: 'free', billingMode: 'PAID', readOnly: false, upgradeUi: true});
-    expect(free.limits).toMatchObject({maxMembers: 10, maxFileBytes: 10 * 1024 * 1024, storageQuotaBytes: 1024 ** 3});
+    expect(free.limits).toEqual({maxMembers: 10, maxBoards: 10, maxFileBytes: 10 * 1024 * 1024, flowRunsPerMonth: 250});
+    expect(free.unlimited).toEqual({members: false, boards: false, flowRuns: false});
     expect(free.usage.members).toBe(1);
     await db.workspace.update({where: {id: wsA}, data: {plan: 'team'}});
     const team = (await ent(wsA))!;
-    expect(team.limits).toMatchObject({maxMembers: 500, maxFileBytes: 100 * 1024 * 1024});
+    expect(team.limits).toMatchObject({maxMembers: 500, maxBoards: 1000, maxFileBytes: 250 * 1024 * 1024, flowRunsPerMonth: null});
+    expect(team.unlimited).toEqual({members: true, boards: true, flowRuns: true});
     expect(team.features.auditLog).toBe(true);
   });
 
@@ -142,11 +144,11 @@ describe.skipIf(!DATABASE_URL)('workspaces and entitlements (integration, real P
     expect((await ann.post(`/site-api/workspaces/${wsA}/boards`, {name: 'More'})).status).toBe(201);
   });
 
-  it('storage cap counts like the member cap, boundary is inclusive', async () => {
-    await db.workspace.update({where: {id: wsA}, data: {storageUsedBytes: BigInt(1024 ** 3)}});
-    expect((await ent(wsA))!.overLimit).toBe(false);
-    await db.workspace.update({where: {id: wsA}, data: {storageUsedBytes: BigInt(1024 ** 3 + 1)}});
-    expect((await ent(wsA))!.overLimit).toBe(true);
+  it('there is no storage limit: any amount of stored files never puts a workspace over its plan', async () => {
+    await db.workspace.update({where: {id: wsA}, data: {storageUsedBytes: BigInt(1024 ** 4)}});
+    expect((await ent(wsA))!).toMatchObject({overLimit: false, readOnly: false});
+    await startGraceForOverLimit(db, {workspaceId: wsA});
+    expect((await db.workspace.findUniqueOrThrow({where: {id: wsA}, select: {graceUntil: true}})).graceUntil).toBeNull();
   });
 
   it('file cap follows the plan, and FREE_FOR_ALL swaps in the safety caps and ignores overage', async () => {
@@ -156,7 +158,7 @@ describe.skipIf(!DATABASE_URL)('workspaces and entitlements (integration, real P
     await setMode('FREE_FOR_ALL');
     const e = (await ent(wsA))!;
     expect(e).toMatchObject({billingMode: 'FREE_FOR_ALL', overLimit: false, readOnly: false, upgradeUi: false});
-    expect(e.limits).toMatchObject({maxMembers: 500, maxFileBytes: 100 * 1024 * 1024});
+    expect(e.limits).toMatchObject({maxMembers: 500, maxFileBytes: 250 * 1024 * 1024});
     await startGraceForOverLimit(db);
     expect((await db.workspace.findUniqueOrThrow({where: {id: wsA}, select: {graceUntil: true}})).graceUntil).toBeNull();
   });

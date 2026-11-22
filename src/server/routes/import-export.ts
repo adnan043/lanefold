@@ -18,7 +18,7 @@ import {audit} from '../../platform/auth';
 import type {Viewer} from '../../platform/types';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {reserveCardNumbers} from '../card-number';
-import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
+import {boardLimitMessage, boardLimitReached, getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
 import {softCheck} from '../soft-limit';
 import {CSV_COLUMNS, csvRow, safeFileBase} from '../export-format';
 import {invalid, idOf, intField, objectOf, textField, type FieldError} from '../validation';
@@ -587,6 +587,8 @@ export const importExportRoutes = new Hono()
       const again = await startRecord(tx, userId, body.importId);
       const againMeta = again ? readMeta(again.meta) : null;
       if (againMeta) return {meta: againMeta, resumed: true};
+      // The plan's open-board limit (Free: 10), decided under the workspace row lock.
+      if (ent && (await boardLimitReached(tx, workspaceId, ent.limits.maxBoards))) return 'board_limit' as const;
       const board = await tx.board.create({
         data: {workspaceId, name: body.name, visibility: 'private', bgKind: 'color', rev: 1n, createdBy: userId},
         select: {id: true},
@@ -620,6 +622,7 @@ export const importExportRoutes = new Hono()
       await tx.activity.create({data: {workspaceId, boardId: board.id, actorId: userId, kind: 'board.created', meta: {name: body.name, imported: true}}});
       return {meta, resumed: false};
     });
+    if (out === 'board_limit') return c.json(problem('board_limit_reached', boardLimitMessage(ent?.limits.maxBoards ?? 0)), 409);
     return c.json({board: {id: out.meta.boardId}, lanes: out.meta.lanes, labels: out.meta.labels, resumed: out.resumed}, out.resumed ? 200 : 201);
   })
 

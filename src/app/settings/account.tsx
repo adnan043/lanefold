@@ -170,10 +170,6 @@ export function Account() {
                     <dd>{count(data.summary.removed.memberships, data.summary.cap)}</dd>
                   </div>
                   <div>
-                    <dt><Icon name="inbox" size={16} />{t('account.removed.inbox')}</dt>
-                    <dd>{count(data.summary.removed.inboxCards, data.summary.cap)}</dd>
-                  </div>
-                  <div>
                     <dt><Icon name="layers" size={16} />{t('account.removed.empty')}</dt>
                     <dd>{formatNumber(data.summary.removed.emptyWorkspaces)}</dd>
                   </div>

@@ -42,8 +42,9 @@ Test facts: the unit suite (`tests/*.test.ts`) and the integration suite (`tests
 - In-app only; no email notifications.
 - Verified how: integration (covered inside `members`, `chat`, `card-detail`); never opened in a browser.
 
-## Search, Cmd+K, My Day, Inbox
-- Cmd/Ctrl+K palette and search (`src/server/routes/search.ts`, `src/app/palette/*`), My Day (`src/app/my-day/*`), Inbox (`src/app/inbox/*`), keyboard shortcuts and help dialog (`shortcuts.tsx`, `shortcuts-dialog.tsx`).
+## Search, Cmd+K, My Day
+- Cmd/Ctrl+K palette and search (`src/server/routes/search.ts`, `src/app/palette/*`), My Day (`src/app/my-day/*`), keyboard shortcuts and help dialog (`shortcuts.tsx`, `shortcuts-dialog.tsx`).
+- The personal Inbox was removed (2026-11-22): its screen, nav item, `g i` shortcut and routes are gone. Migration `20261122110000_trello_limits` turns every existing Inbox into an ordinary private board its owner keeps (archived when the owner has left the workspace); the `boards.inbox_of` column stays (always null now) and can be dropped later.
 - Search uses `ILIKE` with guarded trigram GIN indexes (see the 2026-11-03 update). Saved filters have a route and a board screen (`routes/saved-filters.ts`, `src/app/boards/saved-filters.tsx`).
 - Verified how: unit (`search-routes`); integration (`search`); never opened in a browser.
 
@@ -55,6 +56,7 @@ Test facts: the unit suite (`tests/*.test.ts`) and the integration suite (`tests
 ## Billing and plans (sandbox)
 - Free/Pro/Team plan limits, over-limit grace period and read-only mode, plan-limit banners, checkout via the platform's sandbox gateway (`src/server/entitlements.ts`, `soft-limit.ts`, `routes/billing.ts`, `payments-hooks.ts`, `src/app/plan-limits.tsx`, `settings/billing.tsx`).
 - Owner screens in `/dashboard`: Billing, Plans, Workspaces (`src/portal/screens/billing.tsx`, `plans.tsx`, `workspaces.tsx`).
+- Limits like Trello (2026-11-22): Free 10 members, 10 open boards, 10 MB per file, 250 automation (Flows) runs a month; Pro unlimited members and boards, 250 MB per file, 1,000 runs a month; Team the same with unlimited runs and the audit log. No storage limit on any plan; the per-file ceiling is 250 MB. "Unlimited" members is the safety cap (500), unlimited boards is capped at 1,000 open boards. Over the board limit a workspace keeps its boards but cannot add or un-archive one (`boardLimitReached`, under the workspace row lock); flow runs are reserved per month in `flow_run_counts` in one statement (`src/server/flows/runs.ts`). Only the member limit still starts the grace period. Migration `20261122110000_trello_limits` (expand-only: `storage_quota_bytes` and `max_flows` stay until a later release drops them).
 - Sandbox only. Checkout needs sandbox prices `pro-monthly` and `team-monthly`, which are not created yet (`owner-actions.md`).
 - Verified how: unit (`payments`, `payments-hooks`, `checkout-session`); integration (`billing`); never opened in a browser.
 

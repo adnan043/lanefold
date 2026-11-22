@@ -36,7 +36,6 @@ type NavItem = {to: string; label: MessageKey; dock: MessageKey; icon: IconName;
 /** The product's four homes (vocabulary: SPEC §1). Chat and the others arrive with their phases. */
 const NAV: NavItem[] = [
   {to: '/my-day', label: 'nav.myDay', dock: 'dock.myDay', icon: 'calendar'},
-  {to: '/inbox', label: 'nav.inbox', dock: 'dock.inbox', icon: 'inbox'},
   {to: '/boards', label: 'nav.boards', dock: 'dock.boards', icon: 'layout-kanban'},
   {to: '/chat', label: 'nav.chat', dock: 'dock.chat', icon: 'message'},
   {to: '/members', label: 'nav.members', dock: 'nav.members', icon: 'users', sidebarOnly: true},
@@ -134,7 +133,7 @@ function WorkspaceSwitcher() {
 }
 
 /**
- * The Lanefold shell: sidebar (workspace switcher, Boards / My Day / Inbox / Chat), top bar (the screen's
+ * The Lanefold shell: sidebar (workspace switcher, Boards / My Day / Chat), top bar (the screen's
  * `<h1>`, account menu), a bottom dock on phones, a drawer with a scrim for the sidebar. Toasts and
  * confirmations are mounted here. It reuses the dashboard's shell classes (`app.css`) plus `lf-*` (`app.css` here).
  */

@@ -27,7 +27,8 @@ const UNFINISHED_UPLOADS = 10;
 const TERMINAL_UPLOAD_CODES = new Set(['E_FILE_TYPE', 'E_FILE_EMPTY', 'E_FILE_TOO_LARGE', 'E_FILE_SIZE_MISMATCH', 'E_FILE_TYPE_MISMATCH', 'E_FILE_NOT_FOUND', 'E_UPLOAD_TOKEN', 'E_UPLOAD_EXPIRED', 'E_STORAGE_LIMIT']);
 const BAD_IMAGE = {code: 'bg_image_invalid', message: 'Pick a PNG, JPEG, WebP, GIF or AVIF image up to 10 MB.'};
 
-class OutOfSpace extends Error {}
+/** The workspace went (archived or deleted) while the file was uploading. */
+class WorkspaceGone extends Error {}
 
 const uploadBody = validator('json', (value, c) => {
   const v = objectOf(value) ?? {};
@@ -55,9 +56,6 @@ export const boardBackgroundRoutes = new Hono()
     ]);
     if (!ent) return notFound(c, 'workspace');
     if (input.size > ent.limits.maxFileBytes) return c.json(problem('file_too_large', "That file is over your plan's file size limit."), 413);
-    if (ent.usage.storageUsedBytes + input.size > ent.limits.storageQuotaBytes) {
-      return c.json(problem('storage_quota', 'This workspace is out of file space. Remove files or upgrade the plan.'), 402);
-    }
     if (unfinished.length >= UNFINISHED_UPLOADS) return c.json(problem('rate_limited', 'Too many uploads at once. Wait a moment and try again.'), 429);
     const grant = await createUpload(c.req.url, input); // private: shown only through GET /boards/:id/background
     if (!grant.ok) {
@@ -93,8 +91,6 @@ export const boardBackgroundRoutes = new Hono()
       if (TERMINAL_UPLOAD_CODES.has(done.code)) await db.attachment.deleteMany({where: {id: row.id, workspaceId, ready: false}});
       return c.json(problem(done.code, done.message), done.status === 402 ? 402 : 400);
     }
-    const ent = await getEntitlements(db, workspaceId);
-    const quota = ent?.limits.storageQuotaBytes ?? 0;
     try {
       const rev = await db.$transaction(async tx => {
         const next = await bumpRev(tx, boardId, workspaceId); // locks the board: two photos land one after the other
@@ -102,8 +98,8 @@ export const boardBackgroundRoutes = new Hono()
         if (flipped.count === 0) return null; // a second confirm: already counted
         const reserved = await tx.$executeRaw`
           UPDATE workspaces SET storage_used_bytes = storage_used_bytes + ${row.size}
-          WHERE id = ${workspaceId} AND storage_used_bytes + ${row.size} <= ${quota}`;
-        if (reserved === 0) throw new OutOfSpace();
+          WHERE id = ${workspaceId}`;
+        if (reserved === 0) throw new WorkspaceGone();
         const before = await tx.board.findFirst({where: {id: boardId, workspaceId}, select: {bgFileId: true}});
         await tx.board.updateMany({where: {id: boardId, workspaceId}, data: {bgKind: 'image', bgFileId: fileId}});
         // The previous photo goes: its row's triggers give the space back and queue the stored file for deletion.
@@ -116,9 +112,9 @@ export const boardBackgroundRoutes = new Hono()
       forgetEntitlements(db, workspaceId);
       return c.json({ok: true, ...(rev === null ? {} : {rev: String(rev)}), bgKind: 'image', bgImage: bgImageUrl(boardId, fileId)});
     } catch (error) {
-      if (!(error instanceof OutOfSpace)) throw error;
+      if (!(error instanceof WorkspaceGone)) throw error;
       await Promise.all([deleteFile(c.req.url, fileId), db.attachment.deleteMany({where: {id: row.id, workspaceId, ready: false}})]);
-      return c.json(problem('storage_quota', 'This workspace is out of file space. Remove files or upgrade the plan.'), 402);
+      return c.json(problem('not_found', 'That workspace is no longer available.'), 404);
     }
   })
 

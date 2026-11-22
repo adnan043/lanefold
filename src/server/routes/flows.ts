@@ -5,7 +5,7 @@ import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {audit} from '../../platform/auth';
 import {problem, requireAuth, requirePermission, withDb, withViewer} from '../../platform/guards';
 import {getEntitlements} from '../entitlements';
-import {lastFlowInPlan} from '../flows/engine';
+import {flowRunsUsed} from '../flows/runs';
 import {
   type Errors,
   type FlowAction,
@@ -27,14 +27,14 @@ import {noStore} from './boards';
 /**
  * Flows (board automations), Phase 7: the builder's routes (docs/product/flows-api.md). Mounted ONCE at `/` in `app.ts`.
  *
- *   GET    /boards/:id/flows    this board's flows + plan usage
+ *   GET    /boards/:id/flows    this board's flows + the workspace's flow runs this month
  *   POST   /boards/:id/flows    create one
  *   PATCH  /flows/:id           change name, switch, trigger, conditions or actions
  *   DELETE /flows/:id
  *
  * Guards: withViewer, requireAuth, requirePermission('board:flows'), withDb, then board access (the visitor's
  * workspace membership is IN its query: another workspace's board or flow is a 404) and board ADMIN (403).
- * Writes also refuse an archived board, a personal Inbox and a read-only workspace. The engine that RUNS flows is
+ * Writes also refuse an archived board and a read-only workspace. The engine that RUNS flows is
  * src/server/flows/engine.ts; nothing here executes an action.
  */
 
@@ -44,15 +44,13 @@ const refused = (r: object): r is Refusal => 'status' in r;
 
 type BoardCtx = {boardId: number; workspaceId: number; visibility: string};
 
-/** The board and the right to manage its flows (`write`: also open, not an Inbox, workspace not read-only). */
+/** The board and the right to manage its flows (`write`: also open, workspace not read-only). */
 async function boardFor(db: PrismaClient, userId: number, boardId: number | undefined, write: boolean): Promise<Refusal | BoardCtx> {
   const access = boardId ? await boardAccess(db, boardId, userId) : null;
   if (!boardId || !access) return refuse(404, 'not_found', 'No such board.');
   if (!access.canAdmin) return refuse(403, 'forbidden', 'You do not have access to this.');
   if (write) {
     if (access.archived) return refuse(409, 'board_archived', 'This board is archived.');
-    const inbox = await db.board.findFirst({where: {id: boardId, workspaceId: access.workspaceId, inboxOf: null}, select: {id: true}});
-    if (!inbox) return refuse(409, 'inbox_board', 'Flows are not available on your personal Inbox.');
     const ent = await getEntitlements(db, access.workspaceId);
     if (ent?.readOnly) return refuse(409, 'workspace_read_only', 'This workspace is read-only until its plan limits are fixed.');
   }
@@ -171,13 +169,14 @@ export const flowRoutes = new Hono()
     const [rows, ent, used] = await Promise.all([
       db.flow.findMany({where: {boardId: ctx.boardId, workspaceId: ctx.workspaceId}, select: flowCols, orderBy: {id: 'asc'}, take: MAX_FLOWS_PER_BOARD}),
       getEntitlements(db, ctx.workspaceId),
-      db.flow.count({where: {workspaceId: ctx.workspaceId}}),
+      flowRunsUsed(db, ctx.workspaceId),
     ]);
     const configs = rows.map(r => readConfig(r.config));
     const found = await existing(db, ctx, configs.flatMap(cfg => (cfg ? refsOf(cfg) : [])));
     return c.json({
       items: rows.map(r => flowShape(r, found)),
-      limit: {max: ent?.limits.maxFlows ?? 0, used, boardMax: MAX_FLOWS_PER_BOARD},
+      // Flow runs this month (one flow on one card), like Trello's command runs; runsPerMonth null = unlimited.
+      limit: {runsPerMonth: ent ? ent.limits.flowRunsPerMonth : 0, runsUsed: used, boardMax: MAX_FLOWS_PER_BOARD},
       enabled: !!ent?.features.flows,
     });
   })
@@ -194,21 +193,17 @@ export const flowRoutes = new Hono()
     if (Object.keys(errors).length) return invalid(c, errors);
     const config: FlowConfig = {trigger: input.trigger, conditions: input.conditions, actions: input.actions};
     const made = await db.$transaction(async tx => {
-      // The workspace row lock makes the two caps below race-free (two parallel creates cannot both pass).
-      await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${ctx.workspaceId} FOR UPDATE`;
-      const [inBoard, inWorkspace] = await Promise.all([
-        tx.flow.count({where: {boardId: ctx.boardId, workspaceId: ctx.workspaceId}}),
-        tx.flow.count({where: {workspaceId: ctx.workspaceId}}),
-      ]);
+      // The board row lock makes the per-board cap race-free (two parallel creates cannot both pass). Plans limit
+      // flow RUNS a month (the engine counts them), not how many flows a workspace keeps.
+      await tx.$queryRaw`SELECT id FROM boards WHERE id = ${ctx.boardId} AND workspace_id = ${ctx.workspaceId} FOR UPDATE`;
+      const inBoard = await tx.flow.count({where: {boardId: ctx.boardId, workspaceId: ctx.workspaceId}});
       if (inBoard >= MAX_FLOWS_PER_BOARD) return 'board_limit' as const;
-      if (inWorkspace >= ent.limits.maxFlows) return 'plan_limit' as const;
       return tx.flow.create({
         data: {boardId: ctx.boardId, workspaceId: ctx.workspaceId, name: input.name, triggerKind: config.trigger.kind, enabled: input.enabled ?? true, config: config as unknown as Prisma.InputJsonValue, createdBy: userId},
         select: flowCols,
       });
     });
     if (made === 'board_limit') return c.json(problem('limit_reached', `A board holds up to ${MAX_FLOWS_PER_BOARD} flows.`), 409);
-    if (made === 'plan_limit') return c.json(problem('limit_reached', 'This workspace has reached the number of flows its plan allows. Upgrade the plan or delete a flow.'), 409);
     await audit(db, {actorUserId: userId, action: 'flow.create', target: ['flow', made.id], meta: {workspaceId: ctx.workspaceId, boardId: ctx.boardId, trigger: config.trigger.kind}});
     return c.json({flow: await shapeOne(db, ctx, made)}, 201);
   })
@@ -232,11 +227,6 @@ export const flowRoutes = new Hono()
     if (touchesConfig || input.enabled === true) {
       const ent = await getEntitlements(db, ctx.workspaceId);
       if (!ent?.features.flows) return planBlocked(c);
-      // A flow over the plan's count (left from a bigger plan) stays off until flows are deleted or the plan grows.
-      const upTo = await lastFlowInPlan(db, ctx.workspaceId, ent.limits.maxFlows);
-      if (upTo !== null && found.id > upTo) {
-        return c.json(problem('limit_reached', 'This workspace has more flows than its plan allows. Delete a flow or upgrade the plan to turn this one on or change it.'), 409);
-      }
     }
     if (touchesConfig) {
       const errors = await checkConfig(db, ctx, config);

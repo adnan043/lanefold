@@ -11,10 +11,10 @@ import {
 } from '../src/server/workspaces';
 import {idOf, intField, invalid, likeEscape, objectOf, textField} from '../src/server/validation';
 
-const FREE: PlanLimits = {plan: 'free', maxMembers: 10, maxFileBytes: 10_000_000, storageQuotaBytes: 1_000_000_000, maxFlows: 0, auditLog: false};
+const FREE: PlanLimits = {plan: 'free', maxMembers: 10, maxBoards: 10, maxFileBytes: 10_000_000, flowRunsPerMonth: 250, auditLog: false};
 const NOW = new Date('2026-01-10T00:00:00Z');
 const ws = (over: Partial<Parameters<typeof computeEntitlements>[0]['workspace']> = {}) => ({
-  id: 1, plan: 'free', memberCount: 1, storageUsedBytes: 0, graceUntil: null, ...over,
+  id: 1, plan: 'free', memberCount: 1, graceUntil: null, ...over,
 });
 
 describe('workspace roles', () => {
@@ -57,15 +57,16 @@ describe('resolveBoardRole', () => {
 describe('computeEntitlements', () => {
   it('PAID enforces plan limits and is writable under them', () => {
     const e = computeEntitlements({limits: FREE, workspace: ws({memberCount: 10}), mode: 'PAID', now: NOW});
-    expect(e.limits).toEqual({maxMembers: 10, maxFileBytes: 10_000_000, storageQuotaBytes: 1_000_000_000, maxFlows: 0});
+    expect(e.limits).toEqual({maxMembers: 10, maxBoards: 10, maxFileBytes: 10_000_000, flowRunsPerMonth: 250});
+    expect(e.unlimited).toEqual({members: false, boards: false, flowRuns: false});
     expect([e.overLimit, e.inGrace, e.readOnly, e.upgradeUi]).toEqual([false, false, false, true]);
-    expect(e.features).toEqual({auditLog: false, flows: false});
+    expect(e.features).toEqual({auditLog: false, flows: true});
   });
-  it('over the member or storage limit: grace until the date, read-only after', () => {
+  it('over the member limit: grace until the date, read-only after (there is no storage limit)', () => {
     const members = computeEntitlements({limits: FREE, workspace: ws({memberCount: 11}), mode: 'PAID', now: NOW});
     expect([members.overLimit, members.inGrace, members.readOnly, members.graceUntil]).toEqual([true, true, false, null]);
     const future = new Date('2026-01-20T00:00:00Z');
-    const g = computeEntitlements({limits: FREE, workspace: ws({storageUsedBytes: 1_000_000_001, graceUntil: future}), mode: 'PAID', now: NOW});
+    const g = computeEntitlements({limits: FREE, workspace: ws({memberCount: 11, graceUntil: future}), mode: 'PAID', now: NOW});
     expect([g.inGrace, g.readOnly, g.graceUntil]).toEqual([true, false, future.toISOString()]);
     const over = computeEntitlements({limits: FREE, workspace: ws({memberCount: 11, graceUntil: NOW}), mode: 'PAID', now: NOW});
     expect([over.inGrace, over.readOnly]).toEqual([false, true]);
@@ -77,6 +78,7 @@ describe('computeEntitlements', () => {
   it('FREE_FOR_ALL uses only the safety caps, unlocks features, never read-only', () => {
     const e = computeEntitlements({limits: FREE, workspace: ws({memberCount: 400, graceUntil: new Date('2020-01-01')}), mode: 'FREE_FOR_ALL', now: NOW});
     expect(e.limits).toEqual({...SAFETY_CAPS});
+    expect(e.unlimited).toEqual({members: true, boards: true, flowRuns: true});
     expect([e.overLimit, e.readOnly, e.upgradeUi]).toEqual([false, false, false]);
     expect(e.features).toEqual({auditLog: true, flows: true});
   });
@@ -88,8 +90,19 @@ describe('computeEntitlements', () => {
     expect(e.overLimit).toBe(true);
   });
   it('flows and audit log follow the plan', () => {
-    const e = computeEntitlements({limits: {...FREE, maxFlows: 5, auditLog: true}, workspace: ws(), mode: 'PAID'});
+    const e = computeEntitlements({limits: {...FREE, flowRunsPerMonth: 5, auditLog: true}, workspace: ws(), mode: 'PAID'});
     expect(e.features).toEqual({auditLog: true, flows: true});
+    const off = computeEntitlements({limits: {...FREE, flowRunsPerMonth: 0}, workspace: ws(), mode: 'PAID'});
+    expect(off.features.flows).toBe(false);
+  });
+  it('like Trello: unlimited members (at the safety cap) and boards on a paid plan, never above the caps', () => {
+    const pro: PlanLimits = {plan: 'pro', maxMembers: SAFETY_CAPS.maxMembers, maxBoards: null, maxFileBytes: 250 * 1024 * 1024, flowRunsPerMonth: 1000, auditLog: false};
+    const e = computeEntitlements({limits: pro, workspace: ws({plan: 'pro', memberCount: 300}), mode: 'PAID', now: NOW});
+    expect(e.unlimited).toEqual({members: true, boards: true, flowRuns: false});
+    expect(e.limits).toEqual({maxMembers: SAFETY_CAPS.maxMembers, maxBoards: SAFETY_CAPS.maxBoards, maxFileBytes: 250 * 1024 * 1024, flowRunsPerMonth: 1000});
+    expect(e.overLimit).toBe(false);
+    const huge = computeEntitlements({limits: {...pro, maxFileBytes: 5 * 1024 ** 3}, workspace: ws(), mode: 'PAID', now: NOW});
+    expect(huge.limits.maxFileBytes).toBe(SAFETY_CAPS.maxFileBytes);
   });
 });
 

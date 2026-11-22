@@ -19,7 +19,7 @@ Work gets decided in conversation and tracked on cards. When those are two separ
 - **Boards with lanes and cards.** Workspace, boards, lanes, cards: the structure you already know from kanban.
 - **Chat built in.** Channels for the team and chat tied to a board, so you can talk about work without leaving it.
 - **Cards and messages connect.** You can attach a card to a message with # and share a card into a conversation.
-- **My Day and Inbox.** One screen for what is on your plate across boards, and one for what needs your attention.
+- **My Day.** One screen for what is on your plate across boards.
 - **Keyboard first.** A command palette and single-key shortcuts for the things you do all day. See the [shortcuts guide](/blog/lanefold-keyboard-shortcuts/).
 
 ## Who it is for

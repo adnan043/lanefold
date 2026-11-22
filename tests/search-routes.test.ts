@@ -4,19 +4,20 @@ import {app} from '../src/server/app';
 import {filterCommands, type CommandItem} from '../src/portal/ui/command';
 import {Browser, configureEnv} from './integration/support/harness';
 
-/** No database needed: search, My Day and Inbox refuse a signed-out visitor, and the routes are mounted. */
-describe('search, my day and inbox routes (signed out)', () => {
+/** No database needed: search and My Day refuse a signed-out visitor, and the routes are mounted. */
+describe('search and my day routes (signed out)', () => {
   beforeAll(configureEnv);
-  for (const path of ['/workspaces/1/search?q=roadmap', '/my-day', '/workspaces/1/inbox']) {
+  for (const path of ['/workspaces/1/search?q=roadmap', '/my-day']) {
     it(`GET ${path} is 401`, async () => {
       expect((await new Browser(app).get(`/site-api${path}`)).status).toBe(401);
     });
   }
-  it('writes are refused before they reach a handler', async () => {
+  it('the personal Inbox is gone: its routes no longer exist', async () => {
     const browser = new Browser(app);
+    expect((await browser.get('/site-api/workspaces/1/inbox')).status).toBe(404);
     for (const path of ['/workspaces/1/inbox/cards', '/inbox/cards/1/triage']) {
       const res = await browser.request('POST', `/site-api${path}`, {title: 'x', laneId: 1});
-      expect([401, 422], path).toContain(res.status);
+      expect([401, 404], path).toContain(res.status);
     }
   });
 });

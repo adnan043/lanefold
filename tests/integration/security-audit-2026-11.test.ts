@@ -160,6 +160,8 @@ describe.skipIf(!DATABASE_URL)('security check 2026-11 (integration, real Postgr
   });
 
   it('the hourly board cap holds under a burst of parallel creates', async () => {
+    // On Pro (unlimited boards), so the Free plan's 10-open-board limit does not answer first.
+    await db.workspace.update({where: {id: wsA}, data: {plan: 'pro'}});
     const made = await Promise.all(Array.from({length: 26}, (_, i) => ann.post(`/site-api/workspaces/${wsA}/boards`, {name: `B${i}`})));
     const created = await db.board.count({where: {workspaceId: wsA, createdBy: (await db.user.findUniqueOrThrow({where: {email: 'ann@example.test'}})).id, inboxOf: null}});
     expect(created).toBeLessThanOrEqual(20);

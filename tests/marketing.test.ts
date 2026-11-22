@@ -10,7 +10,7 @@ import {computeEntitlements} from '../src/server/entitlements';
 const root = join(__dirname, '..');
 const read = (path: string) => readFileSync(join(root, path), 'utf8');
 
-/** The `plan_limits` seed rows of the first migration: the defaults the app enforces. */
+/** The `plan_limits` rows the migrations leave: the first migration's seed, then every later `UPDATE`, in order. */
 function seedRows() {
   const dir = join(root, 'prisma/migrations');
   const sql = readdirSync(dir)
@@ -20,18 +20,30 @@ function seedRows() {
     .join('\n');
   const insert = /INSERT INTO "plan_limits"[^;]*VALUES([^;]*);/.exec(sql);
   expect(insert, 'plan_limits seed not found').toBeTruthy();
-  const rows = [...insert![1]!.matchAll(/\('(\w+)',\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*'[^']*',\s*(true|false)/g)].map(m => ({
+  type Row = {plan: string; maxMembers: number; maxBoards: number | null; maxFileBytes: number; flowRunsPerMonth: number | null; auditLog: boolean};
+  const rows: Row[] = [...insert![1]!.matchAll(/\('(\w+)',\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*'[^']*',\s*(true|false)/g)].map(m => ({
     plan: m[1]!,
     maxMembers: Number(m[2]),
+    maxBoards: null,
     maxFileBytes: Number(m[3]),
-    storageQuotaBytes: Number(m[4]),
-    maxFlows: Number(m[5]),
+    flowRunsPerMonth: null,
     auditLog: m[6] === 'true',
   }));
-  // Later migrations that change a plan's member limit, applied in order: what the live database holds.
-  for (const m of sql.matchAll(/UPDATE "plan_limits" SET "max_members" = (\d+)[^;]*WHERE "plan" = '(\w+)';/g)) {
+  const columns: Record<string, keyof Row> = {
+    max_members: 'maxMembers',
+    max_boards: 'maxBoards',
+    max_file_bytes: 'maxFileBytes',
+    flow_runs_per_month: 'flowRunsPerMonth',
+    audit_log: 'auditLog',
+  };
+  for (const m of sql.matchAll(/UPDATE "plan_limits" SET ([^;]*?) WHERE "plan" = '(\w+)';/g)) {
     const row = rows.find(r => r.plan === m[2]);
-    if (row) row.maxMembers = Number(m[1]);
+    if (!row) continue;
+    for (const [, col, value] of m[1]!.matchAll(/"(\w+)" = ([\w.]+)/g)) {
+      const key = columns[col!];
+      if (!key) continue;
+      (row as Record<string, unknown>)[key] = value === 'NULL' ? null : value === 'true' ? true : value === 'false' ? false : Number(value);
+    }
   }
   return rows;
 }
@@ -43,6 +55,10 @@ const bytes = (text: string) => {
   expect(m, `unparseable size "${text}"`).toBeTruthy();
   return Number(m![1]) * (m![2] === 'GB' ? GB : MB);
 };
+/** A count cell: a number, or null for "Unlimited". */
+const count = (text: string) => (text === 'Unlimited' ? null : Number(text.replace(/,/g, '')));
+/** The app shows members at the safety cap (500) as unlimited. */
+const shownMembers = (n: number) => (n >= 500 ? null : n);
 
 describe('pricing numbers match the limits the app enforces', () => {
   const rows = seedRows();
@@ -52,25 +68,34 @@ describe('pricing numbers match the limits the app enforces', () => {
   });
 
   for (const row of seedRows()) {
-    it(`${row.plan}: members, file size, storage and audit log`, () => {
+    it(`${row.plan}: members, boards, file size, flow runs and audit log (like Trello, no storage)`, () => {
       const plan = PRICING.plans.find(p => p.key === row.plan)!;
-      expect(Number(plan.limits.members)).toBe(row.maxMembers);
+      expect(count(plan.limits.members)).toBe(shownMembers(row.maxMembers));
+      expect(count(plan.limits.boards)).toBe(row.maxBoards);
       expect(bytes(plan.limits.file)).toBe(row.maxFileBytes);
-      expect(bytes(plan.limits.storage)).toBe(row.storageQuotaBytes);
       expect(plan.limits.audit).toBe(row.auditLog);
+      expect('storage' in plan.limits).toBe(false);
       const d = PLAN_DEFAULTS[row.plan as keyof typeof PLAN_DEFAULTS];
-      expect(d.members).toBe(row.maxMembers);
+      expect(d.members).toBe(shownMembers(row.maxMembers));
+      expect(d.boards).toBe(row.maxBoards);
       expect(d.fileMb * MB).toBe(row.maxFileBytes);
-      expect(d.storageGb * GB).toBe(row.storageQuotaBytes);
-      expect(d.flows).toBe(row.maxFlows);
-      expect(plan.limits.flows).toBe(row.maxFlows > 0 ? `Up to ${row.maxFlows}` : 'Not included');
+      expect(d.flowRuns).toBe(row.flowRunsPerMonth);
+      expect(plan.limits.flows).toBe(row.flowRunsPerMonth === null ? 'Unlimited' : `${row.flowRunsPerMonth.toLocaleString('en-US')} a month`);
     });
   }
 
+  it('the Trello limits: Free 10 members / 10 boards / 10 MB / 250 runs; Pro and Team unlimited members and boards, 250 MB', () => {
+    expect(PLAN_DEFAULTS.free).toEqual({members: 10, boards: 10, fileMb: 10, flowRuns: 250, auditLog: false});
+    expect(PLAN_DEFAULTS.pro).toEqual({members: null, boards: null, fileMb: 250, flowRuns: 1000, auditLog: false});
+    expect(PLAN_DEFAULTS.team).toEqual({members: null, boards: null, fileMb: 250, flowRuns: null, auditLog: true});
+    expect(JSON.stringify(PRICING.plans)).not.toMatch(/storage/i);
+  });
+
   it('feature bullets quote the same member limit', () => {
-    for (const plan of PRICING.plans) {
-      expect(plan.features.some(f => f === `Up to ${plan.limits.members} members`)).toBe(true);
-    }
+    const free = PRICING.plans.find(p => p.key === 'free')!;
+    expect(free.features).toContain(`Up to ${free.limits.members} members`);
+    expect(free.features).toContain(`Up to ${free.limits.boards} boards`);
+    expect(PRICING.plans.find(p => p.key === 'pro')!.features).toContain('Unlimited members');
   });
 
   it('the free plan equals the strictest fallback in entitlements.ts', () => {
@@ -81,8 +106,8 @@ describe('pricing numbers match the limits the app enforces', () => {
       return expr.split('*').reduce((n, part) => n * Number(part.trim()), 1);
     };
     expect(value('maxMembers')).toBe(PLAN_DEFAULTS.free.members);
+    expect(value('maxBoards')).toBe(PLAN_DEFAULTS.free.boards);
     expect(value('maxFileBytes')).toBe(PLAN_DEFAULTS.free.fileMb * MB);
-    expect(value('storageQuotaBytes')).toBe(PLAN_DEFAULTS.free.storageGb * GB);
   });
 
   it('is flat per workspace and never invents a price', () => {
@@ -211,20 +236,21 @@ describe('seo helpers', () => {
 describe('billing modes on the marketing side', () => {
   const limits = (p: (typeof PRICING.plans)[number]) => ({
     plan: p.key,
-    maxMembers: Number(p.limits.members),
+    maxMembers: count(p.limits.members) ?? 500,
+    maxBoards: count(p.limits.boards),
     maxFileBytes: bytes(p.limits.file),
-    storageQuotaBytes: bytes(p.limits.storage),
-    maxFlows: 0,
+    flowRunsPerMonth: p.limits.flows === 'Unlimited' ? null : Number(p.limits.flows.replace(/[^\d]/g, '')),
     auditLog: p.limits.audit,
   });
-  const workspace = (plan: string) => ({id: 1, plan, memberCount: 1, storageUsedBytes: 0, graceUntil: null});
+  const workspace = (plan: string) => ({id: 1, plan, memberCount: 1, graceUntil: null});
 
   it('PAID: the entitlements a plan gets equal the numbers the pricing page shows', () => {
     for (const plan of PRICING.plans) {
       const e = computeEntitlements({limits: limits(plan), workspace: workspace(plan.key), mode: 'PAID'});
-      expect(e.limits.maxMembers).toBe(Number(plan.limits.members));
+      expect(e.unlimited.members ? null : e.limits.maxMembers).toBe(count(plan.limits.members));
+      expect(e.unlimited.boards ? null : e.limits.maxBoards).toBe(count(plan.limits.boards));
       expect(e.limits.maxFileBytes).toBe(bytes(plan.limits.file));
-      expect(e.limits.storageQuotaBytes).toBe(bytes(plan.limits.storage));
+      expect(e.limits.flowRunsPerMonth === null ? 'Unlimited' : `${e.limits.flowRunsPerMonth.toLocaleString('en-US')} a month`).toBe(plan.limits.flows);
       expect(e.features.auditLog).toBe(plan.limits.audit);
       expect(e.upgradeUi).toBe(true);
     }
@@ -236,7 +262,7 @@ describe('billing modes on the marketing side', () => {
       expect(e.upgradeUi).toBe(false);
       expect(e.readOnly).toBe(false);
       expect(e.features.auditLog).toBe(true);
-      expect(e.limits.maxMembers).toBeGreaterThanOrEqual(Number(plan.limits.members));
+      expect(e.limits.maxMembers).toBeGreaterThanOrEqual(count(plan.limits.members) ?? 500);
     }
     expect(PRICING.modeNote).toMatch(/free for everyone/);
     expect(PRICING.testNote).toMatch(/test mode/);

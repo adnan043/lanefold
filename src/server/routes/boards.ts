@@ -9,7 +9,7 @@ import {dropNotificationsForPrivateBoard} from '../notification-cleanup';
 import {Prisma, type PrismaClient} from '../../generated/prisma/client';
 import {problem, requireAuth, withDb, withViewer} from '../../platform/guards';
 import {withFaces} from '../card-faces';
-import {getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
+import {boardLimitMessage, boardLimitReached, getEntitlements, MAX_CARDS_PER_LANE} from '../entitlements';
 import {notifyWatchers} from '../card-watch';
 import {runFlows} from '../flows/engine';
 import {ensureGeneralChannel} from '../general-channel';
@@ -732,6 +732,8 @@ export const boardRoutes = new Hono()
     const keys = keysAtEnd(null, body.lanes.length);
     const board = await c.var.db.$transaction(async tx => {
       if (await boardCapReached(tx, workspaceId, userId)) return null;
+      // The plan's open-board limit (Free: 10), decided under the workspace row lock.
+      if (ent && (await boardLimitReached(tx, workspaceId, ent.limits.maxBoards))) return 'board_limit' as const;
       const row = await tx.board.create({
         data: {
           workspaceId,
@@ -757,6 +759,7 @@ export const boardRoutes = new Hono()
       await tx.activity.create({data: {workspaceId, boardId: row.id, actorId: userId, kind: 'board.created', meta: {name: body.name}}});
       return row;
     });
+    if (board === 'board_limit') return c.json(problem('board_limit_reached', boardLimitMessage(ent?.limits.maxBoards ?? 0)), 409);
     if (!board) {
       c.header('Retry-After', '600');
       return c.json(problem('board_rate_limited', 'You created many boards in the last hour. Try again later.'), 429);
@@ -888,7 +891,11 @@ export const boardRoutes = new Hono()
       ...(archived === undefined ? {} : {archivedAt: archived ? new Date() : null}),
     };
     if (!Object.keys(data).length) return c.json(problem('invalid_input', 'Nothing to change.'), 422);
+    // Bringing an archived board back counts against the plan's open-board limit (archived boards don't).
+    const restoring = archived === false && ctx.access.archived;
+    const ent = restoring ? await getEntitlements(c.var.db, workspaceId) : null;
     const rev = await c.var.db.$transaction(async tx => {
+      if (ent && (await boardLimitReached(tx, workspaceId, ent.limits.maxBoards))) return 'board_limit' as const;
       const next = await bumpRev(tx, ctx.boardId, workspaceId);
       await tx.board.updateMany({where: {id: ctx.boardId, workspaceId}, data});
       // Turned private: people without a seat can never see its notifications again; drop them (the badge never scans dead rows).
@@ -905,6 +912,7 @@ export const boardRoutes = new Hono()
       });
       return next;
     });
+    if (rev === 'board_limit') return c.json(problem('board_limit_reached', boardLimitMessage(ent?.limits.maxBoards ?? 0)), 409);
     return c.json({ok: true, rev: String(rev)});
   })
 

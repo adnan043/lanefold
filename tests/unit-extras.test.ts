@@ -210,12 +210,12 @@ describe('jobs logic edge cases', () => {
 });
 
 describe('computeEntitlements edge cases', () => {
-  const PLAN: PlanLimits = {plan: 'pro', maxMembers: 5, maxFileBytes: 1, storageQuotaBytes: 100, maxFlows: 0, auditLog: false};
-  const ws = (o = {}) => ({id: 1, plan: 'pro', memberCount: 0, storageUsedBytes: 0, graceUntil: null as Date | null, ...o});
+  const PLAN: PlanLimits = {plan: 'pro', maxMembers: 5, maxBoards: null, maxFileBytes: 1, flowRunsPerMonth: 0, auditLog: false};
+  const ws = (o = {}) => ({id: 1, plan: 'pro', memberCount: 0, graceUntil: null as Date | null, ...o});
   const NOW = new Date('2026-11-02T00:00:00Z');
   it('exactly at the limit is not over; one past is', () => {
-    expect(computeEntitlements({limits: PLAN, workspace: ws({memberCount: 5, storageUsedBytes: 100}), mode: 'PAID', now: NOW}).overLimit).toBe(false);
-    expect(computeEntitlements({limits: PLAN, workspace: ws({storageUsedBytes: 101}), mode: 'PAID', now: NOW}).overLimit).toBe(true);
+    expect(computeEntitlements({limits: PLAN, workspace: ws({memberCount: 5}), mode: 'PAID', now: NOW}).overLimit).toBe(false);
+    expect(computeEntitlements({limits: PLAN, workspace: ws({memberCount: 6}), mode: 'PAID', now: NOW}).overLimit).toBe(true);
   });
   it('over with no grace clock started: in grace, never read-only, graceUntil null', () => {
     const e = computeEntitlements({limits: PLAN, workspace: ws({memberCount: 6}), mode: 'PAID', now: NOW});

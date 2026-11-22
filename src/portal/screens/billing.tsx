@@ -27,8 +27,9 @@ import {
 
 type Checkout = {choose: true; gateways: {slug: string; name: string}[]} | {choose: false; redirectUrl: string};
 
+const many = (n: number | null, what: string) => (n === null ? `unlimited ${what}` : `${n.toLocaleString('en-US')} ${what}`);
 const planSummary = (plan: PlanInfo) =>
-  `${plan.maxMembers} members, ${formatBytes(plan.maxFileBytes)} files, ${formatBytes(plan.storageQuotaBytes)} storage${plan.auditLog ? ', audit log' : ''}`;
+  `${many(plan.maxMembers, 'members')}, ${many(plan.maxBoards, 'boards')}, ${formatBytes(plan.maxFileBytes)} files, ${many(plan.flowRunsPerMonth, 'automation runs a month')}${plan.auditLog ? ', audit log' : ''}`;
 
 /** `/dashboard/billing`: the billing mode (site owners) and the plan of each workspace you own or administer. */
 export function Billing() {
@@ -184,7 +185,7 @@ function PlanDrawer({workspace, onClose}: {workspace: MyWorkspace | null; onClos
 
   const data = billing.data;
   const current = data?.plans.find(plan => plan.plan === data.workspace.plan);
-  const options = (data?.plans ?? []).filter(plan => plan.purchasable && (!current || plan.storageQuotaBytes > current.storageQuotaBytes));
+  const options = (data?.plans ?? []).filter(plan => plan.purchasable && (!current || plan.rank > current.rank));
   const selected = picked || options[0]?.plan || '';
 
   const cooldown = useCooldown();
@@ -267,14 +268,17 @@ function PlanDrawer({workspace, onClose}: {workspace: MyWorkspace | null; onClos
         {data && (
           <div>
             <p className="muted">
-              Now: {planLabel(data.workspace.plan)}, {data.entitlements.usage.members} of {data.entitlements.limits.maxMembers} members,{' '}
-              {formatBytes(data.entitlements.usage.storageUsedBytes)} of {formatBytes(data.entitlements.limits.storageQuotaBytes)} used.
+              Now: {planLabel(data.workspace.plan)},{' '}
+              {data.entitlements.unlimited.members ? `${data.entitlements.usage.members} members` : `${data.entitlements.usage.members} of ${data.entitlements.limits.maxMembers} members`},{' '}
+              {data.entitlements.unlimited.boards ? `${data.entitlements.usage.boards} open boards` : `${data.entitlements.usage.boards} of ${data.entitlements.limits.maxBoards} open boards`},{' '}
+              {data.entitlements.limits.flowRunsPerMonth === null
+                ? `${data.entitlements.usage.flowRuns} automation runs this month`
+                : `${data.entitlements.usage.flowRuns} of ${data.entitlements.limits.flowRunsPerMonth} automation runs this month`}
+              .
             </p>
-            <ProgressBar
-              label="Storage used"
-              value={data.entitlements.usage.storageUsedBytes}
-              max={Math.max(1, data.entitlements.limits.storageQuotaBytes)}
-            />
+            {!data.entitlements.unlimited.boards && (
+              <ProgressBar label="Open boards" value={data.entitlements.usage.boards} max={Math.max(1, data.entitlements.limits.maxBoards)} />
+            )}
           </div>
         )}
         {gateways && (

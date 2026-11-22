@@ -56,7 +56,7 @@ export function FlowsSection({board, lanes, open}: {board: BoardT; lanes: LaneT[
     setBusyId(flow.id);
     try {
       await flowsApi.remove(flow.id);
-      patchCache(d => ({...d, items: d.items.filter(f => f.id !== flow.id), limit: {...d.limit, used: Math.max(0, d.limit.used - 1)}}));
+      patchCache(d => ({...d, items: d.items.filter(f => f.id !== flow.id)}));
       refresh();
       toast.success(t('flows.deleted'));
     } finally {
@@ -73,7 +73,9 @@ export function FlowsSection({board, lanes, open}: {board: BoardT; lanes: LaneT[
   };
 
   const data = query.data;
-  const atLimit = !!data && (data.items.length >= data.limit.boardMax || (data.limit.max > 0 && data.limit.used >= data.limit.max));
+  const atLimit = !!data && data.items.length >= data.limit.boardMax;
+  // This month's flow runs are used up (like Trello's command runs): flows can still be made, they run again next month.
+  const runsSpent = !!data && data.limit.runsPerMonth !== null && data.limit.runsUsed >= data.limit.runsPerMonth;
   const planOff = !!data && !data.enabled;
   const loadError = query.error as ApiError | null;
   const upgrade = loadError?.code === 'plan_feature';
@@ -142,12 +144,13 @@ export function FlowsSection({board, lanes, open}: {board: BoardT; lanes: LaneT[
             ))}
           </ul>
           <div className="lf-flow-foot">
-            <p className="lf-settings-sub">{t('flows.used', {used: data.limit.used, max: data.limit.max > 0 ? data.limit.max : '∞'})}</p>
+            <p className="lf-settings-sub">{t('flows.runsUsed', {used: data.limit.runsUsed, max: data.limit.runsPerMonth ?? '∞'})}</p>
             <Button variant="secondary" icon="plus" disabled={atLimit || planOff} onClick={() => setEditing('new')}>
               {t('flows.new')}
             </Button>
           </div>
           {atLimit && <p className="lf-settings-sub">{t('flows.limitReached')}</p>}
+          {runsSpent && !planOff && <p className="lf-settings-sub">{t('flows.runsSpent')}</p>}
         </>
       )}
 

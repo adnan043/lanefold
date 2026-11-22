@@ -24,7 +24,6 @@ Press `g`, then a second key within about a second and a half:
 | --- | --- |
 | `g` then `b` | Boards |
 | `g` then `m` | My Day |
-| `g` then `i` | Inbox |
 | `g` then `c` | Chat |
 
 ## Create

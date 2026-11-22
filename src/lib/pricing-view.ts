@@ -1,4 +1,4 @@
-import {flowsCell} from '../content/site';
+import {boardsLine, countCell, fileLine, flowsCell, membersLine, runsLine} from '../content/site';
 import type {PublicPricing} from '../server/pricing';
 
 /** The static plan copy (`PRICING.plans` in `src/content/site.ts`) and the numbers the page shows. */
@@ -6,11 +6,9 @@ export interface PlanCopy {
   key: string;
   name: string;
   features: string[];
-  limits: {members: string; file: string; storage: string; flows: string; audit: boolean};
+  limits: {members: string; boards: string; file: string; flows: string; audit: boolean};
   [more: string]: unknown;
 }
-
-const size = (gb: number) => (gb >= 1 ? `${gb} GB` : `${Math.round(gb * 1024)} MB`);
 
 /**
  * Put the live limits (`GET /site-api/billing/public-plans`) over the static copy, plan by plan. A plan the API
@@ -22,18 +20,27 @@ export function withLiveLimits<T extends PlanCopy>(plans: T[], live: PublicPrici
   return plans.map(plan => {
     const now = byKey.get(plan.key);
     if (!now) return plan;
-    const limits = {members: String(now.maxMembers), file: `${now.fileMb} MB`, storage: size(now.storageGb), flows: flowsCell(now.maxFlows), audit: now.auditLog};
-    const features = plan.features.map(feature => {
-      if (/^Up to \d+ members$/.test(feature)) return `Up to ${limits.members} members`;
-      if (/^\d+ MB per file$/.test(feature)) return `${limits.file} per file`;
-      if (/ of storage$/.test(feature)) return `${limits.storage} of storage`;
-      if (/^Up to \d+ flows \(automations\)$/.test(feature)) return now.maxFlows > 0 ? `Up to ${now.maxFlows} flows (automations)` : null;
-      return feature;
-    }).filter((feature): feature is string => feature !== null);
+    const limits = {
+      members: countCell(now.maxMembers),
+      boards: countCell(now.maxBoards),
+      file: `${now.fileMb} MB`,
+      flows: flowsCell(now.flowRunsPerMonth),
+      audit: now.auditLog,
+    };
+    const features = plan.features
+      .map(feature => {
+        if (/^(Up to [\d,]+|Unlimited) members$/.test(feature)) return membersLine(now.maxMembers);
+        if (/^(Up to [\d,]+|Unlimited) boards$/.test(feature)) return boardsLine(now.maxBoards);
+        if (/^[\d,]+ MB per file$/.test(feature)) return fileLine(now.fileMb);
+        if (/^([\d,]+ automation runs a month|Unlimited automation runs)$/.test(feature)) {
+          return now.flowRunsPerMonth === 0 ? null : runsLine(now.flowRunsPerMonth);
+        }
+        return feature;
+      })
+      .filter((feature): feature is string => feature !== null);
     return {...plan, limits, features};
   });
 }
-
 /** "$9" / "$9.50 / month": the amount a plan's price shows, from minor units. */
 export function formatPrice(price: {amountCents: number; currency: string; interval: string; intervalCount: number}, locale = 'en'): string {
   const amount = new Intl.NumberFormat(locale, {
