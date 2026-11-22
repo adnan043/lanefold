@@ -397,6 +397,7 @@ const TABLE: Row[] = [
 
   // ---- /admin (src/platform/auth/admin.ts, site permissions) -------------------------------
   row('GET /admin/users', 'perm', {path: () => '/admin/users'}),
+  row('GET /user-search', 'perm', {path: () => '/user-search?q=a'}),
   row('GET /admin/users/:id', 'perm', {path: (_r, f) => `/admin/users/${f.u.mia}`}),
   row('PATCH /admin/users/:id', 'perm', {path: (_r, f) => `/admin/users/${f.u.mia}`, body: () => ({name: 'x'}), lenient: true}),
   row('PUT /admin/users/:id/roles', 'perm', {path: (_r, f) => `/admin/users/${f.u.mia}/roles`, body: () => ({roles: ['user']}), lenient: true}),

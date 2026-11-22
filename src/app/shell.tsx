@@ -4,7 +4,7 @@ import {Link, useNavigate} from './nav';
 import {useEffect, useMemo, useRef, useState} from 'react';
 
 import {useI18n, useT, type MessageKey} from '../i18n';
-import {logout} from '../platform/browser';
+import {logout} from '../lib/logout';
 import {useMe, useSite} from '../portal/shared';
 import {browserStorage, clearAllDrafts} from './draft-store';
 import {Avatar, ConfirmProvider, EmptyState, Icon, type IconName, IconButton, initials, Menu, type MenuItem, ToastProvider, UiLabels, buttonClass, useToast} from '../portal/ui';

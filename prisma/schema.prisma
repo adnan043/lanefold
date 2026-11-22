@@ -642,6 +642,8 @@ model Board {
   @@index([inboxOf, workspaceId])
   @@index([createdBy])
   @@index([inviteLinkBy])
+  /// "Is this file a board's background?" (chat's unsent files and their daily sweep skip those).
+  @@index([bgFileId])
   @@map("boards")
 }
 

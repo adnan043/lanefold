@@ -1,5 +1,6 @@
 import type {PrismaClient} from '../generated/prisma/client';
 import {cache} from '../platform/cache';
+import {FILE_CEILING_BYTES} from '../lib/file-limits';
 
 /**
  * Entitlements: THE only place that decides what a workspace may do (docs/product/SPEC.md §10).
@@ -174,7 +175,8 @@ function limitsOf(row: Row): PlanLimits | null {
     : {
         plan: row.plan,
         maxMembers: row.max_members,
-        maxFileBytes: Number(row.max_file_bytes),
+        // Never above the app's ceiling, whatever an older plan row says (attachments.size can't hold more).
+        maxFileBytes: Math.min(Number(row.max_file_bytes), FILE_CEILING_BYTES),
         storageQuotaBytes: Number(row.storage_quota_bytes),
         maxFlows: row.max_flows ?? 0,
         auditLog: row.audit_log ?? false,
@@ -224,7 +226,9 @@ async function load(db: PrismaClient, workspaceId: number): Promise<Entitlements
   // Back under the limits with an old clock still set (members removed, storage freed, a plan raised): drop it now,
   // not at the next daily sweep, so a later overage (a downgrade the same day) starts a FRESH grace instead of
   // reading the expired date as "grace over". One idempotent UPDATE, only in that state; a failure never breaks the read.
-  if (!result.overLimit && row.grace_until !== null) {
+  // Only when the plan has a plan_limits row: the UPDATE joins it, so without one it could never clear the clock and
+  // would run again on every request (the fallback limits already ignore the old clock).
+  if (!result.overLimit && row.grace_until !== null && row.max_members !== null) {
     try {
       await startGraceForOverLimit(db, {workspaceId});
     } catch {
@@ -276,7 +280,7 @@ export async function getEntitlementsMany(db: PrismaClient, workspaceIds: readon
   for (const row of rows) {
     const ent = buildFrom(row, settings.billingMode, row.grace_until);
     // Rare states that need a write (start the clock, or drop an old one): through getEntitlements.
-    if ((ent.overLimit && row.grace_until === null) || (!ent.overLimit && row.grace_until !== null)) {
+    if ((ent.overLimit && row.grace_until === null) || (!ent.overLimit && row.grace_until !== null && row.max_members !== null)) {
       slow.push(row.id);
       continue;
     }

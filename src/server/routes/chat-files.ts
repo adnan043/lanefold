@@ -49,14 +49,20 @@ const uploadBody = validator('json', (value, c) => {
   return {name: name.value.replace(/[\\/"\u0000-\u001f\u007f]/g, '_'), contentType, size};
 });
 
-/** My unsent file (ready or not) by id, or null. Unsent = on no card and no message: only its uploader ever sees it. */
-const unsentOf = (db: PrismaClient, me: number, raw: string) => {
+/**
+ * My unsent file (ready or not) by id, or null. Unsent = on no card and no message: only its uploader ever sees it.
+ * A board's background photo is stored the same way (src/server/routes/board-background.ts, `boards.bg_file_id`),
+ * so a file a board still shows is never a chat file: chat must not complete, delete or send it.
+ */
+const unsentOf = async (db: PrismaClient, me: number, raw: string) => {
   const id = idOf(raw);
-  if (!id) return Promise.resolve(null);
-  return db.attachment.findFirst({
-    where: {id, uploadedBy: me, cardId: null, messageId: null, fileId: {not: null}},
-    select: {id: true, workspaceId: true, fileId: true, size: true, ready: true, name: true, contentType: true},
-  });
+  if (!id) return null;
+  const [row] = await db.$queryRaw<{id: number; workspaceId: number; fileId: string | null; size: number; ready: boolean; name: string; contentType: string}[]>`
+    SELECT a.id, a.workspace_id AS "workspaceId", a.file_id AS "fileId", a.size, a.ready, a.name, a.content_type AS "contentType"
+    FROM attachments a
+    WHERE a.id = ${id} AND a.uploaded_by = ${me} AND a.card_id IS NULL AND a.message_id IS NULL AND a.file_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM boards b WHERE b.bg_file_id = a.file_id)`;
+  return row ?? null;
 };
 
 export const chatFileRoutes = new Hono()
@@ -74,7 +80,8 @@ export const chatFileRoutes = new Hono()
           (SELECT count(*) FROM (SELECT 1 FROM attachments
             WHERE uploaded_by = ${me} AND ready = false AND file_id IS NOT NULL AND created_at >= ${hourAgo} LIMIT ${UNFINISHED_PER_HOUR}) u)::int AS unfinished,
           (SELECT count(*) FROM (SELECT 1 FROM attachments
-            WHERE uploaded_by = ${me} AND card_id IS NULL AND message_id IS NULL AND file_id IS NOT NULL LIMIT ${UNSENT_MAX}) w)::int AS unsent`,
+            WHERE uploaded_by = ${me} AND card_id IS NULL AND message_id IS NULL AND file_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM boards b WHERE b.bg_file_id = attachments.file_id) LIMIT ${UNSENT_MAX}) w)::int AS unsent`,
     ]);
     const unfinished = caps?.unfinished ?? 0;
     const unsent = caps?.unsent ?? 0;

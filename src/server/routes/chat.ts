@@ -1179,6 +1179,7 @@ export const chatRoutes = new Hono()
         ? Prisma.sql`, fl AS (UPDATE attachments SET message_id = m.id FROM m
             WHERE attachments.id = ANY(${fileIds}::int[]) AND attachments.uploaded_by = ${me} AND attachments.workspace_id = ${a.workspaceId}
               AND attachments.ready AND attachments.card_id IS NULL AND attachments.message_id IS NULL
+              AND NOT EXISTS (SELECT 1 FROM boards b WHERE b.bg_file_id = attachments.file_id)
             RETURNING attachments.id)`
         : Prisma.empty;
       // Which files THIS send linked (a racing send with the same files may have taken some): the answer lists only those.
@@ -1380,37 +1381,53 @@ export const chatRoutes = new Hono()
       input.cardIds === undefined ? undefined : cardsInWorkspace(db, a, me, input.cardIds),
     ]);
     const mentions = allowed === undefined ? undefined : mentionIdsIn(input.body, names ?? new Map(), allowed);
-    const updated = await db.$transaction(async tx => {
-      const {count} = await tx.message.updateMany({
-        where: {id: row.id, conversationId: a.conversationId, workspaceId: a.workspaceId, senderId: me, deletedAt: null, kind: 'user'},
-        data: {bodyMd: input.body, editedAt: new Date()},
-      });
-      if (count === 0) return null;
-      let added: number[] = [];
-      if (mentions !== undefined) {
-        const had = await tx.messageMention.findMany({where: {messageId: row.id}, select: {userId: true}, take: MAX_MENTIONS});
-        added = mentions.filter(id => id !== me && !had.some(h => h.userId === id));
-        await tx.messageMention.deleteMany({where: {messageId: row.id}});
-        await tx.messageMention.createMany({data: mentions.map(userId => ({messageId: row.id, userId}))});
-      }
-      if (cardIds !== undefined) {
-        await tx.messageCardRef.deleteMany({where: {messageId: row.id}});
-        await tx.messageCardRef.createMany({data: cardIds.map(cardId => ({messageId: row.id, cardId}))});
-      }
-      await bumpEditRev(tx, a);
-      const message = await tx.message.findFirst({where: {id: row.id, conversationId: a.conversationId}, select: messageCols});
-      return message && {message, added};
-    });
-    if (!updated) return notFound(c, 'message');
+    // ONE atomic statement (its own transaction), like the send: the text changes only while the message is still mine,
+    // live and a user message, and the rest happens only when it did (`m` is empty otherwise). Mentions and card refs
+    // are replaced by their DIFFERENCE: rows no longer named go, new ones are added (the primary keys skip those already
+    // there). The two sets never share a row, so the order Postgres runs them in cannot matter. The mentions it really
+    // added are the people newly named. The conversation's edit counter moves.
+    const mentionRows =
+      mentions !== undefined
+        ? Prisma.sql`, dm AS (
+            DELETE FROM message_mentions WHERE message_id IN (SELECT id FROM m) AND user_id <> ALL(${mentions}::int[])
+          ), im AS (
+            INSERT INTO message_mentions (message_id, user_id) SELECT m.id, u FROM m, unnest(${mentions}::int[]) AS u
+            ON CONFLICT DO NOTHING RETURNING user_id
+          )`
+        : Prisma.empty;
+    const refRows =
+      cardIds !== undefined
+        ? Prisma.sql`, dc AS (
+            DELETE FROM message_card_refs WHERE message_id IN (SELECT id FROM m) AND card_id <> ALL(${cardIds}::int[])
+          ), ic AS (
+            INSERT INTO message_card_refs (message_id, card_id) SELECT m.id, x FROM m, unnest(${cardIds}::int[]) AS x
+            ON CONFLICT DO NOTHING
+          )`
+        : Prisma.empty;
+    const addedCol = mentions !== undefined ? Prisma.sql`ARRAY(SELECT user_id FROM im)` : Prisma.sql`ARRAY[]::int[]`;
+    const [done] = await db.$queryRaw<{edited: boolean; added: number[]}[]>`
+      WITH m AS (
+        UPDATE messages SET body_md = ${input.body}, edited_at = CURRENT_TIMESTAMP
+        WHERE id = ${row.id} AND conversation_id = ${a.conversationId} AND workspace_id = ${a.workspaceId}
+          AND sender_id = ${me} AND deleted_at IS NULL AND kind = 'user'
+        RETURNING id
+      )${mentionRows}${refRows}, er AS (
+        UPDATE conversations SET edit_rev = edit_rev + 1
+        WHERE id = ${a.conversationId} AND workspace_id = ${a.workspaceId} AND EXISTS (SELECT 1 FROM m)
+      )
+      SELECT EXISTS (SELECT 1 FROM m) AS edited, ${addedCol} AS added`;
+    if (!done?.edited) return notFound(c, 'message');
+    const message = await db.message.findFirst({where: {id: row.id, conversationId: a.conversationId}, select: messageCols});
+    if (!message) return notFound(c, 'message');
     // Someone named only by the edit is told, as by a new message (the per-sender cap holds); those named before are not
-    // told again.
-    const added = updated.added;
+    // told again. Never the sender.
+    const added = done.added.filter(id => id !== me);
     if (added.length) {
       await afterResponse(c, 'chat mentions', () =>
         notify(db, added, {kind: 'message_mention', workspaceId: a.workspaceId, actorId: me, boardId: a.boardId, conversationId: a.conversationId}),
       );
     }
-    const {items} = await shapeMessages(db, [updated.message], a, me);
+    const {items} = await shapeMessages(db, [message], a, me);
     return c.json({message: items[0]});
   })
 
@@ -1430,26 +1447,31 @@ export const chatRoutes = new Hono()
       const blocked = readOnlyAnswer(c, ent);
       if (blocked) return blocked;
     }
-    await db.$transaction(async tx => {
-      const {count} = await tx.message.updateMany({
-        where: {id: row.id, conversationId: a.conversationId, workspaceId: a.workspaceId, deletedAt: null},
-        data: {bodyMd: '', deletedAt: new Date(), pinnedAt: null},
-      });
-      if (count === 0) return;
-      await tx.messageMention.deleteMany({where: {messageId: row.id}});
-      await tx.messageCardRef.deleteMany({where: {messageId: row.id}});
-      await tx.messageReaction.deleteMany({where: {messageId: row.id}});
-      // Its files go too: the triggers give the bytes back and queue the stored files for deletion.
-      await tx.attachment.deleteMany({where: {messageId: row.id, workspaceId: a.workspaceId}});
-      await bumpEditRev(tx, a);
-      // A deleted reply leaves the count of its thread honest.
-      if (row.parentId !== null) {
-        await tx.message.updateMany({
-          where: {id: row.parentId, conversationId: a.conversationId, workspaceId: a.workspaceId, replyCount: {gt: 0}},
-          data: {replyCount: {decrement: 1}},
-        });
-      }
-    });
+    // ONE atomic statement (its own transaction), like the send: the message is blanked only while it is not deleted
+    // yet, and everything else happens only when it was (`m` is empty for a second delete, so nothing runs twice):
+    // its mentions, card refs and reactions go; its files go too (the triggers give the bytes back and queue the stored
+    // files for deletion); the conversation's edit counter moves; a deleted reply leaves its thread's count honest.
+    // The parent's row is another row of `messages` than `m`'s, so the two updates never touch the same row.
+    await db.$executeRaw`
+      WITH m AS (
+        UPDATE messages SET body_md = '', deleted_at = CURRENT_TIMESTAMP, pinned_at = NULL
+        WHERE id = ${row.id} AND conversation_id = ${a.conversationId} AND workspace_id = ${a.workspaceId} AND deleted_at IS NULL
+        RETURNING id, parent_id
+      ), dm AS (
+        DELETE FROM message_mentions WHERE message_id IN (SELECT id FROM m)
+      ), dc AS (
+        DELETE FROM message_card_refs WHERE message_id IN (SELECT id FROM m)
+      ), dr AS (
+        DELETE FROM message_reactions WHERE message_id IN (SELECT id FROM m)
+      ), da AS (
+        DELETE FROM attachments WHERE message_id IN (SELECT id FROM m) AND workspace_id = ${a.workspaceId}
+      ), er AS (
+        UPDATE conversations SET edit_rev = edit_rev + 1
+        WHERE id = ${a.conversationId} AND workspace_id = ${a.workspaceId} AND EXISTS (SELECT 1 FROM m)
+      )
+      UPDATE messages SET reply_count = reply_count - 1
+      WHERE id = (SELECT parent_id FROM m) AND conversation_id = ${a.conversationId} AND workspace_id = ${a.workspaceId}
+        AND reply_count > 0`;
     if (!own) {
       await audit(db, {
         actorUserId: me,

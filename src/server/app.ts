@@ -42,6 +42,7 @@ import {boardPeopleRoutes} from './routes/board-people';
 import {boardMemberRoutes} from './routes/board-members';
 import {flowRoutes} from './routes/flows';
 import {publicBoardRoutes} from './routes/public-board';
+import {userSearchRoutes} from './routes/user-search';
 
 /**
  * The Site API: this site's ONLY backend, one Hono app at `/site-api/*`.
@@ -128,6 +129,7 @@ export const app = new Hono()
   .route('/', morningDigestRoutes)
   .route('/', searchRoutes)
   .route('/', savedFilterRoutes)
+  .route('/', userSearchRoutes)
   .route('/', importExportRoutes)
   .route('/', accountPreflightRoutes)
   .route('/', boardShareRoutes)

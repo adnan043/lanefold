@@ -152,6 +152,7 @@ describe('server guard: queries', () => {
   const EMAIL_SELECT_ALLOWED: Record<string, string> = {
     'src/server/jobs/notification-email.ts': 'the opt-in recipient\'s OWN address, read at send time and handed to the mail sender only; never stored, logged or returned',
     'src/server/routes/members.ts': 'member directory: selected only to build maskEmail(), shown to admins+ (never the full address)',
+    'src/server/routes/user-search.ts': 'admin Users list (site:user:read): full address only to the site owner or the user themselves, maskEmail() for every other admin, as the template\'s /admin/users does',
   };
   it('no email selected in a Prisma select (another person\'s address never leaves the server)', () => {
     const hits = scan(/\bemail\s*:\s*true\b/);

@@ -222,15 +222,18 @@ export async function cleanupOld(
   }
   // Chat files uploaded but never sent (the composer was closed, the tab lost): after a day they go. The rows are on
   // no card and no message (the partial index attachments_unsent_idx holds only these); the AFTER DELETE triggers
-  // give the bytes back to the workspace and queue the stored files for deletion.
+  // give the bytes back to the workspace and queue the stored files for deletion. A board's background photo is stored
+  // the same way (no card, no message; boards.bg_file_id points at it): a file a board still shows is never swept.
   const unsentBefore = new Date(now - 24 * 3_600_000);
   for (let i = 0; i < UPLOAD_BATCHES; i++) {
     const deleted = await db.$queryRaw<{id: number}[]>`
       DELETE FROM attachments WHERE id IN (
         SELECT id FROM attachments
         WHERE card_id IS NULL AND message_id IS NULL AND file_id IS NOT NULL AND created_at < ${unsentBefore}
+          AND NOT EXISTS (SELECT 1 FROM boards b WHERE b.bg_file_id = attachments.file_id)
         ORDER BY created_at LIMIT ${UPLOAD_BATCH})
       AND card_id IS NULL AND message_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM boards b WHERE b.bg_file_id = attachments.file_id)
       RETURNING id`;
     uploads += deleted.length;
     if (deleted.length < UPLOAD_BATCH) break;

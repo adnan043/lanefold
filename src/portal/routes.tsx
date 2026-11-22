@@ -15,7 +15,7 @@ import {useEffect, useRef, useState} from 'react';
 
 import {browserStorage, clearAllDrafts} from '../app/draft-store';
 import type {Abilities} from '../lib/types';
-import {logout} from '../platform/browser';
+import {logout} from '../lib/logout';
 import {
   auditQuery,
   billingSettingsQuery,
