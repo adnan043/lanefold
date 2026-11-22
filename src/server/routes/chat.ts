@@ -1179,6 +1179,7 @@ export const chatRoutes = new Hono()
         ? Prisma.sql`, fl AS (UPDATE attachments SET message_id = m.id FROM m
             WHERE attachments.id = ANY(${fileIds}::int[]) AND attachments.uploaded_by = ${me} AND attachments.workspace_id = ${a.workspaceId}
               AND attachments.ready AND attachments.card_id IS NULL AND attachments.message_id IS NULL
+              AND NOT EXISTS (SELECT 1 FROM boards b WHERE b.bg_file_id = attachments.file_id)
             RETURNING attachments.id)`
         : Prisma.empty;
       // Which files THIS send linked (a racing send with the same files may have taken some): the answer lists only those.

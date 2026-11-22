@@ -215,4 +215,25 @@ describe.skipIf(!DATABASE_URL)('chat files (integration, real Postgres)', () => 
     expect(await db.attachment.count({where: {id: kept.id}})).toBe(1);
     expect(await db.attachment.count({where: {id: fresh.id}})).toBe(1);
   });
+
+  it("a board's background photo is never treated as an unsent chat file", async () => {
+    // A background is stored like an unsent chat file (no card, no message); boards.bg_file_id points at it.
+    const board = (await ann.post(`/site-api/workspaces/${wsA}/boards`, {name: 'Launch', lanes: ['To do']})).json.board.id as number;
+    const grant = await ann.post(`/site-api/boards/${board}/background/upload`, {name: 'sky.png', contentType: 'image/png', size: 500});
+    expect(grant.status, JSON.stringify(grant.json)).toBe(201);
+    const bg = grant.json.uploadId as number;
+    const set = await ann.post(`/site-api/boards/${board}/background/${bg}/complete`, {});
+    expect(set.status, JSON.stringify(set.json)).toBe(200);
+    // Chat routes cannot remove, re-confirm or send it, even by its uploader.
+    expect((await ann.request('DELETE', `/site-api/chat/attachments/${bg}`)).status).toBe(404);
+    expect((await ann.post(`/site-api/chat/attachments/${bg}/complete`, {})).status).toBe(404);
+    const sent = await send(ann, 'sneaky', [bg]);
+    expect(sent.status === 201 ? sent.json.message.files : [], JSON.stringify(sent.json)).toEqual([]);
+    expect((await db.attachment.findUniqueOrThrow({where: {id: bg}, select: {messageId: true}})).messageId).toBeNull();
+    // A day later, the daily sweep leaves it alone.
+    await db.attachment.updateMany({where: {id: bg}, data: {createdAt: new Date(Date.now() - 25 * 3_600_000)}});
+    await cleanupOld(db, {});
+    expect(await db.attachment.count({where: {id: bg}})).toBe(1);
+    expect((await ann.get(`/site-api/boards/${board}/background`)).status).toBe(302);
+  });
 });
