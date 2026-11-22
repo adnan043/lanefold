@@ -146,15 +146,17 @@ describe.skipIf(!DATABASE_URL)('billing (integration, real Postgres)', () => {
 
     const body = {maxMembers: 1, maxFileMb: 50, storageGb: 5, maxFlows: 3, auditLog: true};
     expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxMembers: 0})).status).toBe(422);
-    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 5121})).status).toBe(422);
-    // An admin may go past the old 100 MB, up to the platform's 5 GB per file.
-    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 5120})).status).toBe(200);
-    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, storageGb: 10240})).status).toBe(200);
-    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, storageGb: 10241})).status).toBe(422);
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 2048})).status).toBe(422);
+    // An admin may go past the old 100 MB, up to the app's 2047 MB per file (attachments.size is an integer).
+    expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, maxFileMb: 2047})).status).toBe(200);
+    // Up to 10 TB of storage, on the top plan (storage must grow free < pro < team, so pro can't take it).
+    expect((await staff.request('PATCH', '/site-api/billing/plans/team', {...body, storageGb: 10240})).status).toBe(200);
+    expect((await staff.request('PATCH', '/site-api/billing/plans/team', {...body, storageGb: 10241})).status).toBe(422);
     expect((await staff.request('PATCH', '/site-api/billing/plans/pro', {...body, auditLog: 'yes'})).status).toBe(422);
     expect((await staff.request('PATCH', '/site-api/billing/plans/ghost', body)).status).toBe(404);
 
     await db.workspace.update({where: {id: w1}, data: {plan: 'pro'}});
+    const auditsBefore = await db.auditEvent.count({where: {action: 'plan.limits_changed'}});
     const saved = await staff.request('PATCH', '/site-api/billing/plans/pro', body);
     expect(saved.status).toBe(200);
     const row = await db.planLimit.findUniqueOrThrow({where: {plan: 'pro'}});
@@ -164,7 +166,7 @@ describe.skipIf(!DATABASE_URL)('billing (integration, real Postgres)', () => {
     // Workspace One has 2 members on a 1-member plan: grace starts, nothing is deleted.
     expect((await db.workspace.findUniqueOrThrow({where: {id: w1}})).graceUntil).not.toBeNull();
     expect((await db.workspace.findUniqueOrThrow({where: {id: w2}})).graceUntil).toBeNull();
-    expect(await db.auditEvent.count({where: {action: 'plan.limits_changed'}})).toBe(1);
+    expect(await db.auditEvent.count({where: {action: 'plan.limits_changed'}})).toBe(auditsBefore + 1);
   });
 
   it('billing mode: owners only, audited', async () => {
