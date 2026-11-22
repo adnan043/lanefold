@@ -744,6 +744,7 @@
   "errors.use_leave": "Usa Esci dal workspace per rimuoverti.",
   "errors.conflict": "Qualcosa è cambiato mentre lavoravi. Ricarica e riprova.",
   "errors.already_subscribed": "Questo spazio di lavoro ha già questo piano o uno superiore. Aggiorna la pagina per vederlo.",
+  "errors.removed_by_admin": "Un amministratore della bacheca ha rimosso questa persona dalla bacheca. Solo un amministratore della bacheca può aggiungerla di nuovo.",
   "errors.would_lower_role": "Solo un amministratore della bacheca può rendere un membro dello spazio di lavoro un lettore su questa bacheca.",
   "plan.limitBody": "Il tuo piano non lo consente. Guarda i piani per passare a uno superiore.",
   "plan.seePlans": "Vedi i piani",

@@ -740,6 +740,7 @@
   "errors.use_leave": "Tumia Ondoka kwenye nafasi ya kazi kujiondoa.",
   "errors.conflict": "Hilo lilibadilika ulipokuwa unafanya kazi. Pakia upya kisha ujaribu tena.",
   "errors.already_subscribed": "Eneo hili la kazi tayari lina mpango huu au mkubwa zaidi. Onyesha upya ukurasa ili kuuona.",
+  "errors.removed_by_admin": "Msimamizi wa ubao alimwondoa mtu huyu kwenye ubao. Ni msimamizi wa ubao pekee anayeweza kumrudisha.",
   "errors.would_lower_role": "Msimamizi wa ubao pekee ndiye anaweza kumfanya mwanachama wa eneo la kazi kuwa mtazamaji kwenye ubao huu.",
   "plan.limitBody": "Mpango wako hauruhusu hilo. Angalia mipango ili kuboresha.",
   "plan.seePlans": "Angalia mipango",

@@ -64,6 +64,14 @@ const INVITE_DAYS = 14;
 const LOOKUPS_PER_HOUR = 30;
 const LINK_OPS_PER_HOUR = 20;
 
+const REMOVED_BY_ADMIN = problem('removed_by_admin', 'A board admin removed this person from the board. Only a board admin can add them back.');
+
+/** Whether a board admin removed this person from the board (the refusal paths only). */
+async function removedFromBoard(db: PrismaClient, boardId: number, userId: number): Promise<boolean> {
+  const rows = await db.$queryRaw<{x: number}[]>`SELECT 1 AS x FROM board_removals WHERE board_id = ${boardId} AND user_id = ${userId}`;
+  return rows.length > 0;
+}
+
 const roleOf = (value: unknown): BoardRole | null =>
   typeof value === 'string' && (ROLES as readonly string[]).includes(value) ? (value as BoardRole) : null;
 
@@ -247,6 +255,8 @@ export const boardMemberRoutes = new Hono()
       JOIN users u ON u.id = m.user_id AND u.status = 'active'
       WHERE b.id = ${ctx.boardId} AND b.workspace_id = ${workspaceId} AND b.inbox_of IS NULL
         AND ((m.role = 'member' AND NOT ${lowersMember}::boolean) OR (m.role = 'viewer' AND ${role}::text = 'viewer'))
+        -- Removed from this board by an admin: only a board admin lets them back in (as /join and the link do).
+        AND (${admin}::boolean OR NOT EXISTS (SELECT 1 FROM board_removals r WHERE r.board_id = b.id AND r.user_id = m.user_id))
       ON CONFLICT (board_id, user_id) DO UPDATE SET role = EXCLUDED.role WHERE ${admin}::boolean
       RETURNING (xmax = 0) AS inserted, (SELECT role FROM old) AS before`;
 
@@ -254,6 +264,7 @@ export const boardMemberRoutes = new Hono()
       // Why nothing was written (the refusal path only).
       const p = await personOn(db, ctx.boardId, workspaceId, targetId);
       if (!p.active) return notFound(c, 'member');
+      if (!admin && !p.seat && (await removedFromBoard(db, ctx.boardId, targetId))) return c.json(REMOVED_BY_ADMIN, 403);
       if (p.wsRole === null) {
         // A guest's role can be changed by a board admin (never to admin); guests are added only by invite.
         if (!p.seat) return notFound(c, 'member');
@@ -441,11 +452,14 @@ export const boardMemberRoutes = new Hono()
 
     // Someone of this workspace already: seated at once (their workspace role still caps the seat), no email.
     // ONE read: the address's active account, its role in this workspace and its seat on the board.
-    const [user] = await db.$queryRaw<{id: number; wsRole: string | null; seat: string | null}[]>`
+    const [user] = await db.$queryRaw<{id: number; wsRole: string | null; seat: string | null; removed: boolean}[]>`
       SELECT u.id,
              (SELECT role FROM workspace_members WHERE workspace_id = ${workspaceId} AND user_id = u.id) AS "wsRole",
-             (SELECT role FROM board_members WHERE board_id = ${ctx.boardId} AND user_id = u.id) AS seat
+             (SELECT role FROM board_members WHERE board_id = ${ctx.boardId} AND user_id = u.id) AS seat,
+             EXISTS (SELECT 1 FROM board_removals WHERE board_id = ${ctx.boardId} AND user_id = u.id) AS removed
       FROM users u WHERE u.email = ${email} AND u.status = 'active'`;
+    // Removed from this board by an admin: a member's invite (a seat now, or a guest invite later) cannot undo that.
+    if (user?.removed && user.seat === null && !ctx.access.canAdmin) return c.json(REMOVED_BY_ADMIN, 403);
     if (user) {
       const p = user;
       if (p.wsRole !== null) {
@@ -459,6 +473,8 @@ export const boardMemberRoutes = new Hono()
           ON CONFLICT (board_id, user_id) DO NOTHING`;
         if (n > 0) {
           await Promise.all([
+            // A board admin seating someone again lifts an earlier removal (as the role menu does).
+            ctx.access.canAdmin && user.removed ? db.$executeRaw`DELETE FROM board_removals WHERE board_id = ${ctx.boardId} AND user_id = ${user.id}` : null,
             notify(db, [user.id], {workspaceId, kind: 'board_member', actorId: me, boardId: ctx.boardId}),
             db.activity.create({data: {workspaceId, boardId: ctx.boardId, actorId: me, kind: 'board.member_added', meta: {userId: user.id, role: seatRole}}}),
             audit(db, {actorUserId: me, action: 'board.member.added', target: ['board', ctx.boardId], meta: {userId: user.id, role: seatRole}}),

@@ -24,7 +24,7 @@ export const MIN_GAP_MS: Record<'digest' | 'immediate', number> = {immediate: 36
 export const MAX_PER_RUN = 50;
 const RUN_BUDGET_MS = 40_000;
 
-type Candidate = {user_id: number; mode: string; cursor: bigint; locale: string | null};
+type Candidate = {user_id: number; mode: string; cursor: bigint; notified_at: Date | null; locale: string | null};
 type Tally = {user_id: number; kind: string; c: number; m: bigint};
 
 export interface NotificationEmailDeps {
@@ -58,7 +58,7 @@ export async function runNotificationEmails(db: PrismaClient, job: {attempt: num
 
   // One query: who is due and has something unread past their cursor (indexed by mode, then notifications(user_id, read_at, id)).
   const due = await db.$queryRaw<Candidate[]>`
-    SELECT p.user_id, p.email_notify_mode AS mode, p.email_notify_cursor AS cursor, p.locale AS locale
+    SELECT p.user_id, p.email_notify_mode AS mode, p.email_notify_cursor AS cursor, p.email_notified_at AS notified_at, p.locale AS locale
     FROM user_profiles p
     WHERE p.email_notify_mode IN ('digest', 'immediate')
       AND ((p.email_notify_mode = 'immediate' AND (p.email_notified_at IS NULL OR p.email_notified_at <= ${immediateCut}))
@@ -110,7 +110,7 @@ export async function runNotificationEmails(db: PrismaClient, job: {attempt: num
     if (result.kind === 'sent') continue;
     if (result.kind === 'retry' && !lastTry) {
       // Give the claim back so the next run mails them again.
-      await db.userProfile.updateMany({where: {userId: d.user_id, emailNotifyCursor: sum.max}, data: {emailNotifyCursor: d.cursor, emailNotifiedAt: null}});
+      await db.userProfile.updateMany({where: {userId: d.user_id, emailNotifyCursor: sum.max}, data: {emailNotifyCursor: d.cursor, emailNotifiedAt: d.notified_at ?? null}});
       retryLeft = true;
     } else {
       console.warn('[notification-email] not delivered', d.user_id, result.kind);

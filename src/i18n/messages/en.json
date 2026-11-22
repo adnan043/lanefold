@@ -740,6 +740,7 @@
   "errors.use_leave": "Use Leave workspace to remove yourself.",
   "errors.conflict": "That changed while you were working. Reload and try again.",
   "errors.already_subscribed": "This workspace already has this plan or a bigger one. Refresh the page to see it.",
+  "errors.removed_by_admin": "A board admin removed this person from the board. Only a board admin can add them back.",
   "errors.would_lower_role": "Only a board admin can make a workspace member a viewer on this board.",
   "plan.limitBody": "Your plan does not allow that. See plans to upgrade.",
   "plan.seePlans": "See plans",

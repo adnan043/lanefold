@@ -50,6 +50,17 @@ describe.skipIf(!DATABASE_URL)('card move / copy to another board (integration, 
   const laneCount = async (id: number) => (await db.lane.findUniqueOrThrow({where: {id}})).cardCount;
   const rev = async (id: number) => (await db.board.findUniqueOrThrow({where: {id}})).rev;
 
+  it('a read-only seat on a private board cannot copy its card to a board the whole workspace sees', async () => {
+    const secret = (await ann.post(`/site-api/workspaces/${wsA}/boards`, {name: 'Secret', lanes: ['To do'], visibility: 'private'})).json.board.id;
+    const secretLane = (await ann.get(`/site-api/boards/${secret}`)).json.lanes[0].id;
+    const hidden = (await ann.post(`/site-api/lanes/${secretLane}/cards`, {title: 'Hidden plan'})).json.items[0].id;
+    expect((await ann.request('PUT', `/site-api/boards/${secret}/members/${benId}`, {role: 'viewer'})).status).toBe(200);
+    expect((await ben.get(`/site-api/cards/${hidden}/detail`)).status).toBe(200); // ben can read it...
+    expect((await copyTo(ben, hidden, boardB, laneB)).status).toBe(403); // ...but not carry it out
+    expect(await db.card.count({where: {boardId: boardB, title: 'Hidden plan'}})).toBe(0);
+    expect((await copyTo(ann, hidden, boardB, laneB)).status).toBe(201); // someone who may write there can
+  });
+
   it('moves the card, keeps its id, fixes both lane counters and bumps both revs', async () => {
     const [revA, revB] = [await rev(boardA), await rev(boardB)];
     const res = await moveTo(ann, card, boardB, laneB);

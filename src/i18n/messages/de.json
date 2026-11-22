@@ -740,6 +740,7 @@
   "errors.use_leave": "Nutze „Workspace verlassen“, um dich selbst zu entfernen.",
   "errors.conflict": "Das hat sich geändert, während du gearbeitet hast. Lade neu und versuche es erneut.",
   "errors.already_subscribed": "Dieser Workspace hat diesen Plan oder einen größeren bereits. Lade die Seite neu, um ihn zu sehen.",
+  "errors.removed_by_admin": "Ein Board-Admin hat diese Person vom Board entfernt. Nur ein Board-Admin kann sie wieder hinzufügen.",
   "errors.would_lower_role": "Nur ein Board-Admin kann ein Workspace-Mitglied auf diesem Board zum Betrachter machen.",
   "plan.limitBody": "Dein Tarif erlaubt das nicht. Sieh dir die Tarife für ein Upgrade an.",
   "plan.seePlans": "Tarife ansehen",
