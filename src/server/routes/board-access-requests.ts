@@ -147,7 +147,13 @@ export const boardAccessRequestRoutes = new Hono()
     const me = c.var.viewer.id!;
     const id = idOf(c.req.param('id'));
     if (!id) return c.json(NO_REQUEST, 404);
-    const row = await db.boardAccessRequest.findFirst({where: {id, status: 'pending'}, select: {boardId: true, workspaceId: true, userId: true}});
+    // Only an ACTIVE account can be seated (the list hides the others; a suspended account would still take a guest
+    // seat). Requests have no Prisma relation to users, so the status is joined here.
+    const [row] = await db.$queryRaw<{boardId: number; workspaceId: number; userId: number}[]>`
+      SELECT r.board_id AS "boardId", r.workspace_id AS "workspaceId", r.user_id AS "userId"
+      FROM board_access_requests r
+      JOIN users u ON u.id = r.user_id AND u.status = 'active'
+      WHERE r.id = ${id} AND r.status = 'pending'`;
     if (!row) return c.json(NO_REQUEST, 404);
     // The approver must be able to add people to THAT board right now (their access is in the query: 404 otherwise).
     const ctx = await inviteCtx(db, me, row.boardId);
