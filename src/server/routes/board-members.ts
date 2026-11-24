@@ -123,11 +123,11 @@ const asSeat = (role: string | null): BoardRole | null => (role === 'admin' || r
 
 type Refusal = {status: 403 | 404 | 409; body: ReturnType<typeof problem>};
 const refuse = (status: Refusal['status'], code: string, message: string): Refusal => ({status, body: problem(code, message)});
-const isRefusal = (r: unknown): r is Refusal => typeof r === 'object' && r !== null && 'status' in r && 'body' in r;
+export const isRefusal = (r: unknown): r is Refusal => typeof r === 'object' && r !== null && 'status' in r && 'body' in r;
 const FORBIDDEN = () => refuse(403, 'forbidden', 'You do not have access to this.');
 
 /** The board, when the visitor may add people to it right now (404 / 403 / 409 otherwise). */
-async function inviteCtx(
+export async function inviteCtx(
   db: PrismaClient,
   userId: number,
   boardId: number | undefined,
@@ -163,6 +163,12 @@ export const boardMemberRoutes = new Hono()
     const ctx = await boardFor(db, me, idOf(c.req.param('id')), 'read');
     if (refused(ctx)) return c.json(ctx.body, ctx.status);
     const {workspaceId} = ctx.access;
+    // Those who may add people also see how many access requests wait: bounded, on @@index([boardId, status, id desc]),
+    // in parallel with the people below.
+    const pendingRequests = canInvite(ctx.access)
+      ? // `.then` starts it now (a Prisma query is lazy until awaited), so it runs beside the people query.
+        db.boardAccessRequest.findMany({where: {boardId: ctx.boardId, status: 'pending'}, select: {id: true}, take: 100}).then(r => r)
+      : Promise.resolve([]);
     // ONE query, bounded: the seated people (workspace members AND guests) and the workspace owners/admins.
     const rows = await db.$queryRaw<{id: number; name: string; wsRole: string | null; seat: string | null; visibility: string; inboxOf: number | null}[]>`
       WITH people AS (
@@ -196,8 +202,10 @@ export const boardMemberRoutes = new Hono()
     }
     const a = ctx.access;
     const live = !a.archived && !a.inbox;
+    const pending = await pendingRequests;
     return c.json({
       members,
+      accessRequests: pending.length,
       admins,
       more: rows.length > MAX_LIST,
       me: {seated: a.seated, guest: a.guest},

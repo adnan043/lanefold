@@ -40,6 +40,7 @@ import {boardShareRoutes} from './routes/board-share';
 import {boardStaleRoutes} from './routes/board-stale';
 import {boardPeopleRoutes} from './routes/board-people';
 import {boardMemberRoutes} from './routes/board-members';
+import {boardAccessRequestRoutes} from './routes/board-access-requests';
 import {flowRoutes} from './routes/flows';
 import {publicBoardRoutes} from './routes/public-board';
 import {userSearchRoutes} from './routes/user-search';
@@ -136,6 +137,7 @@ export const app = new Hono()
   .route('/', boardStaleRoutes)
   .route('/', boardPeopleRoutes)
   .route('/', boardMemberRoutes)
+  .route('/', boardAccessRequestRoutes)
   .route('/', flowRoutes)
   .route('/', publicBoardRoutes)
 

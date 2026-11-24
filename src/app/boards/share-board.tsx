@@ -39,6 +39,8 @@ export type Members = {
   canJoin: boolean;
   memberInvites: 'admins' | 'members';
   selfJoin: boolean;
+  /** Pending access requests: only for those who may add people (canInvite), else 0. */
+  accessRequests?: number;
 };
 type Candidate = {id: number; name: string; workspaceRole: string};
 type Pending = {id: number; role: Role; expiresAt: string; emailStatus: string | null; canRevoke: boolean};

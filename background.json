@@ -1,6 +1,7 @@
 {
   "lists": {
     "invite-emails": {"retries": 4, "concurrency": 2},
+    "access-request-emails": {"retries": 4, "concurrency": 2},
     "notification-emails": {"retries": 3, "concurrency": 1},
     "flows-daily": {"retries": 3, "concurrency": 1},
     "plan-sweep": {"retries": 3, "concurrency": 1},
