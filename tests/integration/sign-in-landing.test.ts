@@ -1,6 +1,7 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 
 import {app} from '../../src/server/app';
+import {authSettings} from '../../src/server/auth-settings';
 import {Browser, configureEnv, DATABASE_URL, db, resetDatabase, signedIn} from './support/harness';
 
 /** Where every sign-in lands (src/platform/auth/after-sign-in.ts), against the real Site API and Postgres. */
@@ -35,8 +36,9 @@ describe.skipIf(!DATABASE_URL)('where a sign-in lands (integration, real Postgre
   it('a member goes where they were going, as before', async () => {
     const browser = await signedIn(app, 'mo@example.com');
     await browser.post('/site-api/auth/logout');
-    expect((await login(browser, 'mo@example.com')).json.next).toBe('/dashboard');
+    // With no destination (or an unsafe one) a member lands on this site's afterSignInPath (Lanefold: /app).
+    expect((await login(browser, 'mo@example.com')).json.next).toBe(authSettings.afterSignInPath);
     expect((await login(browser, 'mo@example.com', '/jobs/')).json.next).toBe('/jobs/');
-    expect((await login(browser, 'mo@example.com', '//evil.example/')).json.next).toBe('/dashboard');
+    expect((await login(browser, 'mo@example.com', '//evil.example/')).json.next).toBe(authSettings.afterSignInPath);
   });
 });

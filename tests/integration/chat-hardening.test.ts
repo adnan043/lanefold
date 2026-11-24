@@ -81,7 +81,8 @@ describe.skipIf(!DATABASE_URL)('chat hardening (integration, real Postgres)', ()
     await db.board.update({where: {id: boardA}, data: {archivedAt: new Date()}});
     expect((await ann.request('PUT', `/site-api/messages/${msg}/pin`, {})).status).toBe(403);
     expect((await ann.delete(`/site-api/messages/${msg}`)).status).toBe(404);
-    expect((await mia.delete(`/site-api/messages/${msg}`)).status).toBe(200); // own message still deletable
+    // Read-only for its author too, like an archived channel (chat.ts DELETE /messages/:id).
+    expect((await mia.delete(`/site-api/messages/${msg}`)).status).toBe(403);
   });
 
   it('sending does not mark unseen messages as read', async () => {
