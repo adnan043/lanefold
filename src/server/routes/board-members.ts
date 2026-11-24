@@ -165,10 +165,16 @@ export const boardMemberRoutes = new Hono()
     const {workspaceId} = ctx.access;
     // Those who may add people also see how many access requests wait: bounded, on @@index([boardId, status, id desc]),
     // in parallel with the people below.
+    // Counted like the list counts them (active accounts only), so the button never promises rows the list hides.
     const pendingRequests = canInvite(ctx.access)
       ? // `.then` starts it now (a Prisma query is lazy until awaited), so it runs beside the people query.
-        db.boardAccessRequest.findMany({where: {boardId: ctx.boardId, status: 'pending'}, select: {id: true}, take: 100}).then(r => r)
-      : Promise.resolve([]);
+        db.$queryRaw<{n: number}[]>`
+          SELECT count(*)::int AS n FROM (
+            SELECT 1 FROM board_access_requests r
+            JOIN users u ON u.id = r.user_id AND u.status = 'active'
+            WHERE r.board_id = ${ctx.boardId} AND r.status = 'pending'
+            LIMIT 100) s`.then(r => r[0]?.n ?? 0)
+      : Promise.resolve(0);
     // ONE query, bounded: the seated people (workspace members AND guests) and the workspace owners/admins.
     const rows = await db.$queryRaw<{id: number; name: string; wsRole: string | null; seat: string | null; visibility: string; inboxOf: number | null}[]>`
       WITH people AS (
@@ -205,7 +211,7 @@ export const boardMemberRoutes = new Hono()
     const pending = await pendingRequests;
     return c.json({
       members,
-      accessRequests: pending.length,
+      accessRequests: pending,
       admins,
       more: rows.length > MAX_LIST,
       me: {seated: a.seated, guest: a.guest},

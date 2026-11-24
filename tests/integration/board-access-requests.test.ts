@@ -156,4 +156,21 @@ describe.skipIf(!DATABASE_URL)('board access requests (integration, real Postgre
     expect((await approve(ann, id)).status).toBe(200);
     expect((await ben.get(`/site-api/boards/${board}`)).status).toBe(200);
   });
+
+  it('a suspended account is neither counted nor seated (it would take a guest seat)', async () => {
+    expect((await ask(bob)).status).toBe(202);
+    const id = await requestId(bobId);
+    await db.user.update({where: {id: bobId}, data: {status: 'suspended'}});
+    // The header count matches the list: both hide the suspended requester.
+    expect((await ann.get(`/site-api/boards/${board}/members`)).json.accessRequests).toBe(0);
+    expect((await list(ann)).json.items).toEqual([]);
+    // Approving by id (a stale list) seats nobody.
+    expect((await approve(ann, id)).status).toBe(404);
+    expect(await db.boardMember.count({where: {boardId: board, userId: bobId}})).toBe(0);
+    // Active again: the same request can be answered.
+    await db.user.update({where: {id: bobId}, data: {status: 'active'}});
+    expect((await ann.get(`/site-api/boards/${board}/members`)).json.accessRequests).toBe(1);
+    expect((await approve(ann, id)).status).toBe(200);
+    expect(await db.boardMember.count({where: {boardId: board, userId: bobId}})).toBe(1);
+  });
 });
