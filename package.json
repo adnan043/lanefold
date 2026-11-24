@@ -1,6 +1,6 @@
 {
   "name": "site-app",
-  "version": "0.10.24",
+  "version": "0.10.26",
   "private": true,
   "type": "module",
   "engines": {
@@ -65,5 +65,8 @@
     "workerd@1.20261006.1": true,
     "@prisma/engines@7.10.1": true,
     "fsevents": false
+  },
+  "overrides": {
+    "effect": "3.22.5"
   }
 }

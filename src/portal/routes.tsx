@@ -342,6 +342,13 @@ function Shell() {
                   </>
                 }
                 disabled={signingOut}
+                header={
+                  <>
+                    <span className="menu-header-name">{viewer.name || 'Signed in'}</span>
+                    {/* The owner's email is never known to the site (auth.md): say who they are instead. */}
+                    <span className="menu-header-email">{viewer.email || (viewer.platformOwner ? 'Owner of this site' : '')}</span>
+                  </>
+                }
                 items={[
                   {label: 'Open your boards', icon: 'layout-kanban', onSelect: () => window.location.assign('/app')},
                   {label: 'Your account', icon: 'user', onSelect: () => void navigate({to: '/account'})},

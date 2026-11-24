@@ -1,6 +1,6 @@
 ---
 title: How changes go live, and the Preview
-read-when: before git push, when the owner asks how changes go live, when the Preview misbehaves, or before changing scripts, dependencies or config
+read-when: before git push, when the owner asks how changes go live, or before changing scripts, dependencies or config (a broken Preview: `preview.md`)
 ---
 ## Going live
 - You edit a working copy. Nothing visitors see changes until the OWNER publishes from the
@@ -47,8 +47,9 @@ read-when: before git push, when the owner asks how changes go live, when the Pr
   `_redirects` before it goes live and names the line to fix.
 
 ## Preview (the editor)
-- The editor runs `npm run dev` for the Preview pane: keep it working and serving at `/`. Never
-  start a second dev server; never `npm run preview`.
+- The editor runs `npm run dev` for the Preview pane, on its one fixed port: keep it working and serving
+  at `/`. Never start a second dev server, never `npm run preview`. How it runs, `{{PREVIEW_COMMAND}}` and the
+  fix-it checklist: `preview.md`.
 - In the Preview, `SITE_PREVIEW=1`, `DATABASE_URL` is the Preview Database, `JWT_SECRET` and the
   Site Key are the editor's own. Sign-in works for real against the Preview Database. Everyone who
   signs up is a normal user; the admin opens from the shield in the Preview's bar, as on the live site.
@@ -77,3 +78,6 @@ read-when: before git push, when the owner asks how changes go live, when the Pr
 ## Git
 - Commit small, reviewable changes with clear messages. Push with plain `git push` to `origin`
   only when the owner set up a repository; never `--force`, `--all` or `--tags`.
+- In the editor `origin` is the platform's git proxy, not GitHub: a push works only while the editor
+  session is open and answers 403 after it ended. That is not a password problem: never change the
+  remote, add a token or ask for one; commit, and the push waits for the next Open (`preview.md`).

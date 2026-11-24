@@ -1,6 +1,6 @@
 ---
 title: UI: the dashboard's UI kit, and how every screen is built from it
-read-when: before building or changing ANY dashboard screen, form, table, dialog, button or style, and before adding a component or a dependency for the UI
+read-when: before building or changing ANY form or button (any page, `.astro` pages too), dashboard screen, table, dialog or style, and before adding a component or a dependency for the UI
 ---
 The dashboard (`/dashboard`, code in `src/portal/`) ships a finished admin look: app shell,
 overview, users, roles, activity, jobs and account screens, all built from ONE kit in
@@ -24,7 +24,10 @@ piece live. Read its code (`src/portal/screens/components.tsx`) for usage.
   (`<div className="app-page screen-orders">` → `.screen-orders .x {}`).
 - NO `style={…}` / `style=""`: the CSP blocks inline styles. Sizes come from classes; charts
   draw with SVG attributes (`<rect height={h}>`). Positioning that must be computed (the `Menu`)
-  is set through `element.style` in an effect, which the CSP allows.
+  is set through `element.style` in an effect, which the CSP allows. Anything `position: fixed` that
+  floats over the page (a menu, a popover) is drawn in `<body>` with `createPortal`, as `Menu` is: inside
+  the top bar (`backdrop-filter`) or anything with `transform` / `filter`, `fixed` is measured from that
+  element and it opens off screen.
 - Never a coloured stripe on one side of a card, notice, row or menu item (left border, inset
   shadow bar). Show state with a full 1px border, a soft fill, an icon tile or a badge.
 - Never a second UI library, icon pack, chart library or CSS framework. Missing a piece: add
@@ -118,3 +121,52 @@ export function Orders() {
 - `Tabs`, `SegmentedControl` and `Menu` move with the arrow keys; don't rebuild them.
 - Colour is never the only signal: a `StatusBadge` has its word, a chart has its numbers.
 - Check the screen at 1440 and 390 wide, light and dark: no sideways scroll, nothing cut off.
+
+## A dashboard looks like a dashboard
+The dashboard ships finished: shell, overview, users, roles, activity, jobs and account, all
+built from ONE UI kit in `src/portal/ui/` (`import {Button, Card, DataTable} from '../ui'`).
+Build every screen from the kit; see it live at `/dashboard/components` in the Preview.
+- The shell (`src/portal/routes.tsx`): `App.astro` layout (full height, no site header/footer,
+  `noindex`); a sidebar with the site's logo, grouped nav with icons, admin items hidden by
+  `abilities`, "Back to the website"; a top bar with the screen title (the only `<h1>`), the
+  theme menu and the user menu (who is signed in, the theme with the current one checked, Your account,
+  Back to the website, Sign out); a drawer with a scrim on small screens. After each navigation
+  the shell sets the tab title from the route's `staticData.title` and moves focus to that
+  `<h1>`; keep both. Toasts (`useToast`) and confirmations (`useConfirm`) are mounted there.
+- Overview first: `Stat` tiles (cheap numbers only: `pageCount` "25+", never `count()`), then
+  what needs doing and recent activity with "View all".
+- Every screen: `PageHeader` (h2, description, ONE primary action), `Card`s, `DataTable`s, and
+  all three states: loading, empty (`EmptyState` with its action), error.
+- Create / edit in a `Drawer`, destructive actions in a row `Menu` + `useConfirm`, results as a
+  toast. Never `window.confirm` / `alert`.
+- Look: tokens in `src/styles/global.css` (rebrand with `--accent`, light + dark), classes in
+  `src/styles/app.css`. No hex in screens, no `style={}` (CSP), no second UI kit, no coloured
+  stripe on one side of anything.
+- Never in an app: hero sections, marketing copy, the website nav/footer, a centered narrow column.
+
+## Buttons and forms (NON-NEGOTIABLE, every page, every time, `.astro` pages too)
+Reference: `src/portal/ui/` (`Button`, `Field`, `useForm`, `useConfirm`; `ui.md`), `src/lib/rules.ts` (shared rules),
+`src/lib/form.ts` (`bindForm` for `.astro` pages, used by `/account/*`).
+
+**Buttons**
+- Pending while its action runs: spinner + present-tense label ("Saving…"), `aria-busy="true"`,
+  `disabled` (a second click never sends twice). React: `<Button pending pendingLabel="Saving…">`.
+- Disabled when it cannot act, visibly (`cursor: not-allowed`). Never a button that does nothing.
+- Per row: only the acted-on row shows pending; its other buttons are disabled (`busyId`).
+- Done: result in place (row updated, toast, message); failure: the error next to the action,
+  in words, button usable again. Never stuck pending.
+- Destructive actions: `danger` variant + confirmation. `type="button"` unless it submits.
+  Visible focus ring; icon-only buttons have `aria-label`.
+
+**Fields**
+- `noValidate` / `novalidate` on every form; never browser bubbles (`required`, `pattern` popups).
+- Every field has a visible `<label>`; placeholders are examples, never labels.
+- Errors under the field, in words that say how to fix it, with `aria-invalid` +
+  `aria-describedby`; border `--danger`. Shown on blur or submit, then live while typing.
+- Submit validates all, shows all errors, focuses the first wrong field, sends nothing until
+  valid; the submit button is pending, Cancel disabled.
+- Client rules mirror the server's validation exactly; server field errors (`422 fields`) land on
+  their fields; other errors in the form's status line. Never `alert()`, never clear input on error.
+- Every password field (sign-in, sign-up, reset, current password, confirmations) has a show / hide
+  button, hidden by default: `.pw-input` + `<button class="pw-reveal" data-reveal-password>` with
+  `bindPasswordReveal()` on `.astro` pages, `PasswordInput` in the portal. Never a bare password input.
