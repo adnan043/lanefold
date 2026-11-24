@@ -14,7 +14,7 @@ Start with a clean git tree: commit what's there. Never stash: Publish ships the
    npm run platform -- upgrade --from /tmp/site-template
    ```
    If its `template.json` is still below the required version, or the file never arrives, treat it as "If it can't finish" below. Never ask the owner to download or find anything: they have nowhere to get it. Plain `npm run platform -- upgrade` fails with `no template folder`: always pass `--from`.
-   A developer on their own machine (a clone of the template's repository, its `upstream` remote): merge the newest release tag instead (`AGENTS.md` "On a developer's own computer"), then continue at step 2. No `upstream` remote: add the template's repository as `upstream` (`DEVELOPERS.md` names it) and merge; there is no copy to download. `npm run platform -- check` says whether a newer release is out.
+   A developer on their own machine: merge the newest release tag instead ("On a developer's own computer" below), then continue at step 2. `npm run platform -- check` says whether a newer release is out.
 2. It replaces the managed files, adds new ones, and lists what it left as it was. Go through that list. Keep this site's own changes.
    **Check its `added` list first.** A page or content file there is one this site deleted or never had. Delete anything added under `src/pages/`, `src/content/`, `src/assets/` or `public/`, unless a step below names it or the build needs it. A visitor must never see a page the owner didn't ask for.
 3. **Every upgrade, whatever version this site is on**, because `package.json` and `prisma/schema.prisma` are usually on that list. A site on 0.10.11 can still be missing some of it. Skip what's already there:
@@ -25,7 +25,9 @@ Start with a clean git tree: commit what's there. Never stash: Publish ships the
      - in `model AuthState`: `ownerEnvId String? @map("owner_env_id") @db.VarChar(64)`
      - in BOTH `generator` blocks: `previewFeatures = ["relationJoins"]`
      - the new `model IdempotencyKey`, copied whole from `/tmp/site-template/prisma/schema.prisma`
-   - Packages with known security problems (0.10.17). `package.json` → `devDependencies`: `"vitest": "4.1.12"`. Then, after `npm install`
+   - Packages with known security problems (0.10.17, 0.10.26). `package.json` → `devDependencies`: `"vitest": "4.1.12"`; and at the top
+     level, next to `dependencies`, `"overrides": { "effect": "3.22.5" }` (merge it into this site's `overrides` if it has one; `prisma`
+     pins an `effect` with a known problem). Then, after `npm install`
      in step 9, run `npm audit fix` (never `--force`) and `npm audit`: it must report no high or critical problem. If one is left, it comes
      from a package this site added: update that package to a version without it, or tell the owner which package it is.
    - The new migration folders arrive with the upgrade. Never edit them.
@@ -103,6 +105,19 @@ Start with a clean git tree: commit what's there. Never stash: Publish ships the
    A site whose own code already calls Stripe or PayPal with the owner's keys: leave it working, and move it onto the
    helpers only when a task touches it (`payments-providers.md`, its signature checks and access rules first). An app
    for the store that sells: it must let the owner pick Ezypay, Stripe or PayPal in its admin (`store-apps.md`).
+   **Coming from below 0.10.25** (the Preview and git in the editor; rules only, optional). `docs/agent/preview.md` arrives
+   with the upgrade, and `docs/agent/ui.md` now holds the full "Buttons and forms" and dashboard rules. `AGENTS.md`: copy the
+   template's (`cp /tmp/site-template/AGENTS.md AGENTS.md`) and add this site's own rules back at its end, if it had any.
+   Nothing in the code changes.
+   **Coming from below 0.10.26** (the required version, and the dashboard's top-bar menus). `AGENTS.md`: copy the template's
+   (`cp /tmp/site-template/AGENTS.md AGENTS.md`) and add this site's own rules back at its end, if it had any.
+   `src/portal/` is this site's own code, so the upgrade leaves it. In the dashboard, clicking the user menu or the theme menu did nothing on a wide screen: the menu opened
+   off screen. If this site still has the template's `Menu` (`src/portal/ui/overlay.tsx`) and top bar
+   (`src/portal/routes.tsx`), take the template's: in `overlay.tsx`, `MenuItem`, `MENU_ITEMS` and the whole `Menu` (it is
+   drawn in `<body>` with `createPortal`, takes a `header` and items with `checked`); in `routes.tsx`, `themeItems` and the
+   account `Menu` with its `header`; in `src/styles/app.css`, `.menu-header-name`, `.menu-header-email` and
+   `.menu-item .menu-item-check`. A site that changed its own menu: keep its changes, and only draw the open menu with
+   `createPortal(…, document.body)`. Check it in the Preview: both menus open under their button, on a wide and a narrow screen.
 9. Check it:
    ```bash
    npm install
@@ -117,6 +132,31 @@ Start with a clean git tree: commit what's there. Never stash: Publish ships the
    - Password sign-up and sign-in work now, and pages load faster.
    - After publishing, they open the admin once with **View as admin** in the dashboard. It's the only way in from now on.
    - Whoever was an owner in the site before is now a normal user, and admins stay. Team members get in by signing up on the app; the owner gives them a role under Users.
+
+## On a developer's own computer
+If `git remote -v` lists `upstream` (the template repository it was cloned from), an upgrade is a merge, not step 1: commit
+everything, `git fetch upstream --tags`, then `git merge "$(git describe --tags --abbrev=0 upstream/main)"` (the newest release, at
+least the required version). Solve conflicts (`package-lock.json`: `git checkout --theirs package-lock.json`, then `npm install`; the
+template's managed files and `AGENTS.md`: take the template's), then follow these steps from step 2 and check it. A copy with no
+shared history merges once with `--allow-unrelated-histories`. No `upstream` and no editor: add the template's repository as
+`upstream` (`DEVELOPERS.md` names it) and merge; there is no copy to download.
+
+## What each version fixed
+A site below a version has its problems, and these rules can't fix them for it:
+- below 0.10.26: it ships a package with a known security problem (`effect`, through `prisma`);
+- below 0.10.24: no safe helpers for the owner's own Ezypay, Stripe or PayPal account (an app that sells can't let the owner pick);
+- below 0.10.23: it can't upload or play the platform's video;
+- below 0.10.22: file uploads can fail on a custom domain and are limited to 100 MB;
+- below 0.10.21: a list bound as one raw-SQL parameter (`unnest(${ids}::text[])`, `= ANY(${ids})`) fails on the live database with
+  `malformed array literal` although every local test passes;
+- below 0.10.20: `npm run platform -- check` puts a half-done merge back with the wrong file, and on a developer's computer its AI can
+  open a placeholder as a link;
+- below 0.10.19: it can't tell when the template's own files were changed, and a Windows copy can change their line endings;
+- below 0.10.18: its sample data doesn't stop on a database in use, and it can't be signed in to on a developer's own computer;
+- below 0.10.17: it ships packages with known security problems (`undici`);
+- below 0.10.16: someone could take over an account by signing up with its address first, and limits on sign-in can be got around;
+- below 0.10.11: someone could also take over its admin, password sign-up and sign-in don't work once deployed, and every database
+  query is slow.
 
 ## If it can't finish
 Stop before committing, restore with `git checkout .` and `git clean -fd` on what the upgrade added, do the owner's task, and tell them it didn't finish. The site keeps

@@ -2109,6 +2109,27 @@
   margin-bottom: 0.3rem;
 }
 
+.menu-header-name {
+  display: block;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.menu-header-email {
+  display: block;
+  max-width: 240px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-item .menu-item-check {
+  margin-inline-start: auto;
+}
+
 /* ----------------------------------------------------------- lists -- */
 
 .list {

@@ -21,6 +21,10 @@ describe('this site has what the managed code needs (docs/agent/upgrade.md)', ()
   it('both generators: relationJoins', () => {
     expect(schema.match(/previewFeatures\s*=\s*\[[^\]]*"relationJoins"/g)?.length).toBe(2);
   });
+  it('package.json: effect without its known security problem (upgrade.md, below 0.10.26)', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(pkg.overrides?.effect, 'add "overrides": { "effect": "3.22.5" } to package.json (upgrade.md step 3)').toBe('3.22.5');
+  });
   it('package.json: the player\'s packages (src/platform/player)', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     for (const name of PLAYER_PACKAGES) {

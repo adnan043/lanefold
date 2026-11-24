@@ -1,7 +1,7 @@
 # Rules for AI agents working in this app
 
-The single source of rules for EVERY coding agent (Claude Code, Codex, Gemini, Cursor…).
-`CLAUDE.md` and `GEMINI.md` only import this file: edit here, never there.
+The single source of rules for EVERY coding agent (Claude Code, Codex, Cursor…).
+The other rule files at the root (`CLAUDE.md`…) only import this file: edit here, never there.
 
 This repo is ONE site: a website AND its own app, in one Astro project on ONE
 Cloudflare Worker (`output: 'server'`, `@astrojs/cloudflare`). It stands alone: it owns its
@@ -21,16 +21,11 @@ is compared byte for byte). Read `docs/agent/<topic>.md` in this folder instead 
 `{{DOCS_URL}}`; for any other one, `DEVELOPERS.md` or `STORE-LISTING.md`, if present, says what it is on
 that computer; otherwise it isn't available there: do the task without it and say so in one line.
 
-## First: is this site on the required template version? (0.10.24)
-Read `version` in `template.json` at the start of a session, new or resumed, before anything else. **If it's below 0.10.24, this site
-has problems these rules can't fix for it:** below 0.10.24 it has no safe helpers for the owner's own Ezypay, Stripe or PayPal account (an app that sells can't let the owner pick); below 0.10.23 it can't upload or play the platform's video; below 0.10.22 file uploads can fail on a custom domain and are limited to 100 MB; below 0.10.21 a list bound as one raw-SQL parameter (`unnest(${ids}::text[])`,
-`= ANY(${ids})`) fails on the live database with `malformed array literal` although every local test passes; below 0.10.20 `npm run platform -- check` puts a half-done merge back
-with the wrong file, and on a developer's computer its AI can open a placeholder as a link; below 0.10.19 it can't tell when the template's own files
-were changed, and a Windows copy can change their line endings; below 0.10.18 its sample data doesn't stop on a database in use, and it can't be
-signed in to on a developer's own computer; below 0.10.17 it ships packages with known security problems (`undici`);
-below 0.10.16 someone could take over an account by signing up with its address first, and
-limits on sign-in can be got around. Below 0.10.11, someone could also take
-over its admin, password sign-up and sign-in don't work once deployed, and every database query is slow.
+## First: is this site on the required template version? (0.10.26)
+Read `version` in `template.json` at the start of a session, new or resumed, before anything else. **If it's below 0.10.26, this site
+has problems these rules can't fix for it:** from packages with known security problems (below 0.10.26 and 0.10.17), the owner's
+own payment provider (below 0.10.24) and the platform's video (below 0.10.23) to account takeover (below 0.10.16); `upgrade.md`
+"What each version fixed" lists them all.
 
 **Upgrade it now, as your first step, without asking.** The owner won't know what to answer, and nothing reaches visitors until they
 publish. Say one plain line, such as "I'm updating your site first. Hold off publishing until I'm done, then I'll do what you asked", follow
@@ -40,16 +35,11 @@ If it can't finish, `upgrade.md` says how to put everything back: then do their 
 these problems by hand in your own code, and never publish a half-done upgrade.
 
 **On a developer's own computer.** If `DEVELOPERS.md` exists at the top of this project, read it first: it says how this
-copy is set up and kept up to date. If `git remote -v` lists `upstream` (the template repository it was cloned from), an
-upgrade is a merge, not `upgrade.md` step 1: commit everything, `git fetch upstream --tags`, then
-`git merge "$(git describe --tags --abbrev=0 upstream/main)"` (the newest release, at least the required version), solve conflicts (`package-lock.json`: `git checkout --theirs package-lock.json`, then `npm install`;
-the template's managed files and `AGENTS.md`: take the template's), then follow `upgrade.md` from step 2 and check it. A
-copy with no shared history merges once with `--allow-unrelated-histories`. No `upstream` and no editor: add the template's
-repository as `upstream` (`DEVELOPERS.md` names it) and merge; there is no copy to download. Never edit the template's own
-files: `src/platform/`, `docs/agent/`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `template.json`, `CHANGELOG.md`, `scripts/platform.mjs`,
-`scripts/managed-files.json`. They are compared byte for byte with the release `template.json` names, and a store
-submission that changed or deleted one is refused; put one back with `git checkout v<the version in template.json> -- <file>`.
-`npm run platform -- check` compares them. Before saying a store listing is ready: `DEVELOPERS.md` "For your AI".
+copy is set up and kept up to date. There an upgrade is a `git merge` of the template's newest release, not `upgrade.md` step 1
+(`upgrade.md` "On a developer's own computer" has the commands). Never edit the template's own files (listed under
+"Architecture" below): they are compared byte for byte with the release `template.json` names (`npm run platform -- check`), a store
+submission that changed or deleted one is refused, and `git checkout v<the version in template.json> -- <file>` puts one back.
+Before saying a store listing is ready: `DEVELOPERS.md` "For your AI".
 
 ## Every task: the current rules first, then the owner's words
 These rules are kept up to date by the platform and can be newer than this site's code, which stays
@@ -65,11 +55,39 @@ as it was built. The owner is not an engineer: they say WHAT they want; HOW is y
    its platform code is older than the doc. The required version above comes first. Otherwise never add
    it inside `src/platform/` (managed); do the task in your own code (`src/server/`, `src/pages/`…) following the doc's pattern.
    Asked for a security check, or asked to go live for the first time: run "The full security check" in `review.md`.
-5. Before saying it's done, check it works: `npm run build`, `npm test`, and the page in the Preview.
+5. Before saying it's done, check it works: `npm run build`, `npm test` (integration tests too when `TEST_DATABASE_URL`
+   is available: `database.md`), the page in the Preview, and `security.md`'s checklist.
 6. **Then review it, every task that touched a route, a query, a page that reads data, a permission,
    a form, a payment, a job or an outside call: run `review.md` (security with AUTHORIZATION first,
    then performance), fix what it finds, and end your answer with its short report.** No exceptions
    for "small" changes: most leaks are one missing `where`.
+
+## How changes go live
+You edit a working copy; the OWNER publishes from the editor: Prepare → Build (`npm ci`,
+`npm run build`) → Migrate → Deploy (`publishing.md`). You cannot publish. Keep `npm run dev` working at `/`.
+
+
+## The Preview, git and the machine in the editor (NON-NEGOTIABLE)
+- The editor runs the Preview's dev server on ONE fixed port: Astro 4321, TanStack Start 3000, a Static site 8788, or
+  the port the project's own config names. Never start your own (`npm run dev`, `astro dev`, `vite`, `npm run preview`,
+  `wrangler dev`), never pass `--port`, never kill it: each Preview start stops whatever holds that port.
+- See it and restart it with `{{PREVIEW_COMMAND}} status`, `{{PREVIEW_COMMAND}} logs [-n N]` (the end of `{{PREVIEW_LOG}}`) and
+  `{{PREVIEW_COMMAND}} restart` (the owner's Restart button). No `{{PREVIEW_COMMAND}}` (an older editor): read `{{PREVIEW_LOG}}` and ask
+  the owner to press Restart. **Preview broken: follow `preview.md`** (status, logs, then the usual causes: port taken,
+  missing packages, crashed server, stale generated file, merge conflict).
+- Generated files are never edited by hand (`src/routeTree.gen.ts`, `src/generated/`, `.astro/`, the editor's root
+  `wrangler.jsonc`): change their source and regenerate.
+- `git status` first: a platform import can leave the project mid-merge. Unmerged files or `<<<<<<<` markers: finish that
+  merge before anything else (`preview.md`).
+- `origin` is the platform's git proxy: `git push` works only while the editor session is open and answers 403 after it
+  ended. Never change the remote or ask for a token.
+- A variable or secret the owner adds reaches the Preview only at the next Open, and that Open stops every process in the
+  sandbox, yours included: commit first, then ask the owner to reopen the editor.
+- You share CPU and memory with the Preview and the editor: read them (`nproc`, `free -m`,
+  `cat /sys/fs/cgroup/memory.max`) before heavy work; stop and clean up under ~15% free memory or when load stays above
+  the CPU count. Kill what you start; no watchers (`vitest run`). One heavy command at a time (`npm install`, build,
+  `prisma generate`, tests). Bound every command (no `find /`, no grep over `node_modules`). Every dependency is a cost:
+  never a second UI kit, date or state library.
 
 ## Topic docs: read the one that fits BEFORE that work
 Read the current copy: `{{DOCS_DIR}}/<topic>.md` in the editor, else `{{DOCS_URL}}/<topic>.md` on this
@@ -92,35 +110,26 @@ upgraded and can be older; when they differ, the current copy wins:
 | `background-jobs.md` | anything that happens later, on a schedule, with retries: reminders, follow-ups, summaries, cleanups |
 | `files.md` | anything that stores a file a person picks (photos, documents, attachments, avatars, audio) or shows one back |
 | `video.md` | any video people watch in the app: lessons, courses, a video library, members' or product videos (upload, play, who may watch) |
-| `publishing.md` | git, scripts, dependencies, config, redirects, the Preview, going live |
+| `preview.md` | the Preview is broken, blank or stale; the dev server, its port or log; a generated file; a merge left half done |
+| `publishing.md` | git, scripts, dependencies, config, redirects, going live |
 | `payments.md` | anything sold: a Buy or Subscribe button, a price, checkout, a membership or paid page, orders, refunds |
 | `payments-providers.md` | selling with the OWNER's own Ezypay, Stripe or PayPal account (every store app that sells): the owner picks in the admin, keys, checkout, webhooks, cancel, access |
 | `orders-and-stock.md` | anything charged, booked or limited: bookings, tickets, seats, stock, coupons with a limit, your own payment provider |
 | `plans-catalogue.md` | the platform's plans an owner resells (sign-up links to their studio), not the site's own products; their real plans: `npm run platform -- plans --write` |
 | `store-apps.md` | submitting this app to the store, its sign-in page, its roles, or anything an admin can save: the read-only demo admin (`prisma/demo-login.sql`, `npm run platform -- demo-login`, `<DemoLogin />`) |
 
-**Anything charged, booked or limited → `orders-and-stock.md`.** Everything charged or booked carries an idempotency key
-(`idempotent()`, built into checkout). The database decides what's left, in one conditional statement, a unique index or a
-short lock: never read, check in code, then write, and never the cache. Test it with many requests at once.
+**Anything charged, booked or limited → `orders-and-stock.md`**: an idempotency key (`idempotent()`), and the database
+decides what's left (one conditional statement, a unique index or a short lock; never read-check-write, never the cache).
+**Selling anything → `payments.md`**: built in, sandbox while you build; never a third-party checkout script or a hard-coded
+amount. **An app that sells (a store listing), or an owner who asks for their own account → `payments-providers.md`**:
+Ezypay and the owner's own Stripe and PayPal, the OWNER picks in the app's admin (`src/platform/payment-providers/`);
+never one provider hard-coded, keys only from the owner's secrets.
 
-**Selling anything → `payments.md`**: built in (Buy / Subscribe buttons, checkout, memberships,
-orders in the Site Database), always sandbox while you build; use it by default, never a
-third-party checkout script or a hard-coded amount. **An app that sells (a store listing), or an owner who asks for their own
-account → `payments-providers.md`**: support Ezypay and the owner's own Stripe and PayPal, and let the OWNER pick which in the
-app's admin (`src/platform/payment-providers/`); never one provider hard-coded, keys only from the owner's secrets.
-
-**Files and video → the platform's own, ALWAYS (`files.md`, `video.md`).** Every upload uses the built-in file
-storage and every video people watch uses the built-in video. Never offer, suggest or scaffold the owner's own
-bucket, S3, R2, a video host's account, Vimeo or anything else as storage. Video an app may show: the built-in upload
-(default) and embeds (YouTube, Vimeo, Wistia and other embed links); never a direct link to a video file. The
-account has no storage or video yet: tell the owner how to add it (the dashboard's **Storage** page) and stop there;
-never work around it. Only if the OWNER asks in so many words to use their own storage: build it, and tell them
-plainly that the platform doesn't support or watch over it, that its cost and risk are theirs, and that it doesn't
-count toward their plan.
-
-**Video is for teaching, coaching, talks and group or business video (`video.md` "What video is for").** Never
-build movie, film, TV-drama or music-video features on it, and refuse such a request in one plain line.
-A "series" is a learning or coaching show, never a TV drama.
+**Files and video → the platform's own, ALWAYS (`files.md`, `video.md`).** Never offer, suggest or scaffold the owner's own
+bucket, S3, R2 or a video host; video is the built-in upload or an embed, never a direct file link. No storage or video
+yet: tell the owner (the dashboard's **Storage** page) and stop. Only an owner who asks in so many words gets their own
+storage (`files.md` says what to tell them). Video is for teaching, coaching, talks and business: never movie, TV-drama or
+music-video features; refuse those in one plain line (`video.md` "What video is for").
 
 ## Architecture: one Worker, Hono is the backend
 ```
@@ -178,11 +187,9 @@ contract: you cannot rename or add them, and you cannot add secrets (never ask f
 
 - No `DATABASE_URL` → routes answer 503 `site_database_disabled`; no `JWT_SECRET` → auth answers
   503 `auth_not_configured`. Tell the owner; don't work around it.
-- Deployed server code may call public APIs (webhooks out, mail, SMS, a payment provider, AI…)
-  with `fetch`, keys only from `config.ownerSecret` (`security.md` › Calling other services).
-  The platform's internal network is never reachable (IP addresses, private names:
-  `403 Egress blocked`). No raw TCP, no outgoing WebSockets, no native modules. Account emails,
-  files, jobs and payments are built in (`site-api.md`, `payments.md`): prefer them.
+- Deployed server code may `fetch` public APIs with keys only from `config.ownerSecret` (`security.md` › Calling other
+  services); never the platform's internal network (`403 Egress blocked`), raw TCP, outgoing WebSockets or native modules.
+  Account emails, files, jobs and payments are built in (`site-api.md`, `payments.md`): prefer them.
 - Never send a secret to the browser, log it, write it to a file (`.env`, `.dev.vars`) or commit it.
 
 ## Auth in one paragraph (details: `auth.md`)
@@ -198,8 +205,7 @@ with "View as admin" on the app's page in the dashboard, or the shield in the Pr
 the only way in, with no password or sign-up, so never create, seed or change an admin. Other admins
 are made in its Users screen. Say exactly that when they ask how
 to reach the admin, and put the app's admin screens inside `/dashboard`.
-On a developer's own computer with no Site Key only, local development mode prints account codes in the
-terminal and `npm run platform -- dev-admin <email>` makes a local admin, never an owner (`auth.md`).
+On a developer's own computer with no Site Key: `auth.md` (local codes, `dev-admin`, never an owner).
 After any sign-in, someone who can open the admin lands in it (`/dashboard/`): every sign-in page, yours too, goes to the `next` the route answers.
 
 ## Which kind of page (decide FIRST, every time)
@@ -226,115 +232,55 @@ Keep the server's part small. Never server-render a long list, and never send a 
   the browser (`data-user-only`, `data-guest-only`, `data-live` sections built with `textContent`).
 
 ## A dashboard looks like a dashboard (`ui.md`)
-The dashboard ships finished: shell, overview, users, roles, activity, jobs and account, all
-built from ONE UI kit in `src/portal/ui/` (`import {Button, Card, DataTable} from '../ui'`).
-Build every screen from the kit; see it live at `/dashboard/components` in the Preview.
-- The shell (`src/portal/routes.tsx`): `App.astro` layout (full height, no site header/footer,
-  `noindex`); a sidebar with the site's logo, grouped nav with icons, admin items hidden by
-  `abilities`, "Back to the website"; a top bar with the screen title (the only `<h1>`), the
-  theme menu and the user menu; a drawer with a scrim on small screens. After each navigation
-  the shell sets the tab title from the route's `staticData.title` and moves focus to that
-  `<h1>`; keep both. Toasts (`useToast`) and confirmations (`useConfirm`) are mounted there.
-- Overview first: `Stat` tiles (cheap numbers only: `pageCount` "25+", never `count()`), then
-  what needs doing and recent activity with "View all".
-- Every screen: `PageHeader` (h2, description, ONE primary action), `Card`s, `DataTable`s, and
-  all three states: loading, empty (`EmptyState` with its action), error.
-- Create / edit in a `Drawer`, destructive actions in a row `Menu` + `useConfirm`, results as a
-  toast. Never `window.confirm` / `alert`.
-- Look: tokens in `src/styles/global.css` (rebrand with `--accent`, light + dark), classes in
-  `src/styles/app.css`. No hex in screens, no `style={}` (CSP), no second UI kit, no coloured
-  stripe on one side of anything.
-- Never in an app: hero sections, marketing copy, the website nav/footer, a centered narrow column.
+The dashboard ships finished (shell, overview, users, roles, activity, jobs, account), all from ONE UI kit in
+`src/portal/ui/`; see it at `/dashboard/components` in the Preview. Build every screen from the kit; keep the shell (tab
+title and focus on the route's `<h1>`); every screen has its loading, empty and error states; edit in a `Drawer`, confirm
+with `useConfirm`, never `window.confirm` / `alert`; no hex, no `style={}`, no second UI kit, no hero or marketing copy in
+an app. The full rules: `ui.md` "A dashboard looks like a dashboard".
 
 ## Buttons and forms (NON-NEGOTIABLE, every page, every time)
-Reference: `src/portal/ui/` (`Button`, `Field`, `useForm`, `useConfirm`; `ui.md`), `src/lib/rules.ts` (shared rules),
-`src/lib/form.ts` (`bindForm` for `.astro` pages, used by `/account/*`).
-
-**Buttons**
-- Pending while its action runs: spinner + present-tense label ("Saving…"), `aria-busy="true"`,
-  `disabled` (a second click never sends twice). React: `<Button pending pendingLabel="Saving…">`.
-- Disabled when it cannot act, visibly (`cursor: not-allowed`). Never a button that does nothing.
-- Per row: only the acted-on row shows pending; its other buttons are disabled (`busyId`).
-- Done: result in place (row updated, toast, message); failure: the error next to the action,
-  in words, button usable again. Never stuck pending.
-- Destructive actions: `danger` variant + confirmation. `type="button"` unless it submits.
-  Visible focus ring; icon-only buttons have `aria-label`.
-
-**Fields**
-- `noValidate` / `novalidate` on every form; never browser bubbles (`required`, `pattern` popups).
-- Every field has a visible `<label>`; placeholders are examples, never labels.
-- Errors under the field, in words that say how to fix it, with `aria-invalid` +
-  `aria-describedby`; border `--danger`. Shown on blur or submit, then live while typing.
-- Submit validates all, shows all errors, focuses the first wrong field, sends nothing until
-  valid; the submit button is pending, Cancel disabled.
-- Client rules mirror the server's validation exactly; server field errors (`422 fields`) land on
-  their fields; other errors in the form's status line. Never `alert()`, never clear input on error.
-- Every password field (sign-in, sign-up, reset, current password, confirmations) has a show / hide
-  button, hidden by default: `.pw-input` + `<button class="pw-reveal" data-reveal-password>` with
-  `bindPasswordReveal()` on `.astro` pages, `PasswordInput` in the portal. Never a bare password input.
-
-## Machine limits: never overload the editor (NON-NEGOTIABLE)
-You share the editor sandbox with the Preview dev server the owner is watching; its CPU and
-memory change. Read them (`nproc`, `free -m`, `cat /sys/fs/cgroup/memory.max`) at the start and
-before heavy work; stop and clean up when available memory is under ~15% or load stays above the
-CPU count. ONE dev server ever (the editor's; never start `astro dev`, `vite`, `npm run preview`).
-Kill what you start; no watchers (`vitest run`, not watch). One heavy command at a time
-(`npm install`, `npm run build`, `prisma generate`, tests). Bound every command (no `find /`, no
-grep over `node_modules`). Every dependency is a cost: never a second UI kit, date or state library.
-
-The deployed Worker has limits too (128 MB, short CPU): bounded queries, keyset paging, no
-whole-table loops, nothing big in module memory (`performance.md`).
+Read `ui.md` "Buttons and forms" before any form or button, on any page. In short: a button shows pending (spinner,
+"Saving…", `aria-busy`, disabled) while it runs, never sends twice, and ends with the result or the error in words. Every
+form is `noValidate`; every field has a visible `<label>` and its error under it (`aria-invalid`, `aria-describedby`);
+submit validates all and focuses the first wrong field; client rules mirror the server's; every password field has
+show / hide (`PasswordInput`, `bindPasswordReveal()`).
 
 ## Recipes (details in the topic docs)
 - **A Site API route**: `site-api.md` (guards in order, validator, explicit select, keyset page).
-- **A portal screen** (all of it, every time; `ui.md` has the full example): its reads as `queryOptions` /
-  `infiniteQueryOptions` in `src/portal/queries.ts` (`api.<route>`; `useInfiniteQuery` for
-  lists); the component in `src/portal/screens/<name>.tsx` using them and the kit (`../ui`); in
-  `src/portal/routes.tsx` a `createRoute` with a literal path, `staticData: {title}`, a
-  `loader` warming those queries (`queryClient.ensureQueryData`) and the component lazy
-  (`lazyRouteComponent(() => import('./screens/<name>'), 'Name')`), plus `routeTree` and a
-  `NAV_GROUPS` item with its `icon`; gated: an `ability` on its
-  catalogue entry (`/me` and `Abilities` follow).
+- **A portal screen** (all of it, every time; `ui.md` "A new screen, start to finish"): reads as `queryOptions` /
+  `infiniteQueryOptions` in `src/portal/queries.ts`; the screen in `src/portal/screens/<name>.tsx` from the kit; in
+  `src/portal/routes.tsx` a `createRoute` (literal path, `staticData: {title}`, a `loader` with
+  `queryClient.ensureQueryData`, `lazyRouteComponent`), `routeTree` and a `NAV_GROUPS` item with its `icon`;
+  gated: an `ability` on its catalogue entry (`/me` and `Abilities` follow).
 - **An admin-only feature**: ONE entry in `CATALOGUE` (`src/server/permissions.ts`: codename,
   title, group, `ability`, default `roles`; no migration) and its line in `tests/permissions.test.ts`, routes behind
   `requirePermission(PERMISSIONS.X)` (own records: `can`), nav item `ability: '<ability>'`
   (`roles-and-permissions.md`). Never gate on a role slug.
-- **A list + detail** (data in the Site Database, like `/jobs`): data route first; the list is a list
-  page, copy `src/pages/jobs/index.astro` (`performance.md` "List pages"); a detail page sets `Astro.response.status = 404` +
-  `<NotFound>` when the route answered 404, and 503 + a "not available" message when the read
-  failed (a database outage is never a 404), as `src/pages/jobs/[slug].astro` does; HTML from
-  outside the repo only via `sanitizeHtml`.
+- **A list + detail** (like `/jobs`): data route first; the list copies `src/pages/jobs/index.astro` (`performance.md`
+  "List pages"); the detail copies `src/pages/jobs/[slug].astro`: 404 + `<NotFound>` when the route answered 404, 503 +
+  "not available" when the read failed (an outage is never a 404); outside HTML only via `sanitizeHtml`.
 - **A blog post: add a Markdown file** `src/content/blog/<slug>.md` (the file name is the URL;
-  never rename a published one). Front matter, checked at build by `src/content.config.ts`:
-  `title`, `description`, `publishedAt` (required); `author`, `cover` (PREFERRED a file in
-  `src/assets/blog/`, `cover: ../../assets/blog/x.jpg`, optimised at build; or `/images/…` in
-  `public/`, or https; 1200×630), `coverAlt`, `tags`, `updatedAt`, `draft: true` (dev only).
-  Headings from `##`. It goes live with the next Publish, with the list, the RSS feed, the
-  sitemap and the home page's "latest". There is no blog/CMS API: never fetch posts. Markdown is
-  trusted repo content: never paste untrusted HTML.
+  never rename a published one). Front matter is checked at build by `src/content.config.ts` (read it):
+  `title`, `description`, `publishedAt` required; a `cover` file in `src/assets/blog/` (1200×630) is optimised at build;
+  `draft: true` shows only in the Preview. Headings from `##`. It goes live with the next Publish, with the list, RSS,
+  sitemap and home page. No blog/CMS API: never fetch posts. Never paste untrusted HTML into Markdown.
 - **A static page**: `src/pages/<name>.astro` with `prerender = true`, `staticContext()`,
   `<Base isStatic title description>`; words in `src/content/site.ts`; add it to `NAV`. It is in
   the sitemap automatically (`seo.md`).
 - **A collection of content in the repo** (team, FAQ, services): a content collection in
   `src/content.config.ts` like `blog` (`glob()` for Markdown, `file()` for one JSON/YAML file)
   with a strict schema, read with `getCollection()` in a prerendered page. Create the data file
-  FIRST, then the collection: one added while the Preview runs, before its file exists, stays
-  empty there until the dev server restarts. Content the OWNER edits on the live site (without a
-  Publish) is not a collection: it is a table (next item).
-- **A new table (model)**: `database.md` (schema with `@@map`, lengths and an `@@index` per
-  query shape, `migrate dev --create-only`, BEGIN/COMMIT, `migrate dev`, then
-  `npx prisma generate`), then a Site API route (`site-api.md`), then the page or portal screen
-  that calls it.
-- **A file upload** (photos, documents, attachments): `files.md`. Your route checks the file
-  against THIS feature's own limits first (types, a max size that fits it: an avatar is not a
-  video, who may upload), then asks `createUpload()` (`src/platform/files.ts`); the browser sends
-  the bytes straight to storage with `putFile()` (the page calls `allowFileUploads()`); your route
-  confirms with `completeUpload()` and keeps the file id in your own table. Private by default;
-  show files through your route (it checks access, then redirects to a short link).
-- **Video people watch** (lessons, a course, a library): `video.md`. Only through the platform's video helper
-  (`src/platform/video.ts`): never store or serve video files yourself, or pass their bytes through this site. Check
-  who may watch by THIS app's rules first, then a fresh `playback()` link per viewer, every view: never cached or shared.
-  A guest's (not signed in) `playback()` always sends `guest: true` and the visitor's IP (`viewerIp`).
+  FIRST, then the collection (one added before its file exists stays empty until `{{PREVIEW_COMMAND}} restart`).
+  Content the OWNER edits on the live site (without a Publish) is not a collection: it is a table (next item).
+- **A new table (model)**: `database.md` (`@@map`, lengths, an `@@index` per query shape, `migrate dev --create-only`,
+  BEGIN/COMMIT, `migrate dev`, `npx prisma generate`), then a Site API route (`site-api.md`), then the page or screen.
+- **A file upload** (photos, documents, attachments): `files.md`. Your route checks THIS feature's own limits first
+  (types, a size that fits it, who may upload), then `createUpload()`; the browser sends the bytes with `putFile()` (the
+  page calls `allowFileUploads()`); your route confirms with `completeUpload()` and keeps the file id in your own table.
+  Private by default; show files through your route (it checks access, then redirects to a short link).
+- **Video people watch** (lessons, a course, a library): `video.md`. Only through `src/platform/video.ts`: never store,
+  serve or proxy video bytes yourself. Check who may watch by THIS app's rules first, then a fresh `playback()` link per
+  viewer, every view, never cached or shared; a guest's sends `guest: true` and the visitor's IP (`viewerIp`).
 - **Something to sell** (a product, a booking fee, a membership): `payments.md`. Create the
   sandbox price (`npm run platform -- prices add …`), put `<BuyButton price="<key>" />` on the
   page, record what was bought in `src/server/payments-hooks.ts`, gate member pages with
@@ -350,6 +296,8 @@ whole-table loops, nothing big in module memory (`performance.md`).
   `basepath: '/crm'`, the portal's shell and UI kit.
 
 ## Production rules
+- The deployed Worker has limits (128 MB, short CPU): bounded queries, keyset paging, no whole-table loops, nothing big
+  in module memory (`performance.md`).
 - Visitor data only in the request scope; module memory only for small public caches.
 - Every platform call has a timeout and every page a fallback for `null`.
 - **Queries: no N+1, ever.** One query per read (nested `select`, one join with `relationJoins`; an
@@ -364,10 +312,9 @@ whole-table loops, nothing big in module memory (`performance.md`).
   email, code, password, setting or migration makes an owner, and someone signing up with the owner's
   email is a normal user. Never add another way in. The owner's `viewer.email` is empty, and the site never
   knows their address: to email them, send kind `notification` with no `to`.
-- **Cache reads that repeat, and never show old data.** Every database query is billed; a cache read isn't. Fix the query first, then
-  cache what many requests read and rarely changes (settings, menus, categories, public lists, totals). Decide for each read by tracing the code: who reads it, whether the answer
-  is the same for all of them, every place that changes it, and what happens if it's old. Clear it in each of those places. Never money
-  decisions, access or edit screens. Read `cache.md` first, and say what you cached and why.
+- **Cache reads that repeat, and never show old data.** Every query is billed; a cache read isn't. Fix the query first, then
+  cache what many requests read and rarely changes. Trace each read: who reads it, is it the same for all, every place that changes
+  it (clear it in each), what if it's old. Never money decisions, access or edit screens. Read `cache.md` first; say what you cached and why.
 - **Raw SQL only as a prepared statement**: the tagged `` $queryRaw`…${value}…` `` / `Prisma.sql` /
   `Prisma.join`; never `$queryRawUnsafe`, `$executeRawUnsafe`, `Prisma.raw(input)` or SQL built
   from strings. Names (columns, sort) only from a fixed map.
@@ -376,20 +323,14 @@ whole-table loops, nothing big in module memory (`performance.md`).
   `select`; and an integration test that another user gets 404 (`roles-and-permissions.md`).
 - Webhook and payment handlers are idempotent; outside calls have a timeout; slow work goes to a
   background job; anything public and costly is rate limited (`security.md`).
-- Read-heavy data that changes rarely (settings, hours, menus, categories, product cards, page text)
-  goes through `cache.getOrSet(key, ttl, load)` with a TTL you CHOOSE from the data (required, 1 minute
-  to 7 days: long when a route clears it on change, short when nothing does; `cache.md` "How long to
-  keep it"), and every route that saves it calls `cache.del` / `delPrefix` right after the write.
+- A cached read is `cache.getOrSet(key, ttl, load)` with a TTL you CHOOSE from the data (1 minute to 7 days,
+  `cache.md` "How long to keep it"); every route that saves it calls `cache.del` / `delPrefix` right after the write.
   Never cache sessions, permissions, carts, or the prices a quote or order charges.
-- **Redirects**: exact ones may stay in astro.config `redirects`; a catch-all (`[...rest]`, `[...slug]`)
-  never goes there (the publish fails): put it in `public/_redirects` as `/old/* /new/:splat 301`
-  (`publishing.md` "Redirects").
+- **Redirects**: exact ones may stay in astro.config `redirects`; a catch-all (`[...rest]`) never goes there (the publish
+  fails): `public/_redirects`, `/old/* /new/:splat 301` (`publishing.md`).
 - Keep `@astrojs/cloudflare` 14.x, npm + committed `package-lock.json`, no wrangler config,
   `imageService: 'compile'` (build-time only; never a runtime transform), `session: false`,
   `security.csp` on, `public/_headers` in step with `src/platform/headers.ts`.
-- Before saying a task is done: `npm run build` and `npm test` pass (integration tests too when
-  `TEST_DATABASE_URL` is available: `database.md`); the Preview shows it;
-  `security.md`'s checklist holds.
 
 ## Never
 - **Send a password, in ANY form, to ANYONE, the user included**: not plain, hashed (`passwordHash`),
@@ -419,7 +360,3 @@ whole-table loops, nothing big in module memory (`performance.md`).
 - Offer, suggest or scaffold the owner's own storage (a bucket, S3, R2, a video host's account) when they didn't
   ask for it in so many words, or play video from a direct file link (`<video src="https://…mp4">`).
 - A signed-in app as one `.astro` page per screen, a second UI kit, a second lockfile.
-
-## How changes go live
-You edit a working copy; the OWNER publishes from the editor: Prepare → Build (`npm ci`,
-`npm run build`) → Migrate → Deploy (`publishing.md`). Keep `npm run dev` working at `/`.
