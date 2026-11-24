@@ -170,6 +170,14 @@ const TABLE: Row[] = [
   row('POST /boards/:id/invite-link', 'resource', {path: r => `/boards/${r.board}/invite-link`, body: () => ({role: 'member'}), min: 'admin', priv: true}),
   row('DELETE /boards/:id/invite-link', 'resource', {path: r => `/boards/${r.board}/invite-link`, min: 'admin', priv: true}),
   row('GET /guest-boards', 'self'),
+  // ---- board-access-requests.ts: ANY signed-in person may ask (the answer never says whether the board exists, never
+  // names it); the pending list and the answers are for those who may add people to that board (board-access-requests test).
+  row('GET /boards/:id/access-request', 'self', {path: r => `/boards/${r.board}/access-request`}),
+  row('POST /boards/:id/access-request', 'self', {path: r => `/boards/${r.board}/access-request`, body: () => ({})}),
+  row('GET /boards/:id/access-requests', 'resource', {path: r => `/boards/${r.board}/access-requests`, priv: true}),
+  // No request exists in these fixtures: every caller gets 404 (an outsider never learns more than a member does).
+  row('POST /access-requests/:id/approve', 'resource', {path: () => '/access-requests/999999/approve', body: () => ({role: 'member'}), min: 'admin', below: [404], priv: true}),
+  row('POST /access-requests/:id/decline', 'resource', {path: () => '/access-requests/999999/decline', body: () => ({}), min: 'admin', below: [404], priv: true}),
   row('POST /boards/:id/cards/bulk', 'resource', {path: r => `/boards/${r.board}/cards/bulk`, body: r => ({cardIds: [Number(r.card)], action: 'set_priority', priority: 'low'}), min: 'member', priv: true}),
   row('POST /cards/:id/archive', 'resource', {path: r => `/cards/${r.card}/archive`, body: () => ({}), min: 'member', priv: true}),
   row('POST /cards/:id/restore', 'resource', {path: r => `/cards/${r.card}/restore`, body: () => ({}), min: 'member', priv: true}),

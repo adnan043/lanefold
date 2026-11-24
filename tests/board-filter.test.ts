@@ -1,7 +1,8 @@
 import {describe, expect, it} from 'vitest';
 
 import type {CardT} from '../src/app/api';
-import {activeCount, cleanFilter, matchesFilter} from '../src/app/boards/filter-logic';
+import type {LaneT} from '../src/app/api';
+import {activeCount, cleanFilter, matchesFilter, optionCounts} from '../src/app/boards/filter-logic';
 
 const now = new Date(2026, 10, 3, 15, 0); // 2026-11-03 local
 const card = (over: Partial<CardT> = {}): CardT => ({
@@ -82,4 +83,31 @@ describe('helpers', () => {
     expect(cleanFilter({due: 'today', match: 'all'})).toEqual({dues: ['day'], match: 'all'});
     expect(cleanFilter({match: 'all'})).toEqual({});
   });
+});
+
+describe('optionCounts (the number beside each filter option)', () => {
+  const lane = (cards: CardT[]): LaneT => ({id: 1, name: 'L', position: 'a', colorHex: null, wipLimit: null, cardCount: cards.length, collapsed: false, archived: false, rev: '1', cards, loaded: true, hasMore: false});
+  const cards = [
+    card({id: 1, members: [{id: 9, name: 'Z'}], labels: [{id: 2, name: 'a', colorHex: '#000'}], dueDate: '2026-11-02'}),
+    card({id: 2, members: [{id: 9, name: 'Z'}, {id: 7, name: 'Y'}], completed: true, dueDate: '2026-11-04'}),
+    card({id: 3}),
+    card({id: -4}), // still being created: not counted
+  ];
+  it('counts each option on its own, like ticking just that box', () => {
+    const c = optionCounts([lane(cards.slice(0, 2)), lane(cards.slice(2))], now, {from: '2026-11-01', to: '2026-11-03'});
+    expect(c.members.get(9)).toBe(2);
+    expect(c.members.get(7)).toBe(1);
+    expect(c.noMembers).toBe(1);
+    expect([c.complete, c.incomplete]).toEqual([1, 2]);
+    expect(c.labels.get(2)).toBe(1);
+    expect(c.noLabels).toBe(2);
+    expect(c.dues).toEqual({none: 1, overdue: 1, day: 1, week: 1, month: 1});
+    expect(c.dueRange).toBe(1);
+    // The same answer as the filter itself for every option.
+    const all = cards.filter(x => x.id > 0);
+    expect(all.filter(x => matchesFilter(x, {memberIds: [9]}, now)).length).toBe(c.members.get(9));
+    expect(all.filter(x => matchesFilter(x, {dues: ['overdue']}, now)).length).toBe(c.dues.overdue);
+    expect(all.filter(x => matchesFilter(x, {noLabels: true}, now)).length).toBe(c.noLabels);
+  });
+  it('no range: the custom range counts nothing', () => expect(optionCounts([lane(cards)], now).dueRange).toBe(0));
 });

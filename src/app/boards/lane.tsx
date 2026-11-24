@@ -262,6 +262,21 @@ export const LaneColumn = memo(function LaneColumn({
         {...sortable.listeners}>
         {lane.colorHex &&<span className="lf-lane-dot" role="img" aria-label={t('lane.colorMarker')} ref={tint} />}
         <LaneName lane={lane} editable={canWrite && !pending} onRename={handlers.onRenameLane} />
+        {/* How many cards: with a filter on, "matching / all" once every card of the lane is here (a lane still paging
+            would undercount its matches, so it keeps its plain total). */}
+        {match && lane.loaded && !lane.hasMore ? (
+          <span className="lf-count" data-filtered="" title={t('lane.countFiltered', {shown: visibleCards.length, total: lane.cardCount})}>
+            <span aria-hidden="true">
+              {visibleCards.length}/{lane.cardCount}
+            </span>
+            <span className="visually-hidden">{t('lane.countFiltered', {shown: visibleCards.length, total: lane.cardCount})}</span>
+          </span>
+        ) : (
+          <span className="lf-count" data-over={over ? '' : undefined} title={t('lane.count', {count: lane.cardCount})}>
+            <span aria-hidden="true">{lane.cardCount}</span>
+            <span className="visually-hidden">{t('lane.count', {count: lane.cardCount})}</span>
+          </span>
+        )}
         {over && <span className="lf-over-text">{t('lane.wipOver')}</span>}
         {lane.wipLimit !== null && (
           <meter

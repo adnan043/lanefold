@@ -10,8 +10,10 @@ import {MdView} from './description';
 import {EditorToolbar} from './editor-toolbar';
 import {PeoplePopover} from './pickers';
 import {useAction} from './parts';
+import {insertMention, mentionAt} from '../chat/mentions';
+import {useMe} from '../../portal/shared';
 import type {ActivityT, CardActions, CommentT, DetailT, PersonT} from './use-card';
-import {useActivity} from './use-card';
+import {useActivity, usePeople} from './use-card';
 
 const MAX = 5000;
 
@@ -20,7 +22,97 @@ function Body({body, mentions}: {body: string; mentions: PersonT[]}) {
   return <MdView source={body} mentions={mentions.map(m => m.name).filter(Boolean)} />;
 }
 
-/** The text box with a Mention button; the ids sent are the people whose `@Name` is still in the text. */
+/**
+ * The text split into plain parts and the `@Name` of picked people (whole words, longest names first), for the
+ * highlight drawn behind the text box.
+ */
+export function mentionParts(text: string, names: readonly string[]): {text: string; mention: boolean}[] {
+  const sorted = [...new Set(names.filter(Boolean))].sort((a, b) => b.length - a.length);
+  const out: {text: string; mention: boolean}[] = [];
+  let plain = '';
+  let i = 0;
+  const wordChar = (ch: string | undefined) => ch !== undefined && /[\p{L}\p{N}_]/u.test(ch);
+  while (i < text.length) {
+    const name =
+      text[i] === '@' && !wordChar(text[i - 1]) ? sorted.find(n => text.startsWith(n, i + 1) && !wordChar(text[i + 1 + n.length])) : undefined;
+    if (name) {
+      if (plain) out.push({text: plain, mention: false});
+      plain = '';
+      out.push({text: `@${name}`, mention: true});
+      i += name.length + 1;
+    } else {
+      plain += text[i];
+      i += 1;
+    }
+  }
+  if (plain) out.push({text: plain, mention: false});
+  return out;
+}
+
+/** Box metrics the highlight layer copies from the text box, so each chip sits exactly under its `@Name`. */
+const MIRRORED = ['font-family', 'font-size', 'font-weight', 'font-style', 'letter-spacing', 'line-height', 'text-transform', 'word-spacing', 'tab-size', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'direction'] as const;
+
+/**
+ * A layer BEHIND the comment box that draws a coloured chip under each `@Name` (a text box cannot colour part of
+ * its text). Its letters are invisible: the box's own text stays on top, so typing, selecting and the caret are
+ * untouched. Follows the box's size, scroll and font (copied from its computed style: no inline style attribute).
+ */
+function MentionBackdrop({area, text, names}: {area: React.RefObject<HTMLTextAreaElement | null>; text: string; names: string[]}) {
+  const layer = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = area.current;
+    const back = layer.current;
+    if (!box || !back) return;
+    const sync = () => {
+      const cs = getComputedStyle(box);
+      for (const prop of MIRRORED) back.style.setProperty(prop, cs.getPropertyValue(prop));
+      back.style.setProperty('top', `${box.offsetTop}px`);
+      back.style.setProperty('left', `${box.offsetLeft}px`);
+      // The box's width without its scrollbar (the layer has none), so the lines wrap at the same place.
+      back.style.setProperty('width', `${box.clientWidth + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth)}px`);
+      back.style.setProperty('height', `${box.offsetHeight}px`);
+      back.scrollTop = box.scrollTop;
+    };
+    sync();
+    const onScroll = () => {
+      back.scrollTop = box.scrollTop;
+    };
+    box.addEventListener('scroll', onScroll);
+    const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sync);
+    watch?.observe(box);
+    return () => {
+      box.removeEventListener('scroll', onScroll);
+      watch?.disconnect();
+    };
+  }, [area]);
+  // After each change of the text the box may have scrolled (a new line at the bottom).
+  useEffect(() => {
+    if (layer.current && area.current) layer.current.scrollTop = area.current.scrollTop;
+  }, [text, area]);
+  const parts = names.length ? mentionParts(text, names) : [];
+  return (
+    <div ref={layer} className="cd-mention-backdrop" aria-hidden="true">
+      {parts.map((part, i) => (part.mention ? <mark key={i}>{part.text}</mark> : <span key={i}>{part.text}</span>))}
+      {/* A trailing line break still takes a line in the box: keep the heights equal. */}
+      {'\n '}
+    </div>
+  );
+}
+
+/** `value`, once it has stayed the same for `ms` (the people search runs on a pause in typing, not every key). */
+function useDebouncedValue<T>(value: T, ms = 200): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(value), ms);
+    return () => window.clearTimeout(timer);
+  }, [value, ms]);
+  return settled;
+}
+
+/**
+ * The text box with a Mention button, and an `@` list while a name is typed; the ids sent are the people whose
+ * `@Name` is still in the text.
+ */
 function Composer({
   cardId,
   editId,
@@ -60,6 +152,33 @@ function Composer({
   const [open, setOpen] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const anchor = useRef<HTMLDivElement>(null);
+  // Typing `@` lists the people of this card's board (names only, from the server), like the chat composer.
+  const listId = useId();
+  const meId = useMe().data?.viewer.id ?? null;
+  const [caret, setCaret] = useState(0);
+  const [active, setActive] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+  const typing = dismissed || pending ? null : mentionAt(text, caret);
+  const query = useDebouncedValue(typing ? typing.query.trim() : null);
+  const people = usePeople(cardId, query ?? '', query !== null);
+  const options = typing && query !== null ? (people.data?.items ?? []).filter(p => p.id !== meId).slice(0, 8) : [];
+  const listOpen = options.length > 0;
+  const current = listOpen ? Math.min(active, options.length - 1) : 0;
+  const pickTyped = (person: PersonT) => {
+    if (!typing) return;
+    const next = insertMention(text, caret, typing.start, person.name);
+    setText(next.text);
+    setCaret(next.caret);
+    setActive(0);
+    setPicked(list => (list.some(p => p.id === person.id) ? list : [...list, {id: person.id, name: person.name}]));
+    window.requestAnimationFrame(() => {
+      const el = area.current;
+      if (!el) return;
+      el.focus();
+      // Only while nothing was typed since the pick: a fast key would otherwise be left behind the caret.
+      if (el.value === next.text) el.setSelectionRange(next.caret, next.caret);
+    });
+  };
   useEffect(() => {
     if (!autoFocus) return;
     const el = area.current;
@@ -94,22 +213,58 @@ function Composer({
         event.preventDefault();
         void submit();
       }}>
+      <div className="cd-editor-wrap">
       <div ref={anchor} className="cd-editor">
       <EditorToolbar area={area} text={text} setText={setText} disabled={pending} onMention={() => setOpen(true)} />
+      {listOpen && (
+        <p className="visually-hidden" id={`${listId}-hint`} role="status">
+          {t('chat.suggestionsHint', {n: options.length})}
+        </p>
+      )}
+      <MentionBackdrop area={area} text={text} names={picked.map(p => p.name)} />
       <textarea
         ref={area}
+        className="cd-mention-input"
         value={text}
         rows={3}
         aria-label={t('cd.commentLabel')}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={[error ? errorId : '', listOpen ? `${listId}-hint` : ''].filter(Boolean).join(' ') || undefined}
+        aria-controls={listOpen ? listId : undefined}
+        aria-activedescendant={listOpen ? `${listId}-p${current}` : undefined}
         placeholder={t('cd.commentPlaceholder')}
         disabled={pending}
         onChange={event => {
           setText(event.target.value);
+          setCaret(event.target.selectionStart);
+          setDismissed(false);
           if (error) setError('');
         }}
+        onSelect={event => setCaret(event.currentTarget.selectionStart)}
+        onBlur={() => setDismissed(true)}
+        onFocus={() => setDismissed(false)}
         onKeyDown={event => {
+          // An input method (Japanese, Chinese, Korean…) is composing: its Enter and arrows are its own.
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+          if (listOpen) {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault();
+              setActive((current + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length);
+              return;
+            }
+            if ((event.key === 'Enter' && !event.metaKey && !event.ctrlKey) || event.key === 'Tab') {
+              event.preventDefault();
+              const person = options[current];
+              if (person) pickTyped({id: person.id, name: person.name});
+              return;
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation(); // closes the list only, not the card
+              setDismissed(true);
+              return;
+            }
+          }
           if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
             event.preventDefault();
             void submit();
@@ -120,6 +275,26 @@ function Composer({
           }
         }}
       />
+      </div>
+      {listOpen && (
+        <ul className="cd-mention-list" role="listbox" id={listId} aria-label={t('chat.mentionList')}>
+          {options.map((person, index) => (
+            <li
+              key={person.id}
+              id={`${listId}-p${index}`}
+              role="option"
+              aria-selected={index === current}
+              data-active={index === current ? '' : undefined}
+              onPointerDown={event => {
+                event.preventDefault(); // keeps the focus (and the caret) in the text box
+                pickTyped({id: person.id, name: person.name});
+              }}>
+              <Avatar name={person.name} size="sm" />
+              <span className="cd-mention-name">{person.name}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       </div>
       {error && (
         <p id={errorId} className="field-error" role="alert">

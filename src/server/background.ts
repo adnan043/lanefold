@@ -7,6 +7,7 @@ import {FLOWS_LIST, runDailyFlows} from './jobs/flows';
 import {MORNING_DIGEST_LIST, runMorningDigest} from './jobs/morning-digest';
 import {STALE_CARDS_LIST, runStaleCards} from './jobs/stale-cards';
 import {INVITE_EMAIL_LIST, runInviteEmails} from './jobs/invite-email';
+import {ACCESS_REQUEST_EMAIL_LIST, runAccessApprovedEmail} from './jobs/access-request-email';
 import {RECURRING_CARDS_LIST, runRecurringCards} from './jobs/recurring-cards';
 
 /**
@@ -26,6 +27,11 @@ export const background = defineBackground({
     const db = getDb();
     if (!db) throw new Error('The Site Database is off; trying again later.');
     await runInviteEmails(db, data, job);
+  },
+  [ACCESS_REQUEST_EMAIL_LIST]: async data => {
+    const db = getDb();
+    if (!db) throw new Error('The Site Database is off; trying again later.');
+    await runAccessApprovedEmail(db, data);
   },
   [NOTIFICATION_EMAIL_LIST]: async (_data, job) => {
     const db = getDb();

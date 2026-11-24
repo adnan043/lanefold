@@ -46,6 +46,8 @@ const KIND_KEYS: Record<string, MessageKey> = {
   card_done: "notif.kind.card_done",
   card_member: "notif.kind.card_member",
   board_member: "notif.kind.board_member",
+  access_request: "notif.kind.access_request",
+  access_granted: "notif.kind.access_granted",
   digest: "notif.kind.digest",
   card_stale: "notif.kind.card_stale",
 };

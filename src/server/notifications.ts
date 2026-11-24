@@ -7,7 +7,7 @@ import type {PrismaClient} from '../generated/prisma/client';
  *   - someone who is not a member of the workspace (one query checks them all).
  * Rows carry ids only; names are looked up when the list is read.
  */
-export const NOTIFICATION_KINDS = ['assigned', 'mentioned', 'due_soon', 'comment', 'message_mention', 'card_moved', 'card_due', 'card_done', 'card_member', 'board_member'] as const;
+export const NOTIFICATION_KINDS = ['assigned', 'mentioned', 'due_soon', 'comment', 'message_mention', 'card_moved', 'card_due', 'card_done', 'card_member', 'board_member', 'access_request', 'access_granted'] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 export type NotifyInput = {

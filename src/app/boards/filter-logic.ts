@@ -125,6 +125,52 @@ export function countMatches(lanes: LaneT[], match: (card: CardT) => boolean) {
   return {shown, total};
 }
 
+export type OptionCounts = {
+  noMembers: number;
+  members: Map<number, number>;
+  complete: number;
+  incomplete: number;
+  dues: Record<DueOption, number>;
+  /** Cards inside the custom due range (0 when no range is set). */
+  dueRange: number;
+  noLabels: number;
+  labels: Map<number, number>;
+};
+
+/**
+ * For the filter panel: how many loaded cards each option would match ON ITS OWN (what ticking just that box shows),
+ * in ONE pass over the cards, whatever the number of options.
+ */
+export function optionCounts(lanes: LaneT[], now: Date, range: {from?: string; to?: string} = {}): OptionCounts {
+  const out: OptionCounts = {
+    noMembers: 0,
+    members: new Map(),
+    complete: 0,
+    incomplete: 0,
+    dues: {none: 0, overdue: 0, day: 0, week: 0, month: 0},
+    dueRange: 0,
+    noLabels: 0,
+    labels: new Map(),
+  };
+  const bump = (map: Map<number, number>, id: number) => map.set(id, (map.get(id) ?? 0) + 1);
+  for (const lane of lanes) {
+    for (const card of lane.cards) {
+      if (card.id < 0) continue; // a card still being created
+      const members = card.members ?? [];
+      if (members.length === 0) out.noMembers++;
+      for (const m of members) bump(out.members, m.id);
+      if (card.completed) out.complete++;
+      else out.incomplete++;
+      for (const d of DUE_OPTIONS) if (fitsDue(card, d, now)) out.dues[d]++;
+      if (fitsDueRange(card, range.from, range.to)) out.dueRange++;
+      const labels = card.labels ?? [];
+      if (labels.length === 0) out.noLabels++;
+      for (const l of labels) bump(out.labels, l.id);
+    }
+  }
+  return out;
+}
+
 /** Drops anything the strict server schema would refuse, so a stale session value never breaks a save. Reads the old single `due` too. */
 export function cleanFilter(value: unknown): BoardFilter {
   if (!value || typeof value !== 'object') return {};

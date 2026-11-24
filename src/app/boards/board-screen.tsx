@@ -28,6 +28,7 @@ import {storedShortcuts} from '../settings/prefs';
 import type {LaneHandlers} from './lane';
 import {BoardPeople} from './board-people';
 import {JoinBoardButton, ShareBoardButton} from './share-board-header';
+import {AccessRequestsButton, RequestAccess} from './access-request';
 import {useMe} from '../../portal/shared';
 import {filterToPerson} from './views/workload-logic';
 import {useBoardView, ViewSwitcher} from './views/view-switcher';
@@ -99,6 +100,8 @@ export function BoardScreen() {
   const {boardId: raw, cardId: openCardId} = useParams({strict: false}) as {boardId: string; cardId?: string};
   const boardId = Number(raw);
   const query = useQuery(boardQuery(boardId));
+  const {refetch: refetchBoard} = query;
+  const retryBoard = useCallback(() => void refetchBoard(), [refetchBoard]);
   const actions = useBoardActions(boardId);
   const setTitle = useSetPageTitle();
   const {setCurrentId, current: currentWorkspace} = useWorkspace();
@@ -313,6 +316,8 @@ export function BoardScreen() {
   }
   if (query.error || !data) {
     const missing = query.error instanceof ApiError && query.error.status === 404;
+    // Cannot open it (private, another workspace, or gone: the server does not say which): offer to ask for access.
+    if (missing && Number.isSafeInteger(boardId) && boardId > 0) return <RequestAccess boardId={boardId} onGranted={retryBoard} />;
     return (
       <div className="app-page">
         {missing || !query.error ? (
@@ -356,10 +361,11 @@ export function BoardScreen() {
     <SelectionContext.Provider value={selection}>
     <div className="lf-board" ref={canvasRef} role="region" aria-label={t('boards.canvas', {name: board.name})}>
       <div className="lf-board-top">
-        <FilterBar boardId={board.id} filter={filter} onChange={setFilter} labels={facets.labels} members={facets.members} canSave={!board.archived} collapseEmpty={collapseEmpty} onCollapseEmpty={setCollapseEmpty} shown={counts.shown} total={counts.total} />
+        <FilterBar boardId={board.id} filter={filter} onChange={setFilter} labels={facets.labels} members={facets.members} canSave={!board.archived} collapseEmpty={collapseEmpty} onCollapseEmpty={setCollapseEmpty} shown={counts.shown} total={counts.total} lanes={data.lanes} />
         <div className="lf-board-members">
           <BoardPeople boardId={board.id} />
           <JoinBoardButton board={board} />
+          <AccessRequestsButton board={board} />
           {!board.archived && <ShareBoardButton board={board} />}
         </div>
       </div>

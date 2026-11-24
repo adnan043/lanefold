@@ -638,6 +638,7 @@ model Board {
   invites      WorkspaceInvite[]
   removals     BoardRemoval[]
   cardExits    CardBoardExit[]
+  accessRequests BoardAccessRequest[]
 
   @@index([workspaceId, archivedAt, id])
   @@index([inboxOf, workspaceId])
@@ -695,6 +696,34 @@ model BoardRemoval {
   @@id([boardId, userId])
   @@index([userId])
   @@map("board_removals")
+}
+
+/// A signed-in person asking to be let onto a board they cannot open (a private board, or a board of a workspace they
+/// are not in). One row per person per board: a new request after a decline reuses it. Names only on read (join on
+/// users.id); the requester's address is never copied here. Approved by whoever may add people to the board.
+model BoardAccessRequest {
+  id          Int       @id @default(autoincrement())
+  boardId     Int       @map("board_id")
+  workspaceId Int       @map("workspace_id")
+  userId      Int       @map("user_id")
+  /// `pending`, `approved` or `declined` (a CHECK in SQL).
+  status      String    @default("pending") @db.VarChar(10)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// When it last became pending (a request again after a decline moves it).
+  requestedAt DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedAt   DateTime? @map("decided_at") @db.Timestamptz(3)
+  decidedBy   Int?      @map("decided_by")
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  /// The pending list of a board, newest first, and its count.
+  @@index([boardId, status, id(sort: Desc)])
+  /// One person's requests in the last hour (the rate limit).
+  @@index([userId, requestedAt])
+  /// NOTE: the foreign keys to users (user_id ON DELETE CASCADE, decided_by ON DELETE SET NULL) exist ONLY in SQL
+  /// (migration 20261124100000), like the other user links. Delete any DROP CONSTRAINT for them from a later migration.
+  @@map("board_access_requests")
 }
 
 model BoardStar {

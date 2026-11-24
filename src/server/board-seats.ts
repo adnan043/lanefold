@@ -80,7 +80,7 @@ export async function acceptSeat(
     workspaceId: number;
     userId: number;
     role: BoardRole;
-    via: 'invite' | 'link';
+    via: 'invite' | 'link' | 'request';
     /** When the invite was made; null for a link (its age is not kept). */
     madeAt: Date | null;
   },
